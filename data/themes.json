@@ -1,0 +1,68 @@
+{
+  "_comment": "Theme definitions. `overrides` win over the industry/sector rules — they are deliberate editorial calls (e.g. Cisco sits with the platform/telecom names rather than with chip makers). Anything the rules cannot place lands in theme 9 so it is visible rather than silently mis-bucketed.",
+  "themes": {
+    "1": { "label": "AI 반도체", "color": "--g1" },
+    "2": { "label": "빅테크 · 클라우드 · 통신", "color": "--g2" },
+    "3": { "label": "소프트웨어 · 보안 · 데이터", "color": "--g3" },
+    "4": { "label": "EV · 우주항공 · 방산", "color": "--g4" },
+    "5": { "label": "이커머스 · 미디어 · 핀테크", "color": "--g5" },
+    "6": { "label": "소비재 · 리테일", "color": "--g6" },
+    "7": { "label": "바이오 · 헬스케어", "color": "--g7" },
+    "8": { "label": "에너지 · 산업재", "color": "--g8" },
+    "9": { "label": "기타 · 미분류", "color": "--g9" }
+  },
+  "overrides": {
+    "NVDA": 1, "AVGO": 1, "AMD": 1, "ASML": 1, "TXN": 1, "QCOM": 1, "MU": 1, "INTC": 1,
+    "LRCX": 1, "AMAT": 1, "KLAC": 1, "ADI": 1, "MRVL": 1, "NXPI": 1, "MCHP": 1, "MPWR": 1,
+    "ARM": 1, "TER": 1, "ALAB": 1, "SNDK": 1, "WDC": 1, "STX": 1, "LITE": 1,
+
+    "MSFT": 2, "AAPL": 2, "GOOGL": 2, "GOOG": 2, "AMZN": 2, "META": 2, "CSCO": 2, "TMUS": 2,
+    "CRWV": 2, "NBIS": 2,
+
+    "PLTR": 3, "CRWD": 3, "PANW": 3, "FTNT": 3, "ADBE": 3, "INTU": 3, "CDNS": 3, "SNPS": 3,
+    "ADSK": 3, "WDAY": 3, "DDOG": 3, "APP": 3, "MSTR": 3, "ADP": 3, "PAYX": 3, "TRI": 3,
+
+    "TSLA": 4, "SPCX": 4, "RKLB": 4, "AXON": 4,
+
+    "SHOP": 5, "PDD": 5, "MELI": 5, "DASH": 5, "ABNB": 5, "BKNG": 5, "NFLX": 5, "WBD": 5,
+    "CMCSA": 5, "TTWO": 5, "PYPL": 5,
+
+    "WMT": 6, "COST": 6, "PEP": 6, "SBUX": 6, "MNST": 6, "MDLZ": 6, "KHC": 6, "KDP": 6,
+    "CCEP": 6, "ROST": 6, "ORLY": 6, "FAST": 6, "ODFL": 6, "CTAS": 6, "CPRT": 6, "MAR": 6, "PCAR": 6,
+
+    "AMGN": 7, "GILD": 7, "VRTX": 7, "REGN": 7, "ALNY": 7, "DXCM": 7, "GEHC": 7, "IDXX": 7, "ISRG": 7,
+
+    "CEG": 8, "AEP": 8, "XEL": 8, "EXC": 8, "BKR": 8, "FANG": 8, "HON": 8, "HONA": 8,
+    "ROP": 8, "LIN": 8, "CSX": 8, "FER": 8
+  },
+  "industry_rules": [
+    ["semiconductor", 1],
+    ["computer manufacturing|electronic components|electrical products", 1],
+    ["telecommunications equipment|computer communications", 2],
+    ["computer software: prepackaged software", 3],
+    ["edp services|computer peripheral", 3],
+    ["catalog/specialty distribution|retail: computer software", 5],
+    ["broadcasting|movies/entertainment|cable|advertising|television", 5],
+    ["major banks|finance|investment|savings institution", 5],
+    ["auto manufacturing|auto parts|motor vehicles", 4],
+    ["aerospace|military|ordnance", 4],
+    ["biotechnology|pharmaceutical|medical|health|diagnostic", 7],
+    ["oil|gas|coal|energy|electric utilit|power|water supply|natural gas", 8],
+    ["railroad|trucking|transportation|marine|air freight|engineering|construction|industrial machinery|metal fabric|containers", 8],
+    ["food|beverage|restaurant|consumer|apparel|department|retail|distribution|hotel|package goods|tobacco|agriculture", 6]
+  ],
+  "sector_fallback": {
+    "technology": 3,
+    "telecommunications": 2,
+    "consumer discretionary": 5,
+    "consumer staples": 6,
+    "health care": 7,
+    "energy": 8,
+    "utilities": 8,
+    "industrials": 8,
+    "basic materials": 8,
+    "finance": 5,
+    "real estate": 8,
+    "miscellaneous": 9
+  }
+}

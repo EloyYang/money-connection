@@ -1,0 +1,1620 @@
+<title>나스닥 100 상관관계 그래프</title>
+<style>
+  :root{
+    --bg:#0a0c10;
+    --bg-vignette: radial-gradient(ellipse at 50% 42%, #12151c 0%, #0a0c10 62%);
+    --panel:#12151bee;
+    --panel-solid:#12151b;
+    --border: rgba(255,255,255,0.09);
+    --border-strong: rgba(255,255,255,0.16);
+    --text-primary:#eef0f3;
+    --text-secondary:#9aa2ad;
+    --text-muted:#5d6470;
+    --accent:#5fd0ff;
+    --accent-dim: rgba(95,208,255,0.35);
+    --up:#3ddc84;
+    --down:#ff5c72;
+    --fav:#f5c451;
+    --g9:#8a8f98;
+    --g1:#3987e5; --g2:#d95926; --g3:#199e70; --g4:#c98500;
+    --g5:#d55181; --g6:#3fae3f; --g7:#9085e9; --g8:#e66767;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg-vignette); background-color:var(--bg);
+    color:var(--text-primary);
+    font-family:'Inter', system-ui, -apple-system, "Segoe UI", sans-serif;
+    height:100vh; overflow:hidden; display:flex; flex-direction:column;
+  }
+  .mono{ font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+
+  header{
+    display:flex; align-items:center; gap:12px 18px; flex-wrap:wrap;
+    padding:12px 22px; border-bottom:1px solid var(--border);
+    background:rgba(10,12,16,0.72); backdrop-filter: blur(8px);
+    z-index:20; flex:0 0 auto;
+  }
+  .brand{ display:flex; flex-direction:column; gap:2px; flex:0 0 auto; white-space:nowrap; }
+  .brand .title{ font-family:'Space Grotesk', system-ui, sans-serif; font-size:18px; font-weight:600; letter-spacing:0.2px; white-space:nowrap; }
+  .brand .sub{ font-size:11.5px; color:var(--text-muted); white-space:nowrap; }
+  .stat{ display:flex; flex-direction:column; gap:1px; padding:0 14px; border-left:1px solid var(--border); flex:0 0 auto; white-space:nowrap; }
+  .stat .n{ font-size:16px; font-weight:600; }
+  .stat .l{ font-size:10.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; }
+  .sim-controls{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+  .searchwrap{ position:relative; flex:0 0 auto; }
+  #search{
+    width:210px; background:var(--panel-solid); border:1px solid var(--border-strong);
+    color:var(--text-primary); border-radius:8px; padding:8px 12px 8px 32px; font-size:13px;
+    font-family:inherit; outline:none;
+  }
+  #search:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim); }
+  .searchwrap::before{ content:"⌕"; position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:14px; pointer-events:none; }
+
+  .btn{
+    border:1px solid var(--border-strong); background:var(--panel-solid); color:var(--text-primary);
+    border-radius:8px; padding:8px 13px; font-size:12.5px; font-weight:600; cursor:pointer;
+    font-family:inherit; display:flex; align-items:center; gap:6px; white-space:nowrap;
+    transition:transform .12s, border-color .12s, background .12s;
+  }
+  .btn:hover{ background:#1a1e26; transform:translateY(-1px); }
+  .btn:active{ transform:translateY(0); }
+  .btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .btn.up{ color:var(--up); } .btn.down{ color:var(--down); }
+  .btn.up.active{ background:rgba(61,220,132,0.14); border-color:var(--up); }
+  .btn.down.active{ background:rgba(255,92,114,0.14); border-color:var(--down); }
+  .btn.ghost{ background:transparent; }
+
+  .main{ position:relative; flex:1 1 auto; min-height:0; }
+  #canvas-wrap{ position:absolute; inset:0; }
+  svg{ width:100%; height:100%; display:block; cursor:grab; }
+  svg:active{ cursor:grabbing; }
+
+  .panel{
+    position:absolute; z-index:15; background:var(--panel); border:1px solid var(--border);
+    border-radius:12px; backdrop-filter: blur(10px); box-shadow:0 12px 32px rgba(0,0,0,0.35);
+  }
+  /* left column: legend on top, method/simulation note pinned below — never overlapping */
+  .left-stack{
+    position:absolute; left:16px; top:16px; bottom:16px; width:252px; z-index:15;
+    display:flex; flex-direction:column; gap:12px; pointer-events:none;
+  }
+  .left-stack > *{ pointer-events:auto; }
+  .legend{ position:relative; padding:14px; flex:0 1 auto; overflow-y:auto; }
+  .legend h3{ margin:0 0 9px; font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); font-weight:600; }
+  .legend-row{ display:flex; align-items:center; gap:9px; padding:4px; border-radius:7px; cursor:pointer; font-size:12.5px; user-select:none; }
+  .legend-row:hover{ background:rgba(255,255,255,0.05); }
+  .legend-row.off{ opacity:0.32; }
+  .dot{ width:10px; height:10px; border-radius:50%; flex:0 0 auto; box-shadow:0 0 8px currentColor; }
+  .legend-row .cnt{ margin-left:auto; color:var(--text-muted); font-size:11px; }
+  .legend-sec{ margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+  .slider-head{ display:flex; justify-content:space-between; align-items:baseline; font-size:11px; color:var(--text-muted); }
+  .slider-head b{ color:var(--accent); font-size:13px; }
+  input[type=range]{ width:100%; margin-top:8px; accent-color:var(--accent); }
+  .edge-key{ display:flex; align-items:center; gap:7px; font-size:11.5px; color:var(--text-secondary); margin-top:6px; }
+  .edge-line{ width:24px; border-top:2.5px solid; display:inline-block; }
+
+  .infobar{ position:relative; margin-top:auto; padding:12px 14px; font-size:11.5px; color:var(--text-secondary); line-height:1.6; flex:0 0 auto; max-height:46%; overflow-y:auto; }
+  .infobar b{ color:var(--text-primary); }
+  .infobar .src{ color:var(--text-muted); font-size:10.5px; margin-top:6px; display:block; line-height:1.5; }
+
+  #tooltip{
+    position:absolute; z-index:30; pointer-events:none; opacity:0; transform:translate(-50%,-100%) translateY(-12px);
+    background:#181c24; border:1px solid var(--border-strong); border-radius:10px; padding:10px 13px;
+    font-size:12.5px; box-shadow:0 14px 30px rgba(0,0,0,0.45); min-width:150px; transition:opacity .1s;
+  }
+  #tooltip .tk{ font-family:'JetBrains Mono', monospace; font-weight:700; font-size:14px; }
+  #tooltip .nm{ color:var(--text-secondary); font-size:11.5px; margin-top:1px; }
+  #tooltip .kv{ margin-top:7px; display:grid; grid-template-columns:auto auto; gap:2px 14px; font-size:11.5px; color:var(--text-secondary); }
+  #tooltip .kv .v{ text-align:right; color:var(--text-primary); font-family:'JetBrains Mono',monospace; }
+
+  .drawer{ right:16px; top:16px; width:330px; padding:16px; display:none; max-height:calc(100% - 32px); overflow-y:auto; }
+  .drawer.show{ display:block; }
+  .drawer .close{ position:absolute; right:10px; top:10px; background:none; border:none; color:var(--text-muted); font-size:15px; cursor:pointer; padding:4px; line-height:1; }
+  .drawer .tk{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:21px; }
+  .drawer .nm{ color:var(--text-secondary); font-size:12.5px; margin-top:2px; }
+  .drawer .badge{ display:inline-flex; align-items:center; gap:6px; margin-top:9px; font-size:11.5px; padding:4px 9px; border-radius:999px; background:rgba(255,255,255,0.06); }
+  .metrics{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px; }
+  .metric{ background:rgba(255,255,255,0.04); border-radius:8px; padding:8px 10px; }
+  .metric .l{ font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; }
+  .metric .v{ font-size:14px; font-weight:600; font-family:'JetBrains Mono',monospace; margin-top:2px; }
+  .sec-title{ margin:15px 0 7px; font-size:10.5px; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); display:flex; justify-content:space-between; align-items:baseline; }
+  .corr-row{ display:flex; align-items:center; gap:8px; padding:3px 0; font-size:12px; cursor:pointer; border-radius:5px; }
+  .corr-row:hover{ background:rgba(255,255,255,0.05); }
+  .corr-row .tk2{ font-family:'JetBrains Mono',monospace; font-weight:600; min-width:48px; }
+  .corr-row .bar{ flex:1 1 auto; height:5px; border-radius:3px; background:rgba(255,255,255,0.07); overflow:hidden; }
+  .corr-row .bar span{ display:block; height:100%; border-radius:3px; }
+  .corr-row .r{ font-family:'JetBrains Mono',monospace; font-size:11.5px; min-width:40px; text-align:right; }
+  .empty{ font-size:11.5px; color:var(--text-muted); padding:4px 0; }
+  .corr-row.peer{ background:rgba(95,208,255,0.10); box-shadow:inset 0 0 0 1px var(--accent-dim); }
+
+  /* price chart + lead-lag */
+  #chart-host{ background:rgba(255,255,255,0.03); border-radius:8px; padding:2px 0 0; }
+  #pricechart{ display:block; }
+  .readout{ font-size:11px; color:var(--text-muted); margin-top:5px; min-height:15px; font-family:'JetBrains Mono',monospace; }
+  .readout b{ color:var(--text-primary); font-weight:600; }
+  .leadlag{ display:none; margin-top:4px; }
+  .leadlag.show{ display:block; }
+  .linkbtn{ background:none; border:none; color:var(--accent); font-size:11px; cursor:pointer; padding:0; font-family:inherit; }
+  .linkbtn:hover{ text-decoration:underline; }
+  .linkbtn.go{ margin-top:8px; }
+  .verdict{ font-size:12px; font-weight:600; padding:7px 10px; border-radius:8px; line-height:1.45;
+            background:rgba(255,255,255,0.05); border-left:3px solid var(--text-muted); }
+  .verdict.sync{ border-left-color:var(--accent); }
+  .verdict.lead{ border-left-color:var(--up); }
+  .rate-grid{ display:grid; grid-template-columns:1fr auto auto; gap:3px 8px; margin:9px 0 6px; font-size:11.5px; align-items:center; }
+  .rate-grid .lab{ color:var(--text-secondary); }
+  .rate-grid .val{ font-family:'JetBrains Mono',monospace; font-weight:600; text-align:right; }
+  .rate-grid .base{ font-family:'JetBrains Mono',monospace; color:var(--text-muted); font-size:10.5px; text-align:right; }
+  .ll-note{ font-size:10.5px; color:var(--text-muted); line-height:1.5; margin-top:4px; }
+
+  .hint{ bottom:16px; right:16px; font-size:11px; color:var(--text-muted); padding:8px 12px; max-width:240px; line-height:1.5; }
+
+  /* view tabs */
+  .freshness{ font-size:10.5px; color:var(--text-muted); line-height:1.35; white-space:nowrap;
+              border-left:1px solid var(--border); padding-left:14px; flex:0 0 auto; }
+  .freshness b{ color:var(--text-secondary); font-weight:600; }
+  .freshness .warn{ color:var(--fav); }
+  .tabs{ display:flex; gap:2px; background:rgba(255,255,255,0.05); padding:3px; border-radius:9px; flex:0 0 auto; }
+  .tab{ border:none; background:none; color:var(--text-secondary); font-family:inherit; font-size:12.5px;
+        font-weight:600; padding:7px 14px; border-radius:7px; cursor:pointer; white-space:nowrap; }
+  .tab:hover{ color:var(--text-primary); }
+  .tab.active{ background:var(--panel-solid); color:var(--text-primary); box-shadow:0 1px 6px rgba(0,0,0,0.3); }
+  .tab:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  body.view-cycle .graph-only{ display:none !important; }
+  body.view-graph #cycle-view{ display:none; }
+
+  /* cycle view */
+  #cycle-view{ position:absolute; inset:0; overflow-y:auto; padding:20px 24px 40px; }
+  .cyc-head{ max-width:1180px; margin:0 auto 16px; }
+  .cyc-head h2{ font-family:'Space Grotesk',system-ui,sans-serif; font-size:17px; margin:0 0 4px; font-weight:600; }
+  .cyc-head p{ margin:0; font-size:12px; color:var(--text-secondary); line-height:1.6; max-width:74ch; }
+  .cyc-wrap{ max-width:1180px; margin:0 auto; display:flex; flex-direction:column; gap:18px; }
+  .findings{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; }
+  .finding{ background:var(--panel-solid); border:1px solid var(--border); border-radius:12px; padding:13px 15px; }
+  .finding .k{ font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); }
+  .finding .v{ font-size:22px; font-weight:700; font-family:'JetBrains Mono',monospace; margin:5px 0 3px; }
+  .finding .d{ font-size:11.5px; color:var(--text-secondary); line-height:1.5; }
+  .finding .tag{ display:inline-block; font-size:10px; padding:2px 7px; border-radius:999px; margin-top:7px; font-weight:600; }
+  .tag.yes{ background:rgba(61,220,132,0.15); color:var(--up); }
+  .tag.weak{ background:rgba(95,208,255,0.15); color:var(--accent); }
+  .tag.no{ background:rgba(255,255,255,0.08); color:var(--text-muted); }
+
+  .card{ background:var(--panel-solid); border:1px solid var(--border); border-radius:12px; padding:15px 16px; }
+  .card h3{ margin:0 0 2px; font-size:13px; font-weight:600; }
+  .card .sub{ margin:0 0 12px; font-size:11px; color:var(--text-muted); line-height:1.5; }
+  .cyc-cols{ display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:18px; align-items:start; }
+  @media (max-width:900px){ .cyc-cols{ grid-template-columns:minmax(0,1fr); } }
+  .chart-box{ width:100%; overflow-x:auto; }
+  .theme-legend{ display:flex; flex-wrap:wrap; gap:5px 14px; margin-top:10px; font-size:11px; }
+  .theme-legend div{ display:flex; align-items:center; gap:6px; color:var(--text-secondary); cursor:pointer; }
+  .theme-legend div.dim{ opacity:0.3; }
+  .trans-detail{ font-size:11.5px; color:var(--text-secondary); line-height:1.6; margin-top:10px;
+                 border-top:1px solid var(--border); padding-top:10px; min-height:52px; }
+  .trans-detail b{ color:var(--text-primary); }
+
+  /* ---- candlestick modal ---- */
+  #chart-host{ cursor:zoom-in; }
+  .expand-btn{ background:none; border:none; color:var(--accent); font-size:11px; cursor:pointer;
+               font-family:inherit; padding:0; }
+  .expand-btn:hover{ text-decoration:underline; }
+  #modal{ position:fixed; inset:0; z-index:60; background:rgba(6,8,11,0.82); backdrop-filter:blur(3px);
+          display:flex; align-items:center; justify-content:center; padding:22px; }
+  #modal[hidden]{ display:none; }
+  .modal-panel{ background:var(--panel-solid); border:1px solid var(--border-strong); border-radius:14px;
+                width:min(1180px,100%); height:min(760px,100%); display:flex; flex-direction:column;
+                box-shadow:0 30px 80px rgba(0,0,0,0.6); overflow:hidden; }
+  .modal-top{ display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+              padding:13px 16px; border-bottom:1px solid var(--border); }
+  .modal-id .tk{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:19px; line-height:1.1; }
+  .modal-id .nm{ font-size:11.5px; color:var(--text-secondary); margin-top:1px; }
+  .modal-quote{ display:flex; align-items:baseline; gap:9px; font-family:'JetBrains Mono',monospace; }
+  .modal-quote .px{ font-size:19px; font-weight:700; }
+  .modal-quote .chg{ font-size:12.5px; font-weight:600; }
+  .seg{ display:flex; gap:2px; background:rgba(255,255,255,0.05); padding:3px; border-radius:8px; }
+  .seg button{ border:none; background:none; color:var(--text-secondary); font-family:'JetBrains Mono',monospace;
+               font-size:11.5px; font-weight:600; padding:5px 10px; border-radius:6px; cursor:pointer; }
+  .seg button:hover{ color:var(--text-primary); }
+  .seg button.on{ background:var(--panel); color:var(--text-primary); box-shadow:0 1px 5px rgba(0,0,0,0.35); }
+  .seg button:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  .tool{ display:flex; align-items:center; gap:6px; border:1px solid var(--border-strong); background:none;
+         color:var(--text-secondary); border-radius:8px; padding:6px 11px; font-size:12px; font-weight:600;
+         font-family:inherit; cursor:pointer; }
+  .tool:hover{ color:var(--text-primary); background:rgba(255,255,255,0.05); }
+  .tool.on{ border-color:var(--accent); color:var(--accent); background:rgba(95,208,255,0.12); }
+  .tool:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  .modal-close{ margin-left:auto; background:none; border:none; color:var(--text-muted); font-size:17px;
+                cursor:pointer; padding:5px 8px; line-height:1; }
+  .modal-close:hover{ color:var(--text-primary); }
+  .modal-body{ position:relative; flex:1 1 auto; min-height:0; }
+  #big-chart{ display:block; width:100%; height:100%; touch-action:none; }
+  .modal-foot{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:9px 16px;
+               border-top:1px solid var(--border); font-size:11px; color:var(--text-muted); }
+  .ohlc-readout{ font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--text-secondary); }
+  .ohlc-readout b{ font-weight:600; }
+  .modal-note{ margin-left:auto; }
+  #sel-bar{ position:absolute; z-index:5; display:flex; gap:4px; background:#181c24;
+            border:1px solid var(--border-strong); border-radius:8px; padding:4px;
+            box-shadow:0 8px 24px rgba(0,0,0,0.5); }
+  #sel-bar[hidden]{ display:none; }
+  #sel-bar button{ border:none; background:none; color:var(--text-secondary); font-family:inherit;
+                   font-size:11.5px; font-weight:600; padding:5px 9px; border-radius:6px; cursor:pointer; }
+  #sel-bar button:hover{ background:rgba(255,255,255,0.08); color:var(--text-primary); }
+  #sel-bar #sel-del:hover{ color:var(--down); }
+
+  /* ---- watchlist ---- */
+  .star{ background:none; border:none; cursor:pointer; font-size:18px; line-height:1; padding:2px 4px;
+         color:var(--text-muted); font-family:inherit; }
+  .star:hover{ color:var(--fav); }
+  .star.on{ color:var(--fav); }
+  .star:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:5px; }
+  .fav-panel{ position:relative; padding:13px 14px; flex:0 1 auto; overflow-y:auto; }
+  .fav-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .fav-head h3{ margin:0; font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em;
+                color:var(--text-muted); font-weight:600; }
+  .fav-head .cnt{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--fav); }
+  .fav-only{ margin-left:auto; border:1px solid var(--border-strong); background:none; color:var(--text-secondary);
+             font-family:inherit; font-size:10.5px; font-weight:600; border-radius:6px; padding:3px 8px; cursor:pointer; }
+  .fav-only:hover{ color:var(--text-primary); }
+  .fav-only.on{ border-color:var(--fav); color:var(--fav); background:rgba(245,196,81,0.12); }
+  .fav-row{ display:flex; align-items:center; gap:8px; padding:4px 3px; border-radius:6px; cursor:pointer; font-size:12px; }
+  .fav-row:hover{ background:rgba(255,255,255,0.05); }
+  .fav-row .tk3{ font-family:'JetBrains Mono',monospace; font-weight:600; min-width:48px; }
+  .fav-row .ret{ margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:11px; }
+  .fav-row .drop{ border:none; background:none; color:var(--text-muted); cursor:pointer; font-size:13px;
+                  padding:0 2px; line-height:1; }
+  .fav-row .drop:hover{ color:var(--fav); }
+  .fav-empty{ font-size:11px; color:var(--text-muted); line-height:1.55; }
+  .fav-sync{ margin-top:9px; padding-top:8px; border-top:1px solid var(--border);
+             font-size:10px; color:var(--text-muted); line-height:1.45; }
+  ::-webkit-scrollbar{ width:6px; } ::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.14); border-radius:3px; }
+  @media (prefers-reduced-motion: reduce){ *{ animation-duration:.001ms !important; transition-duration:.001ms !important; } }
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+
+<header>
+  <div class="brand">
+    <div class="title">나스닥 100 상관관계 그래프</div>
+    <div class="sub" id="brand-sub">최근 1년 일별 종가 수익률 상관계수 · 상승/하락 연쇄 시뮬레이션</div>
+  </div>
+  <div class="tabs">
+    <button class="tab active" data-view="graph">종목 네트워크</button>
+    <button class="tab" data-view="cycle">테마 사이클</button>
+  </div>
+  <div class="stat graph-only"><div class="n mono" id="stat-nodes">–</div><div class="l">종목</div></div>
+  <div class="stat graph-only"><div class="n mono" id="stat-links">–</div><div class="l">상관 연결</div></div>
+  <div class="stat graph-only"><div class="n mono" id="stat-days">–</div><div class="l">거래일</div></div>
+  <div class="sim-controls graph-only" style="border-left:1px solid var(--border); padding-left:16px;">
+    <button class="btn up" id="mode-up">▲ 상승 파급</button>
+    <button class="btn down" id="mode-down">▼ 하락 파급</button>
+    <button class="btn ghost" id="mode-random">🎲 랜덤</button>
+    <button class="btn ghost" id="mode-reset">↺ 초기화</button>
+    <button class="btn ghost" id="mode-fit">⤢ 전체보기</button>
+  </div>
+  <div class="searchwrap graph-only"><input id="search" placeholder="티커 또는 회사명 검색…" autocomplete="off" /></div>
+  <div class="freshness" id="freshness" title="구성종목·시세 자동 갱신 상태">—</div>
+</header>
+
+<div class="main">
+  <div id="canvas-wrap" class="graph-only"></div>
+
+  <div id="cycle-view">
+    <div class="cyc-head">
+      <h2>테마 로테이션 — 한 테마의 상승이 끝나면 다음은 어디로?</h2>
+      <p id="cyc-intro">—</p>
+    </div>
+    <div class="cyc-wrap">
+      <div class="findings" id="findings"></div>
+
+      <div class="card">
+        <h3>테마 지수 5년 추이</h3>
+        <p class="sub">테마별 구성종목 동일가중 · 시작일 = 100 · 로그 축(배수 비교용). 범례를 클릭하면 강조됩니다.</p>
+        <div class="chart-box"><svg id="cyc-index" width="100%"></svg></div>
+        <div class="theme-legend" id="cyc-legend"></div>
+      </div>
+
+      <div class="cyc-cols">
+        <div class="card">
+          <h3>월별 테마 수익률</h3>
+          <p class="sub">초록=상승, 빨강=하락. 흰 테두리는 그 달 1위 테마 — 테두리가 옮겨 다니는 모습이 로테이션입니다.</p>
+          <div class="chart-box"><svg id="cyc-heat" width="100%"></svg></div>
+        </div>
+
+        <div class="card">
+          <h3>리더십 전이 행렬</h3>
+          <p class="sub">행 = 이번 달 1위 테마, 열 = 다음 달 1위 테마. 숫자는 관측 횟수(총 59회)이며, 행을 클릭하면 분포가 아래에 표시됩니다.</p>
+          <div class="chart-box"><svg id="cyc-trans" width="100%"></svg></div>
+          <div class="trans-detail" id="trans-detail">행을 클릭해 특정 테마 다음에 무엇이 왔는지 확인하세요.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>테마 간 주간 시차 상관</h3>
+        <p class="sub" id="cyc-lag-sub">—</p>
+        <div class="chart-box"><svg id="cyc-lag" width="100%"></svg></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="left-stack graph-only">
+  <div class="panel legend">
+    <h3>테마 (클릭하여 강조/숨김)</h3>
+    <div id="legend-rows"></div>
+    <div class="legend-sec">
+      <div class="slider-head"><span>상관계수 임계값 |r|</span><b class="mono" id="thr-val">0.35</b></div>
+      <input type="range" id="thr" min="0.2" max="0.7" step="0.05" value="0.35" />
+      <div class="edge-key"><span class="edge-line" style="border-color:var(--up)"></span>양(+)의 상관 · 같은 방향</div>
+      <div class="edge-key"><span class="edge-line" style="border-color:var(--down); border-top-style:dashed;"></span>음(−)의 상관 · 반대 방향</div>
+      <div style="font-size:10.5px;color:var(--text-muted);line-height:1.5;margin-top:8px">
+        이 기간 음의 상관은 최대 −0.54(ADP↔TER)로 양의 상관보다 약합니다.
+        임계값을 낮추면 역행 관계가 더 드러납니다.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel fav-panel" id="fav-panel">
+    <div class="fav-head">
+      <h3>★ 즐겨찾기</h3><span class="cnt" id="fav-count">0</span>
+      <button class="fav-only" id="fav-only">즐겨찾기만</button>
+    </div>
+    <div id="fav-list"></div>
+    <div class="fav-sync" id="fav-sync">이 브라우저에 저장됩니다.</div>
+  </div>
+
+  <div class="panel infobar" id="infobar">
+    종목을 클릭하면 <b>주가 차트</b>와 <b>상관계수 순위</b>가 열립니다. 목록의 연관 종목을 클릭하면
+    두 종목 주가를 겹쳐 보고 <b>선행·후행 분석</b>까지 확인할 수 있습니다.
+    <b>상승/하락 파급</b> 모드에서는 상관계수의 부호와 크기를 따라 연쇄 반응이 전파됩니다.
+    <span class="src" id="method-note"></span>
+  </div>
+  </div>
+
+  <div class="panel hint graph-only">스크롤 확대/축소 · 드래그 이동 · 노드 드래그 재배치 · 빈 곳 클릭 시 해제</div>
+
+  <div id="tooltip" class="graph-only"></div>
+
+  <div class="panel drawer graph-only" id="drawer">
+    <button class="close" id="drawer-close">✕</button>
+    <div style="display:flex;align-items:center;gap:6px">
+      <div class="tk" id="d-tk">—</div>
+      <button class="star" id="fav-toggle" title="즐겨찾기 추가/해제" aria-pressed="false">☆</button>
+    </div>
+    <div class="nm" id="d-nm">—</div>
+    <div class="badge" id="d-badge"><span class="dot" style="width:8px;height:8px"></span><span id="d-group">—</span></div>
+    <div class="metrics">
+      <div class="metric"><div class="l">최근 종가</div><div class="v" id="d-close">–</div></div>
+      <div class="metric"><div class="l">1년 수익률</div><div class="v" id="d-ret">–</div></div>
+      <div class="metric"><div class="l">연변동성</div><div class="v" id="d-vol">–</div></div>
+      <div class="metric"><div class="l">데이터 일수</div><div class="v" id="d-days">–</div></div>
+    </div>
+
+    <div class="sec-title"><span id="chart-title">1년 주가 추이</span>
+      <span><span class="mono" id="chart-scale"></span>
+      <button class="expand-btn" id="open-candle">⤢ 봉차트</button></span></div>
+    <div id="chart-host"><svg id="pricechart" viewBox="0 0 298 116" width="100%" height="116"></svg></div>
+    <div id="chart-readout" class="readout">—</div>
+
+    <div id="leadlag" class="leadlag">
+      <div class="sec-title"><span id="ll-title">선행 · 후행 분석</span><button class="linkbtn" id="ll-clear">비교 해제</button></div>
+      <div class="verdict" id="ll-verdict">—</div>
+      <div class="rate-grid" id="ll-rates"></div>
+      <svg id="lagchart" viewBox="0 0 298 92" width="100%" height="92"></svg>
+      <div class="ll-note" id="ll-note"></div>
+      <button class="linkbtn go" id="ll-go">이 종목으로 이동 →</button>
+    </div>
+
+    <div class="sec-title"><span>같이 오르내리는 종목 (+)</span><span class="mono" id="d-poscount"></span></div>
+    <div id="d-pos"></div>
+    <div class="sec-title"><span>반대로 움직이는 종목 (−)</span><span class="mono" id="d-negcount"></span></div>
+    <div id="d-neg"></div>
+  </div>
+</div>
+
+<div id="modal" hidden>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-label="봉차트">
+    <div class="modal-top">
+      <div class="modal-id"><div style="display:flex;align-items:center;gap:5px"><div class="tk" id="m-tk">—</div><button class="star" id="m-fav" title="즐겨찾기 추가/해제" aria-pressed="false">☆</button></div><div class="nm" id="m-nm">—</div></div>
+      <div class="modal-quote"><span class="px" id="m-px">—</span><span class="chg" id="m-chg">—</span></div>
+      <div class="seg" id="m-range">
+        <button data-d="21">1개월</button><button data-d="63">3개월</button><button data-d="126">6개월</button>
+        <button data-d="252" class="on">1년</button><button data-d="0">5년</button>
+      </div>
+      <button class="tool" id="tool-trend">╱ 추세선</button>
+      <button class="tool" id="tool-hline">— 수평선</button>
+      <button class="tool" id="tool-undo">↶ 직전 선</button>
+      <button class="tool" id="tool-clear">↺ 전체</button>
+      <button class="tool" id="m-yfit">⇕ 가격축 자동</button>
+      <button class="modal-close" id="m-close" aria-label="닫기">✕</button>
+    </div>
+    <div class="modal-body"><svg id="big-chart"></svg>
+      <div id="sel-bar" hidden>
+        <button id="sel-copy">⧉ 복사</button><button id="sel-del">🗑 삭제</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="ohlc-readout" id="m-readout">—</span>
+      <span class="modal-note" id="m-note">휠·축 드래그 = 확대/축소 · 차트 드래그 = 이동 · 선 클릭 = 선택 후 이동/복사 · Esc 닫기</span>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   DATA — injected at build time.
+   CORR: { tickers, stats{ticker:{days,last_close,ret_1y,vol,...}}, matrix, meta }
+   Real market data: 1 year of daily closes, Pearson correlation of daily returns.
+   ===================================================================== */
+const CORR = /*__CORR__*/;
+/* PX: { dates[], prices{tk:[close|null]}, max_lag, profiles{"A|B":[r@lag -5..+5]},
+         comove{"A|B":{ab:[base,same,next,n], ba:[...]}}, noise{"A|B":n} }
+   profiles use corr_k = corr(a[t], b[t-k]); k>0 means B's earlier move matches A today. */
+const PX = /*__PX__*/;
+/* CY: 5-year theme-rotation dataset — theme indices, monthly returns, monthly
+   leadership, leadership transition counts, weekly theme lead-lag, and the
+   significance statistics computed off them. */
+const CY = /*__CY__*/;
+/* OH: 5y OHLCV for the candlestick modal — data[tk][i] = [o,h,l,c,vol(천주)] */
+const OH = /*__OH__*/;
+
+/* Membership, names, market caps and theme assignment all come from the daily
+   build — an index add/drop flows through without anyone editing this file. */
+const NODES = /*__NODES__*/;
+const META  = /*__META__*/;
+
+const GROUPS = Object.entries(META.themes).map(([id, label]) => ({
+  id: +id, label, color: `var(--g${id})`,
+  tickers: NODES.filter(n => n.group === +id).map(n => [n.id, n.name])
+})).filter(g => g.tickers.length);
+
+const capOf = new Map(NODES.map(n => [n.id, n.cap || 0]));
+const capValues = [...capOf.values()].filter(v => v > 0);
+const capScale = d3.scaleSqrt()
+  .domain([Math.min(...capValues) || 1, Math.max(...capValues) || 1])
+  .range([7.5, 20]).clamp(true);
+
+/* ---------- build nodes ---------- */
+const idx = new Map(CORR.tickers.map((t,i)=>[t,i]));   // ticker -> matrix index
+const nodes = [];
+const nodeIndex = new Map();
+GROUPS.forEach(g => g.tickers.forEach(([tk,name]) => {
+  if(!idx.has(tk)) return;
+  const r = capScale(capOf.get(tk) || 1);
+  const n = { id:tk, name, group:g.id, color:g.color, r,
+              tier: r >= 17 ? 'A' : r >= 12 ? 'B' : 'C',   // controls label density only
+              stats: CORR.stats[tk] || {} };
+  nodes.push(n); nodeIndex.set(tk, n);
+}));
+
+function corr(a, b){
+  const i = idx.get(a), j = idx.get(b);
+  if(i === undefined || j === undefined) return null;
+  return CORR.matrix[i][j];
+}
+// every correlation of one ticker, sorted by strength
+function corrList(tk){
+  const i = idx.get(tk);
+  const out = [];
+  CORR.tickers.forEach((other, j) => {
+    if(j === i) return;
+    const v = CORR.matrix[i][j];
+    if(v === null || !nodeIndex.has(other)) return;
+    out.push({ id: other, r: v });
+  });
+  return out.sort((x,y)=> Math.abs(y.r) - Math.abs(x.r));
+}
+
+/* ---------- edges from the correlation matrix ---------- */
+// per node: its strongest positive links plus its strongest inverse links.
+// Keeping a negative quota matters — positive correlations dominate this market,
+// so a plain top-K by |r| would hide the inverse relationships entirely.
+const TOP_POS = 5, TOP_NEG = 2;
+let threshold = 0.35;
+let links = [];
+
+function buildLinks(){
+  const keep = new Set();
+  nodes.forEach(n => {
+    const row = corrList(n.id).filter(c => Math.abs(c.r) >= threshold);
+    row.filter(c => c.r > 0).slice(0, TOP_POS).forEach(c => keep.add([n.id, c.id].sort().join('::')));
+    row.filter(c => c.r < 0).slice(0, TOP_NEG).forEach(c => keep.add([n.id, c.id].sort().join('::')));
+  });
+  links = Array.from(keep).map(k => {
+    const [a,b] = k.split('::');
+    return { source:a, target:b, r: corr(a,b) };
+  });
+  document.getElementById('stat-links').textContent = links.length;
+}
+buildLinks();
+
+/* =====================================================================
+   RENDER
+   ===================================================================== */
+const wrap = document.getElementById('canvas-wrap');
+let W = wrap.clientWidth, H = wrap.clientHeight;
+const svg = d3.select(wrap).append('svg').attr('viewBox',[0,0,W,H]);
+const defs = svg.append('defs');
+GROUPS.forEach(g => {
+  const f = defs.append('filter').attr('id','glow-'+g.id).attr('x','-100%').attr('y','-100%').attr('width','300%').attr('height','300%');
+  f.append('feGaussianBlur').attr('stdDeviation',3.2).attr('result','b');
+  const m = f.append('feMerge'); m.append('feMergeNode').attr('in','b'); m.append('feMergeNode').attr('in','SourceGraphic');
+});
+['up','down'].forEach(k => {
+  const f = defs.append('filter').attr('id','pulse-'+k).attr('x','-160%').attr('y','-160%').attr('width','420%').attr('height','420%');
+  f.append('feGaussianBlur').attr('stdDeviation',5.5).attr('result','b');
+  const m = f.append('feMerge'); m.append('feMergeNode').attr('in','b'); m.append('feMergeNode').attr('in','SourceGraphic');
+});
+
+const zoomLayer = svg.append('g');
+const zoom = d3.zoom().scaleExtent([0.15,4]).on('zoom', ev => zoomLayer.attr('transform', ev.transform));
+svg.call(zoom);
+
+// frame the whole network — the left panel column takes 268px, so pad that side
+function fitToView(duration = 0, subset = null){
+  const list = (subset && subset.length > 1) ? subset : nodes;
+  if(!list.length) return;
+  const drawerOpen = document.getElementById('drawer').classList.contains('show');
+  const padL = W > 700 ? 290 : 40;
+  const padR = (drawerOpen && W > 700) ? 320 : 60;
+  const padY = 56;
+  const xs = list.map(n=>n.x), ys = list.map(n=>n.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const gw = Math.max(1, maxX-minX), gh = Math.max(1, maxY-minY);
+  // never shrink past readability — pan is better than an unreadable thumbnail
+  const scale = Math.max(0.5, Math.min((W-padL-padR)/gw, (H-padY*2)/gh, 1.6));
+  const cx = (minX+maxX)/2, cy = (minY+maxY)/2;
+  const tx = (padL + (W-padL-padR)/2) - scale*cx;
+  const ty = H/2 - scale*cy;
+  const t = d3.zoomIdentity.translate(tx,ty).scale(scale);
+  duration ? svg.transition().duration(duration).call(zoom.transform, t) : svg.call(zoom.transform, t);
+}
+const linkLayer  = zoomLayer.append('g');
+const focusLayer = zoomLayer.append('g');   // temporary "선택 종목 → 상관 종목" rays
+const favLayer   = zoomLayer.append('g');   // gold rings on watchlisted nodes
+let favRingSel = null;                      // declared here: ticked() runs before the watchlist block
+let focusSel = null;                        // declared here: ticked() runs before the focus section
+const nodeLayer  = zoomLayer.append('g');
+const labelLayer = zoomLayer.append('g');
+
+const edgeColor = r => r >= 0 ? 'var(--up)' : 'var(--down)';
+const edgeWidth = r => 0.6 + Math.abs(r) * 3.2;
+const edgeOpacity = r => 0.12 + Math.abs(r) * 0.55;
+
+let linkSel = linkLayer.selectAll('line');
+function drawLinks(){
+  linkSel = linkLayer.selectAll('line').data(links, d => d.source.id ? d.source.id+'::'+d.target.id : d.source+'::'+d.target)
+    .join(
+      enter => enter.append('line')
+        .attr('stroke', d=>edgeColor(d.r)).attr('stroke-width', d=>edgeWidth(d.r))
+        .attr('stroke-opacity', d=>edgeOpacity(d.r))
+        .attr('stroke-dasharray', d=> d.r < 0 ? '4,4' : null)
+        .style('cursor','pointer')
+        .on('mouseenter', function(ev,d){
+          const a = d.source.id||d.source, b = d.target.id||d.target;
+          showTooltip(ev, `<div class="tk" style="color:${d.r>=0?'var(--up)':'var(--down)'}">r = ${d.r.toFixed(2)}</div>
+            <div class="nm">${a} ↔ ${b} · ${d.r>=0?'같은 방향으로 동행':'반대 방향으로 역행'}</div>`);
+          d3.select(this).attr('stroke-opacity',1);
+        })
+        .on('mousemove', moveTooltip)
+        .on('mouseleave', function(ev,d){ hideTooltip(); d3.select(this).attr('stroke-opacity', edgeOpacity(d.r)); }),
+      update => update, exit => exit.remove()
+    );
+}
+drawLinks();
+
+const nodeSel = nodeLayer.selectAll('circle').data(nodes).join('circle')
+  .attr('r', d=>d.r).attr('fill', d=>d.color).attr('fill-opacity',0.88)
+  .attr('stroke','rgba(255,255,255,0.35)').attr('stroke-width',1)
+  .attr('filter', d=>`url(#glow-${d.group})`)
+  .style('cursor','pointer')
+  .call(d3.drag()
+    .on('start',(ev,d)=>{ if(!ev.active) sim.alphaTarget(0.2).restart(); d.fx=d.x; d.fy=d.y; })
+    .on('drag',(ev,d)=>{ d.fx=ev.x; d.fy=ev.y; })
+    .on('end',(ev,d)=>{ if(!ev.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }))
+  .on('mouseenter', (ev,d)=>{ showTooltip(ev, tooltipHTML(d)); })
+  .on('mousemove', moveTooltip)
+  .on('mouseleave', hideTooltip)
+  .on('click', (ev,d)=>{ ev.stopPropagation(); onNodeClick(d); });
+
+const labelSel = labelLayer.selectAll('text').data(nodes.filter(d=>d.tier!=='C')).join('text')
+  .text(d=>d.id).attr('class','mono').attr('font-size', d=>d.tier==='A'?11:9.5)
+  .attr('font-weight',700).attr('fill','var(--text-primary)').attr('text-anchor','middle')
+  .attr('dy', d=>d.r+12).style('pointer-events','none')
+  .style('paint-order','stroke').style('stroke','#0a0c10').style('stroke-width','3px');
+
+svg.on('click', ()=>{ clearAll(); });
+
+/* ---------- forces: positive correlation attracts, negative barely does ---------- */
+function linkForce(){
+  return d3.forceLink(links).id(d=>d.id)
+    .distance(d => d.r > 0 ? Math.max(26, 120 - Math.abs(d.r)*120) : 150)
+    .strength(d => d.r > 0 ? Math.min(0.95, Math.abs(d.r)*1.4) : 0.02);
+}
+nodes.forEach((n,i)=>{ const a=(i/nodes.length)*Math.PI*2*7, rr=40+(i%23)*14;
+  n.x = W/2 + Math.cos(a)*rr; n.y = H/2 + Math.sin(a)*rr; });
+
+const sim = d3.forceSimulation(nodes)
+  .force('link', linkForce())
+  .force('charge', d3.forceManyBody().strength(-75).distanceMax(420))
+  .force('collide', d3.forceCollide().radius(d=>d.r+7))
+  .force('center', d3.forceCenter(W/2,H/2))
+  .on('tick', ticked);
+
+function ticked(){
+  linkSel.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+  focusSel && focusSel.attr('x1',d=>d.sx.x).attr('y1',d=>d.sx.y).attr('x2',d=>d.tx.x).attr('y2',d=>d.tx.y);
+  nodeSel.attr('cx',d=>d.x).attr('cy',d=>d.y);
+  labelSel.attr('x',d=>d.x).attr('y',d=>d.y);
+  if(favRingSel) favRingSel.attr('cx',d=>d.x).attr('cy',d=>d.y);
+}
+// settle the layout before first paint, then frame it
+sim.stop(); for(let i=0;i<400;i++) sim.tick(); ticked(); fitToView(); sim.alpha(0.06).restart();
+
+window.addEventListener('resize', ()=>{
+  W = wrap.clientWidth; H = wrap.clientHeight;
+  svg.attr('viewBox',[0,0,W,H]);
+  sim.force('center', d3.forceCenter(W/2,H/2)).alpha(0.15).restart();
+  setTimeout(()=>fitToView(400), 400);
+});
+
+/* ---------- header stats ---------- */
+document.getElementById('stat-nodes').textContent = nodes.length;
+const dayCounts = Object.values(CORR.stats).map(s=>s.days).sort((a,b)=>b-a);
+document.getElementById('stat-days').textContent = dayCounts[Math.floor(dayCounts.length/2)];
+(function renderFreshness(){
+  const el = document.getElementById('freshness');
+  if(!el || typeof META === 'undefined') return;
+  const built = META.built ? new Date(META.built) : null;
+  const when = built ? built.toLocaleString('ko-KR', { dateStyle:'short', timeStyle:'short' }) : '—';
+  const problems = (META.problems || []).length;
+  el.innerHTML = `구성종목 <b>${META.count}</b>개 · 지수 기준일 <b>${META.index_date || '—'}</b><br>`
+    + `갱신 ${when}` + (problems ? ` · <span class="warn" title="${(META.problems||[]).map(p=>p.ticker+': '+p.note).join(' / ')}">보정 ${problems}건</span>` : '');
+})();
+
+const graphSubtitle = `${CORR.meta.range_from} ~ ${CORR.meta.range_to} 1년 · 일별 수익률 상관계수 네트워크`;
+document.getElementById('brand-sub').textContent = graphSubtitle;
+document.getElementById('method-note').textContent =
+  `${CORR.meta.method} · 출처: ${CORR.meta.sources}. 상관관계는 인과관계가 아니며 과거 데이터 기준입니다.`;
+
+/* =====================================================================
+   TOOLTIP
+   ===================================================================== */
+const tooltipEl = document.getElementById('tooltip');
+function fmtRet(v){ return (v>=0?'+':'') + v.toFixed(1) + '%'; }
+function tooltipHTML(d){
+  const g = GROUPS.find(x=>x.id===d.group), s = d.stats;
+  const rc = s.ret_1y >= 0 ? 'var(--up)' : 'var(--down)';
+  return `<div class="tk" style="color:${d.color}">${d.id}</div><div class="nm">${d.name}</div>
+    <div class="kv"><span>최근 종가</span><span class="v">$${(latestClose(d.id)||{px:s.last_close}).px}</span>
+      <span>1년 수익률</span><span class="v" style="color:${rc}">${fmtRet(s.ret_1y)}</span>
+      <span>테마</span><span class="v" style="font-family:inherit">${g.label.split(' · ')[0]}</span></div>`;
+}
+function showTooltip(ev, html){ tooltipEl.innerHTML = html; tooltipEl.style.opacity = 1; moveTooltip(ev); }
+function moveTooltip(ev){
+  const rect = wrap.getBoundingClientRect();
+  tooltipEl.style.left = (ev.clientX - rect.left) + 'px';
+  tooltipEl.style.top  = (ev.clientY - rect.top) + 'px';
+}
+function hideTooltip(){ tooltipEl.style.opacity = 0; }
+
+/* =====================================================================
+   LEGEND + THRESHOLD
+   ===================================================================== */
+const activeGroups = new Set(GROUPS.map(g=>g.id));
+const legendRows = document.getElementById('legend-rows');
+GROUPS.forEach(g => {
+  const row = document.createElement('div');
+  row.className = 'legend-row';
+  const count = g.tickers.filter(([tk])=>nodeIndex.has(tk)).length;
+  row.innerHTML = `<span class="dot" style="background:${g.color};color:${g.color}"></span>${g.label}<span class="cnt mono">${count}</span>`;
+  row.addEventListener('click', ()=>{
+    activeGroups.has(g.id) ? activeGroups.delete(g.id) : activeGroups.add(g.id);
+    row.classList.toggle('off', !activeGroups.has(g.id));
+    resetOpacities();
+  });
+  legendRows.appendChild(row);
+});
+
+const thrInput = document.getElementById('thr');
+let refitTimer = null;
+thrInput.addEventListener('input', ()=>{
+  threshold = +thrInput.value;
+  document.getElementById('thr-val').textContent = threshold.toFixed(2);
+  buildLinks(); drawLinks();
+  sim.force('link', linkForce()); sim.alpha(0.45).restart();
+  clearFocus();
+  clearTimeout(refitTimer);
+  refitTimer = setTimeout(()=>fitToView(500), 900);
+});
+document.getElementById('mode-fit').addEventListener('click', ()=>fitToView(400));
+
+function visibleNode(d){
+  if(favOnly && !favorites.has(d.id)) return false;
+  return activeGroups.has(d.group);
+}
+function resetOpacities(){
+  nodeSel.attr('opacity', d=> visibleNode(d) ? 1 : 0.12).attr('r', d=>d.r)
+    .attr('stroke','rgba(255,255,255,0.35)').attr('stroke-width',1);
+  labelSel.attr('opacity', d=> visibleNode(d) ? 1 : 0.08).attr('fill','var(--text-primary)');
+  linkSel.attr('opacity', l => {
+    const s = l.source.id||l.source, t = l.target.id||l.target;
+    return (visibleNode(nodeIndex.get(s)) && visibleNode(nodeIndex.get(t))) ? 1 : 0.05;
+  }).attr('stroke', d=>edgeColor(d.r)).attr('stroke-width', d=>edgeWidth(d.r)).attr('stroke-opacity', d=>edgeOpacity(d.r));
+}
+
+/* =====================================================================
+   SEARCH
+   ===================================================================== */
+document.getElementById('search').addEventListener('input', ev => {
+  const q = ev.target.value.trim().toLowerCase();
+  if(!q){ resetOpacities(); return; }
+  const hit = new Set(nodes.filter(n => n.id.toLowerCase().includes(q) || n.name.toLowerCase().includes(q)).map(n=>n.id));
+  nodeSel.attr('opacity', d=> hit.has(d.id) ? 1 : 0.07);
+  labelSel.attr('opacity', d=> hit.has(d.id) ? 1 : 0.05);
+  linkSel.attr('opacity', 0.03);
+});
+
+/* =====================================================================
+   FOCUS: 선택 종목의 상관 종목 펼치기
+   ===================================================================== */
+const REVEAL = 0.2;   // 선택 시 보여줄 최소 |r|
+function clearFocus(){ focusLayer.selectAll('*').remove(); focusSel = null; }
+
+function focusNode(d){
+  clearFocus();
+  const peers = corrList(d.id).filter(c => Math.abs(c.r) >= Math.max(REVEAL, threshold - 0.15));
+  const peerMap = new Map(peers.map(p=>[p.id, p.r]));
+
+  nodeSel.attr('opacity', n => n.id===d.id ? 1 : (peerMap.has(n.id) ? 0.35 + Math.abs(peerMap.get(n.id))*0.65 : 0.07))
+    .attr('stroke', n => n.id===d.id ? 'var(--accent)' : (peerMap.has(n.id) ? (peerMap.get(n.id)>=0?'var(--up)':'var(--down)') : 'rgba(255,255,255,0.35)'))
+    .attr('stroke-width', n => n.id===d.id ? 3 : (peerMap.has(n.id) ? 1.5 + Math.abs(peerMap.get(n.id))*2 : 1));
+  labelSel.attr('opacity', n => n.id===d.id || peerMap.has(n.id) ? 1 : 0.05);
+  linkSel.attr('opacity', 0.04);
+
+  const rays = peers.map(p => ({ sx: d, tx: nodeIndex.get(p.id), r: p.r }));
+  focusSel = focusLayer.selectAll('line').data(rays).join('line')
+    .attr('stroke', r=>edgeColor(r.r)).attr('stroke-width', r=>0.8+Math.abs(r.r)*3.6)
+    .attr('stroke-opacity', r=>0.2+Math.abs(r.r)*0.7)
+    .attr('stroke-dasharray', r=> r.r<0 ? '4,4' : null)
+    .attr('x1',r=>r.sx.x).attr('y1',r=>r.sx.y).attr('x2',r=>r.tx.x).attr('y2',r=>r.tx.y);
+
+  openDrawer(d, peers);
+  // bring the selected node and its correlated peers into view together
+  fitToView(600, [d, ...peers.map(p=>nodeIndex.get(p.id)).filter(Boolean)]);
+}
+
+/* =====================================================================
+   DRAWER
+   ===================================================================== */
+const drawer = document.getElementById('drawer');
+document.getElementById('drawer-close').addEventListener('click', ()=>{ drawer.classList.remove('show'); clearFocus(); resetOpacities(); });
+
+let selectedTk = null, comparePeer = null;
+
+/* ---------------- price chart ---------------- */
+const CH = { w:298, h:116, l:38, r:8, t:10, b:16 };
+const chartSvg = d3.select('#pricechart');
+
+function drawPriceChart(main, peer){
+  chartSvg.selectAll('*').remove();
+  const dates = PX.dates, n = dates.length;
+  const a = PX.prices[main] || [];
+  const b = peer ? (PX.prices[peer] || []) : null;
+  const innerW = CH.w - CH.l - CH.r, innerH = CH.h - CH.t - CH.b;
+  const X = i => CH.l + (n < 2 ? 0 : (i/(n-1))*innerW);
+
+  let sa, sb = null, fmtY;
+  if(peer){
+    let s = -1;
+    for(let i=0;i<n;i++){ if(a[i]!=null && b[i]!=null){ s=i; break; } }
+    if(s < 0){ drawPriceChart(main, null); return; }
+    const a0 = a[s], b0 = b[s];
+    sa = a.map((v,i)=> (v==null || i<s) ? null : (v/a0)*100);
+    sb = b.map((v,i)=> (v==null || i<s) ? null : (v/b0)*100);
+    fmtY = v => Math.round(v);
+  } else {
+    sa = a.slice();
+    fmtY = v => '$' + (v >= 1000 ? Math.round(v) : v.toFixed(v < 20 ? 2 : 1));
+  }
+  const vals = sa.filter(v=>v!=null).concat(sb ? sb.filter(v=>v!=null) : []);
+  if(!vals.length) return;
+  const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi-lo)*0.10 || 1;
+  const Y = v => CH.t + innerH - ((v-(lo-pad))/((hi+pad)-(lo-pad)))*innerH;
+
+  const line = d3.line().defined(d=>d.v!=null).x(d=>X(d.i)).y(d=>Y(d.v));
+  const area = d3.area().defined(d=>d.v!=null).x(d=>X(d.i)).y0(CH.t+innerH).y1(d=>Y(d.v));
+  const pa = sa.map((v,i)=>({i,v})), pb = sb ? sb.map((v,i)=>({i,v})) : null;
+  const colA = nodeIndex.get(main).color;
+  // the peer gets a neutral line, not its theme color: most comparisons are
+  // within one theme, where two theme-colored lines are indistinguishable
+  const colB = peer ? '#e8eaed' : null;
+
+  // baseline + y ticks (only the values the chart actually reaches)
+  [lo, hi].forEach(v => {
+    chartSvg.append('line').attr('x1',CH.l).attr('x2',CH.w-CH.r).attr('y1',Y(v)).attr('y2',Y(v))
+      .attr('stroke','rgba(255,255,255,0.07)').attr('stroke-width',1);
+    chartSvg.append('text').attr('x',CH.l-5).attr('y',Y(v)+3).attr('text-anchor','end')
+      .attr('font-size',8.5).attr('fill','#6b7380').attr('font-family',"'JetBrains Mono',monospace")
+      .text(fmtY(v));
+  });
+  if(peer){  // index-100 reference line
+    chartSvg.append('line').attr('x1',CH.l).attr('x2',CH.w-CH.r).attr('y1',Y(100)).attr('y2',Y(100))
+      .attr('stroke','rgba(255,255,255,0.16)').attr('stroke-width',1).attr('stroke-dasharray','2,3');
+  }
+
+  if(!peer){
+    chartSvg.append('path').datum(pa).attr('d', area).attr('fill', colA).attr('opacity',0.14);
+  }
+  chartSvg.append('path').datum(pa).attr('d', line).attr('fill','none').attr('stroke',colA).attr('stroke-width',1.6);
+  if(pb){
+    chartSvg.append('path').datum(pb).attr('d', line).attr('fill','none').attr('stroke',colB)
+      .attr('stroke-width',1.6).attr('stroke-dasharray','4,3');
+  }
+  // endpoint dot
+  for(let i=n-1;i>=0;i--){ if(sa[i]!=null){ chartSvg.append('circle').attr('cx',X(i)).attr('cy',Y(sa[i])).attr('r',2.6).attr('fill',colA); break; } }
+
+  // x labels span the plotted data, not the index — recent listings start late
+  const firstI = sa.findIndex(v=>v!=null);
+  let lastI = n-1; while(lastI > 0 && sa[lastI]==null) lastI--;
+  [[firstI,'start'],[lastI,'end']].forEach(([i,anchor])=>{
+    chartSvg.append('text').attr('x',X(i)).attr('y',CH.h-4).attr('text-anchor',anchor)
+      .attr('font-size',8.5).attr('fill','#6b7380').text(dates[i].slice(0,7));
+  });
+
+  // crosshair
+  const cross = chartSvg.append('g').style('display','none');
+  const cline = cross.append('line').attr('y1',CH.t).attr('y2',CH.t+innerH)
+    .attr('stroke','rgba(255,255,255,0.35)').attr('stroke-width',1);
+  const dotA = cross.append('circle').attr('r',3).attr('fill',colA);
+  const dotB = pb ? cross.append('circle').attr('r',3).attr('fill',colB) : null;
+  const readout = document.getElementById('chart-readout');
+  const defaultReadout = () => {
+    const last = [...sa].reverse().find(v=>v!=null);
+    readout.innerHTML = peer
+      ? `<b style="color:${colA}">${main}</b> vs <b style="color:${colB}">${peer}</b> · 시작일=100 지수화`
+      : `${dates[firstI]} ~ ${dates[lastI]} · 최근 <b>${fmtY(last)}</b>`;
+  };
+  defaultReadout();
+  chartSvg.append('rect').attr('x',CH.l).attr('y',CH.t).attr('width',innerW).attr('height',innerH)
+    .attr('fill','transparent').style('cursor','crosshair')
+    .on('mouseleave', ()=>{ cross.style('display','none'); defaultReadout(); })
+    .on('mousemove', function(ev){
+      const mx = d3.pointer(ev, this)[0] + CH.l;
+      let i = Math.round(((mx-CH.l)/innerW)*(n-1));
+      i = Math.max(0, Math.min(n-1, i));
+      let j = i; while(j>0 && sa[j]==null) j--;
+      if(sa[j]==null) return;
+      cross.style('display',null);
+      cline.attr('x1',X(j)).attr('x2',X(j));
+      dotA.attr('cx',X(j)).attr('cy',Y(sa[j]));
+      if(dotB && sb[j]!=null) dotB.attr('cx',X(j)).attr('cy',Y(sb[j])).style('display',null);
+      else if(dotB) dotB.style('display','none');
+      const pxa = PX.prices[main][j], pxb = peer ? PX.prices[peer][j] : null;
+      readout.innerHTML = `${dates[j]} · <b style="color:${colA}">${main} $${pxa}</b>` +
+        (peer && pxb!=null ? ` · <b style="color:${colB}">${peer} $${pxb}</b>` : '');
+    });
+}
+
+/* ---------------- lead / lag ---------------- */
+const ML = PX.max_lag;
+function pairKey(x,y){ return [x,y].sort().join('|'); }
+
+// profile seen from x's side: arr[k+ML] = corr(x[t], y[t-k]); k>0 -> y leads x
+function lagProfile(x, y){
+  const key = pairKey(x,y);
+  const p = PX.profiles[key];
+  if(!p) return null;
+  return key.split('|')[0] === x ? p.slice() : p.slice().reverse();
+}
+function comoveOf(x, y){
+  const c = PX.comove[pairKey(x,y)];
+  if(!c) return null;
+  return pairKey(x,y).split('|')[0] === x ? c.ab : c.ba;   // [base, sameday, nextday, n]
+}
+
+const LC = { w:298, h:92, l:30, r:8, t:10, b:22 };
+function drawLagChart(prof, band){
+  const svg = d3.select('#lagchart');
+  svg.selectAll('*').remove();
+  const innerW = LC.w-LC.l-LC.r, innerH = LC.h-LC.t-LC.b;
+  const vals = prof.filter(v=>v!=null).map(Math.abs);
+  const maxV = Math.max(0.2, ...vals, band);
+  const Y = v => LC.t + innerH/2 - (v/maxV)*(innerH/2);
+  const bw = innerW/(2*ML+1);
+
+  // noise band the bars must clear to mean anything
+  svg.append('rect').attr('x',LC.l).attr('y',Y(band)).attr('width',innerW).attr('height',Y(-band)-Y(band))
+    .attr('fill','rgba(255,255,255,0.05)');
+  svg.append('line').attr('x1',LC.l).attr('x2',LC.w-LC.r).attr('y1',Y(0)).attr('y2',Y(0))
+    .attr('stroke','rgba(255,255,255,0.22)').attr('stroke-width',1);
+
+  prof.forEach((v,i)=>{
+    if(v==null) return;
+    const k = i-ML;
+    const x = LC.l + i*bw + bw*0.18;
+    const col = k===0 ? 'var(--accent)' : (v>=0 ? 'var(--up)' : 'var(--down)');
+    svg.append('rect').attr('x',x).attr('width',bw*0.64)
+      .attr('y', v>=0 ? Y(v) : Y(0)).attr('height', Math.max(1, Math.abs(Y(v)-Y(0))))
+      .attr('rx',1.5).attr('fill',col).attr('opacity', k===0 ? 1 : 0.75);
+  });
+  svg.append('text').attr('x',LC.l-4).attr('y',Y(maxV)+8).attr('text-anchor','end')
+    .attr('font-size',8).attr('fill','#6b7380').attr('font-family',"'JetBrains Mono',monospace").text(maxV.toFixed(2));
+  [[-ML,'start','← 연관주 후행'],[0,'middle','동시'],[ML,'end','연관주 선행 →']].forEach(([k,anchor,label])=>{
+    svg.append('text').attr('x', LC.l + (k+ML)*bw + bw/2).attr('y', LC.h-11)
+      .attr('text-anchor', anchor==='middle'?'middle':anchor).attr('font-size',8.5).attr('fill','#6b7380')
+      .attr('font-family',"'JetBrains Mono',monospace").text(k>0?`+${k}일`:`${k}일`);
+    svg.append('text').attr('x', anchor==='start'? LC.l : anchor==='end'? LC.w-LC.r : LC.l+innerW/2)
+      .attr('y', LC.h-1).attr('text-anchor',anchor).attr('font-size',8).attr('fill','#565d69').text(label);
+  });
+}
+
+function renderLeadLag(x, y){
+  const panel = document.getElementById('leadlag');
+  const prof = lagProfile(x,y), cm = comoveOf(x,y), nObs = PX.noise[pairKey(x,y)];
+  if(!prof || !nObs){ panel.classList.remove('show'); return; }
+  const band = 2/Math.sqrt(nObs);
+  const lag0 = prof[ML];
+  let best = null;
+  prof.forEach((v,i)=>{ const k=i-ML; if(k===0||v==null) return; if(!best || Math.abs(v)>Math.abs(best.v)) best={k,v}; });
+
+  document.getElementById('ll-title').textContent = `선행 · 후행 분석 (${x} ↔ ${y})`;
+  const vEl = document.getElementById('ll-verdict');
+  const meaningful = best && Math.abs(best.v) > Math.abs(lag0) + 0.05 && Math.abs(best.v) > band;
+  if(meaningful){
+    const who = best.k > 0 ? `${y} 선행 → ${x} 후행` : `${x} 선행 → ${y} 후행`;
+    vEl.className = 'verdict lead';
+    vEl.innerHTML = `${who} (${Math.abs(best.k)}일, r=${best.v>=0?'+':''}${best.v.toFixed(2)})<br>
+      <span style="font-weight:400;color:var(--text-secondary);font-size:11px">표본 ${nObs}일 — 노이즈 한계 ±${band.toFixed(2)}를 넘지만 해석에 주의</span>`;
+  } else {
+    vEl.className = 'verdict sync';
+    vEl.innerHTML = `동시 반응 — 선·후행 신호 없음<br>
+      <span style="font-weight:400;color:var(--text-secondary);font-size:11px">
+      lag 0 상관 ${lag0>=0?'+':''}${lag0.toFixed(2)}이 가장 강하고, 나머지 시차는 노이즈 한계 ±${band.toFixed(2)} 수준</span>`;
+  }
+
+  if(cm){
+    const [base, same, next] = cm;
+    const pct = v => (v*100).toFixed(0) + '%';
+    const lift = v => { const d = Math.round((v-base)*100); return `${d>0?'+':''}${d}%p`; };
+    const col = v => Math.abs(v-base) > 0.05 ? (v>base ? 'var(--up)' : 'var(--down)') : 'var(--text-primary)';
+    document.getElementById('ll-rates').innerHTML = `
+      <span class="lab">${x} 오른 날, ${y}도 <b>같은 날</b> 상승</span>
+        <span class="val" style="color:${col(same)}">${pct(same)}</span><span class="base">${lift(same)}</span>
+      <span class="lab">${x} 오른 <b>다음 날</b> ${y} 상승</span>
+        <span class="val" style="color:${col(next)}">${pct(next)}</span><span class="base">${lift(next)}</span>
+      <span class="lab" style="color:var(--text-muted)">${y} 평소 상승 확률 (기준)</span>
+        <span class="base" style="text-align:right">${pct(base)}</span><span class="base"></span>`;
+  } else {
+    document.getElementById('ll-rates').innerHTML = '';
+  }
+
+  drawLagChart(prof, band);
+  document.getElementById('ll-note').innerHTML =
+    `막대는 시차별 수익률 상관계수, 회색 띠는 노이즈 한계(±2/√${nObs}). ` +
+    `이 데이터셋 전체에서도 1,632쌍 중 시차 상관이 동시(lag 0)를 이기는 경우는 6쌍뿐 — ` +
+    `일봉 기준 후행 매수 신호는 사실상 관측되지 않습니다.`;
+  document.getElementById('ll-go').textContent = `${y} 종목으로 이동 →`;
+  panel.classList.add('show');
+}
+
+function setComparePeer(tk){
+  if(!selectedTk || tk === selectedTk) return;
+  comparePeer = tk;
+  document.getElementById('chart-title').textContent = '주가 비교 (지수화)';
+  document.getElementById('chart-scale').textContent = '시작일 = 100';
+  drawPriceChart(selectedTk, comparePeer);
+  renderLeadLag(selectedTk, comparePeer);
+  drawer.querySelectorAll('.corr-row').forEach(r => r.classList.toggle('peer', r.dataset.tk === tk));
+}
+function clearCompare(){
+  comparePeer = null;
+  document.getElementById('leadlag').classList.remove('show');
+  document.getElementById('chart-title').textContent = '1년 주가 추이';
+  document.getElementById('chart-scale').textContent = '';
+  drawer.querySelectorAll('.corr-row').forEach(r => r.classList.remove('peer'));
+  if(selectedTk) drawPriceChart(selectedTk, null);
+}
+document.getElementById('ll-clear').addEventListener('click', clearCompare);
+document.getElementById('ll-go').addEventListener('click', ()=>{
+  const n = comparePeer && nodeIndex.get(comparePeer);
+  if(n) focusNode(n);
+});
+
+function corrRowHTML(p){
+  const n = nodeIndex.get(p.id);
+  const col = p.r >= 0 ? 'var(--up)' : 'var(--down)';
+  const w = Math.min(100, Math.abs(p.r)*140);
+  return `<div class="corr-row" data-tk="${p.id}" title="클릭하면 주가 비교 · 선행/후행 분석">
+      <span class="dot" style="background:${n.color};width:7px;height:7px;box-shadow:none"></span>
+      <span class="tk2">${p.id}</span>
+      <span class="bar"><span style="width:${w}%;background:${col}"></span></span>
+      <span class="r" style="color:${col}">${p.r>=0?'+':''}${p.r.toFixed(2)}</span>
+    </div>`;
+}
+
+function openDrawer(d, peers){
+  const g = GROUPS.find(x=>x.id===d.group), s = d.stats;
+  document.getElementById('d-tk').textContent = d.id;
+  document.getElementById('d-tk').style.color = d.color;
+  document.getElementById('d-nm').textContent = d.name;
+  document.getElementById('d-group').textContent = g.label;
+  document.querySelector('#d-badge .dot').style.background = d.color;
+  const fresh = latestClose(d.id);
+  document.getElementById('d-close').textContent = '$' + (fresh ? fresh.px : s.last_close);
+  const retEl = document.getElementById('d-ret');
+  retEl.textContent = fmtRet(s.ret_1y);
+  retEl.style.color = s.ret_1y >= 0 ? 'var(--up)' : 'var(--down)';
+  document.getElementById('d-vol').textContent = s.vol + '%';
+  document.getElementById('d-days').textContent = s.days + '일';
+
+  const pos = peers.filter(p=>p.r>0).sort((a,b)=>b.r-a.r).slice(0,10);
+  const neg = peers.filter(p=>p.r<0).sort((a,b)=>a.r-b.r).slice(0,8);
+  document.getElementById('d-poscount').textContent = peers.filter(p=>p.r>0).length + '개';
+  document.getElementById('d-negcount').textContent = peers.filter(p=>p.r<0).length + '개';
+  document.getElementById('d-pos').innerHTML = pos.length ? pos.map(corrRowHTML).join('') : '<div class="empty">임계값 이상 없음</div>';
+  document.getElementById('d-neg').innerHTML = neg.length ? neg.map(corrRowHTML).join('') : '<div class="empty">임계값 이상 없음</div>';
+  drawer.querySelectorAll('.corr-row').forEach(row => {
+    row.addEventListener('click', ()=> setComparePeer(row.dataset.tk));
+  });
+
+  selectedTk = d.id;
+  renderFavorites();
+  clearCompare();
+  drawPriceChart(d.id, null);
+  drawer.classList.add('show');
+  drawer.scrollTop = 0;
+}
+
+/* =====================================================================
+   CASCADE — 상관계수 부호/크기를 따라 전파
+   ===================================================================== */
+let mode = null, simTimers = [];
+document.getElementById('mode-up').addEventListener('click', ()=>setMode('up'));
+document.getElementById('mode-down').addEventListener('click', ()=>setMode('down'));
+document.getElementById('mode-reset').addEventListener('click', clearAll);
+document.getElementById('mode-random').addEventListener('click', ()=>{
+  const dir = Math.random() > 0.5 ? 'up' : 'down';
+  setMode(dir);
+  const pool = nodes.filter(n=>n.tier!=='C');
+  runCascade(pool[Math.floor(Math.random()*pool.length)], dir);
+});
+function setMode(m){
+  mode = (mode===m) ? null : m;
+  document.getElementById('mode-up').classList.toggle('active', mode==='up');
+  document.getElementById('mode-down').classList.toggle('active', mode==='down');
+}
+function onNodeClick(d){ mode ? runCascade(d, mode) : focusNode(d); }
+
+function clearAll(){
+  simTimers.forEach(clearTimeout); simTimers = [];
+  clearFocus(); resetOpacities();
+  drawer.classList.remove('show');
+  mode = null;
+  document.getElementById('mode-up').classList.remove('active');
+  document.getElementById('mode-down').classList.remove('active');
+}
+
+/* =====================================================================
+   WATCHLIST — saved to the artifact store when this view can run `db`,
+   mirrored to localStorage so it also works offline / in a plain browser
+   ===================================================================== */
+const FAV_KEY = 'nasdaq100-graph.favorites';
+const FAV_PATH = 'watchlist/main';
+let favorites = new Set();
+let favDoc = null, favApplying = false;
+
+function loadLocalFavorites(){
+  try {
+    const raw = localStorage.getItem(FAV_KEY);
+    if(raw) favorites = new Set(JSON.parse(raw).filter(t => nodeIndex.has(t)));
+  } catch(e){ /* private mode / blocked storage: stay in memory */ }
+}
+function saveFavorites(){
+  try { localStorage.setItem(FAV_KEY, JSON.stringify([...favorites])); } catch(e){}
+  if(favDoc && !favApplying){
+    favDoc.set({ tickers: [...favorites], updatedAt: new Date().toISOString() })
+      .catch(()=>{ setSyncNote('저장소에 쓸 수 없어 이 브라우저에만 저장됩니다.'); });
+  }
+}
+function setSyncNote(text){ document.getElementById('fav-sync').textContent = text; }
+
+function isFav(tk){ return favorites.has(tk); }
+function toggleFav(tk){
+  if(!tk) return;
+  favorites.has(tk) ? favorites.delete(tk) : favorites.add(tk);
+  saveFavorites();
+  renderFavorites();
+}
+
+/* Runs at the very end of the script: renderFavorites() touches state that
+   later sections declare, and `let` bindings are not hoisted. */
+async function initFavSync(){
+  loadLocalFavorites();
+  renderFavorites();
+  try {
+    if(!window.claude || typeof claude.use !== 'function') return;
+    const db = await claude.use('db');
+    if(!db) return;
+    favDoc = db.doc(FAV_PATH);
+    setSyncNote('이 아티팩트에 저장되어 다른 기기에서도 이어집니다.');
+    favDoc.onSnapshot(snap => {
+      const t = snap.exists ? snap.data().tickers : null;
+      if(!Array.isArray(t)) return;
+      favApplying = true;                      // remote echo must not write back
+      favorites = new Set(t.filter(x => nodeIndex.has(x)));
+      try { localStorage.setItem(FAV_KEY, JSON.stringify([...favorites])); } catch(e){}
+      favApplying = false;
+      renderFavorites();
+    }, ()=> setSyncNote('동기화가 끊겨 이 브라우저에만 저장됩니다.'));
+    // push what this browser already had, so a first visit seeds the store
+    if(favorites.size) saveFavorites();
+  } catch(e){ /* no runtime: localStorage only */ }
+}
+
+let favOnly = false;
+document.getElementById('fav-only').addEventListener('click', ()=>{
+  favOnly = !favOnly;
+  document.getElementById('fav-only').classList.toggle('on', favOnly);
+  clearFocus(); resetOpacities();
+});
+document.getElementById('fav-toggle').addEventListener('click', ev=>{
+  ev.stopPropagation(); toggleFav(selectedTk);
+});
+document.getElementById('m-fav').addEventListener('click', ev=>{
+  ev.stopPropagation(); toggleFav(cTk);
+});
+
+function renderFavorites(){
+  document.getElementById('fav-count').textContent = favorites.size;
+  const list = document.getElementById('fav-list');
+  const items = [...favorites].map(tk => nodeIndex.get(tk)).filter(Boolean)
+    .sort((a,b) => (b.stats.ret_1y ?? 0) - (a.stats.ret_1y ?? 0));
+  list.innerHTML = items.length ? items.map(n => {
+    const r = n.stats.ret_1y ?? 0;
+    return `<div class="fav-row" data-tk="${n.id}">
+      <span class="dot" style="width:7px;height:7px;background:${n.color};box-shadow:none"></span>
+      <span class="tk3">${n.id}</span>
+      <span class="ret" style="color:${r>=0?'var(--up)':'var(--down)'}">${r>=0?'+':''}${r}%</span>
+      <button class="drop" data-drop="${n.id}" title="즐겨찾기 해제">★</button>
+    </div>`;
+  }).join('') : '<div class="fav-empty">종목을 클릭한 뒤 상세 패널의 ☆ 를 누르면 여기에 모입니다.</div>';
+
+  list.querySelectorAll('.fav-row').forEach(row=>{
+    row.addEventListener('click', ()=>{ const n = nodeIndex.get(row.dataset.tk); if(n) focusNode(n); });
+  });
+  list.querySelectorAll('.drop').forEach(btn=>{
+    btn.addEventListener('click', ev=>{ ev.stopPropagation(); toggleFav(btn.dataset.drop); });
+  });
+
+  // stars in the two detail panels
+  const dStar = document.getElementById('fav-toggle');
+  dStar.textContent = isFav(selectedTk) ? '★' : '☆';
+  dStar.classList.toggle('on', isFav(selectedTk));
+  dStar.setAttribute('aria-pressed', String(isFav(selectedTk)));
+  const mStar = document.getElementById('m-fav');
+  mStar.textContent = isFav(cTk) ? '★' : '☆';
+  mStar.classList.toggle('on', isFav(cTk));
+  mStar.setAttribute('aria-pressed', String(isFav(cTk)));
+
+  renderFavRings();
+  if(favOnly) resetOpacities();
+}
+
+/* gold ring around favourited nodes in the network */
+function renderFavRings(){
+  if(typeof favLayer === 'undefined' || !favLayer) return;
+  const favNodes = nodes.filter(n => favorites.has(n.id));
+  favRingSel = favLayer.selectAll('circle').data(favNodes, d=>d.id)
+    .join('circle')
+    .attr('r', d=>d.r+4.5).attr('fill','none')
+    .attr('stroke','var(--fav)').attr('stroke-width',1.8).attr('opacity',0.9)
+    .attr('cx', d=>d.x).attr('cy', d=>d.y)
+    .style('pointer-events','none');
+}
+
+/* =====================================================================
+   CANDLESTICK MODAL — OHLC + volume, wheel zoom, drag pan, drawn lines
+   OH[tk][i] = [open, high, low, close, volume(천주)] on the OH.dates index
+   ===================================================================== */
+const modal = document.getElementById('modal');
+const bigSvg = d3.select('#big-chart');
+const CM = { t:16, r:64, b:26, l:12, volH:0.20, gap:12 };
+let cTk = null, cI0 = 0, cI1 = 0, cTool = null, cPending = null;
+const drawings = new Map();   // ticker -> [{type,x1,y1,x2,y2} | {type:'hline',y}]
+
+function ohlcOf(tk){ return OH.data[tk] || []; }
+// newest close across the OHLC set — the correlation dataset ends a day earlier,
+// so the panels would otherwise disagree on "최근 종가"
+function latestClose(tk){
+  const a = ohlcOf(tk);
+  for(let i=a.length-1;i>=0;i--) if(a[i]) return { px: a[i][3], date: OH.dates[i] };
+  return null;
+}
+function firstIdx(tk){ const a = ohlcOf(tk); for(let i=0;i<a.length;i++) if(a[i]) return i; return 0; }
+
+function openCandle(tk){
+  if(!tk || !OH.data[tk]) return;
+  cTk = tk; cTool = null; cPending = null; cSel = null; yManual = null;
+  document.getElementById('sel-bar').hidden = true;
+  ['tool-trend','tool-hline'].forEach(id=>document.getElementById(id).classList.remove('on'));
+  const node = nodeIndex.get(tk);
+  document.getElementById('m-tk').textContent = tk;
+  document.getElementById('m-tk').style.color = node ? node.color : 'var(--text-primary)';
+  document.getElementById('m-nm').textContent = node ? node.name : '';
+  document.getElementById('m-note').textContent = (OH.closeOnly||[]).includes(tk)
+    ? '이 종목은 종가만 제공되어 봉이 아닌 선으로 표시됩니다 · 휠·축 드래그 = 확대/축소 · Esc 닫기'
+    : '휠·축 드래그 = 확대/축소 · 차트 드래그 = 이동 · 선 클릭 = 선택 후 이동/복사 · Esc 닫기';
+  // show first: the panel has no measurable size while hidden, and drawCandle
+  // bails out on a hidden modal
+  modal.hidden = false;
+  document.querySelectorAll('#m-range button').forEach(b=>b.classList.toggle('on', b.dataset.d === '252'));
+  renderFavorites();
+  setRange(252);
+}
+function closeCandle(){ modal.hidden = true; cTk = null; }
+document.getElementById('m-close').addEventListener('click', closeCandle);
+modal.addEventListener('click', ev => { if(ev.target === modal) closeCandle(); });
+document.addEventListener('keydown', ev => {
+  if(ev.key !== 'Escape' || modal.hidden) return;
+  if(cSel){ clearSelection(); return; }      // first Esc drops the selection
+  if(cPending){ cPending = null; cTool = null; updateToolButtons(); drawCandle(); return; }
+  closeCandle();
+});
+document.getElementById('open-candle').addEventListener('click', ev => { ev.stopPropagation(); openCandle(selectedTk); });
+document.getElementById('chart-host').addEventListener('click', ()=> openCandle(selectedTk));
+
+function setRange(days){
+  yManual = null;                       // a new period re-fits the price axis
+  const a = ohlcOf(cTk), n = a.length, s = firstIdx(cTk);
+  cI1 = n-1;
+  cI0 = days ? Math.max(s, n-days) : s;
+  if(cI1 - cI0 < 5) cI0 = Math.max(0, cI1-5);
+  drawCandle();
+}
+document.querySelectorAll('#m-range button').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('#m-range button').forEach(x=>x.classList.toggle('on', x===b));
+    setRange(+b.dataset.d);
+  });
+});
+['trend','hline'].forEach(t=>{
+  document.getElementById('tool-'+t).addEventListener('click', ()=>{
+    cTool = (cTool === t) ? null : t;
+    cPending = null; cSel = null;
+    updateToolButtons();
+    drawCandle();
+  });
+});
+document.getElementById('tool-undo').addEventListener('click', ()=>{
+  const arr = drawings.get(cTk) || [];
+  const removed = arr.pop();
+  if(removed === cSel) cSel = null;
+  cPending = null;
+  drawCandle();
+});
+document.getElementById('tool-clear').addEventListener('click', ()=>{
+  drawings.set(cTk, []); cPending = null; cSel = null; drawCandle();
+});
+document.getElementById('m-yfit').addEventListener('click', ()=>{ yManual = null; drawCandle(); });
+
+/*__CANDLE_ENGINE__*/
+
+/* =====================================================================
+   THEME ROTATION VIEW
+   ===================================================================== */
+const THEME_IDS = Object.keys(CY.themes);
+const themeColor = g => `var(--g${g})`;
+const themeLabel = g => CY.themes[g].label;
+const shortLabel = g => themeLabel(g).split(' · ')[0];
+
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active', b===btn));
+    const v = btn.dataset.view;
+    document.body.className = 'view-' + v;
+    const sub = document.getElementById('brand-sub');
+    if(v === 'cycle'){
+      sub.textContent = `${CY.range[0]} ~ ${CY.range[1]} 5년 · 8개 테마 로테이션 분석`;
+      renderCycle();
+    } else {
+      sub.textContent = graphSubtitle;
+      hideTooltip();
+      setTimeout(()=>fitToView(300), 60);
+    }
+  });
+});
+document.body.className = 'view-graph';
+
+/* --- intro + finding cards --- */
+function renderFindings(){
+  const s = CY.stats;
+  document.getElementById('cyc-intro').innerHTML =
+    `${CY.range[0]} ~ ${CY.range[1]} · ${CY.months.length}개월 · 100개 종목을 8개 테마로 묶어 동일가중 지수를 만들고,
+     매달 1위 테마가 다음 달 어떤 테마로 넘어갔는지 집계했습니다.
+     표본이 59회 전이뿐이라 개별 칸의 확률보다 <b>전체 경향</b>을 보는 용도입니다.`;
+
+  const cards = [
+    { k:'리더 지속성', v:`${s.persist.pct}%`,
+      d:`이번 달 1위 테마가 <b>다음 달에도 1위</b>인 경우 ${s.persist.same}/${s.persist.total}회.
+         무작위라면 ${s.persist.random}%여야 합니다 (z=+${s.persist.z}).`,
+      tag:['모멘텀 유의 (p≈0.01)','yes'] },
+    { k:'1위 테마의 다음 달 초과수익', v:`${s.leader_next.excess>=0?'+':''}${s.leader_next.excess}%p`,
+      d:`전체 평균 대비. 다음 달에도 평균을 이긴 비율 ${s.leader_next.winrate}% (n=${s.leader_next.n}, t=${s.leader_next.t}).`,
+      tag:['약한 경향 — 통계적 확신 부족','weak'] },
+    { k:'꼴찌 테마의 반등', v:`${s.worst_next.excess}%p`,
+      d:`이번 달 꼴찌 테마의 다음 달 초과수익 (n=${s.worst_next.n}, t=${s.worst_next.t}).
+         떨어진 테마가 바로 반등한다는 근거는 없습니다.`,
+      tag:['반전 효과 없음','no'] },
+    { k:'테마 간 선행–후행', v:'없음',
+      d:`8개 테마 모든 조합에서 주간 수익률 상관은 <b>동시(lag 0)</b>가 가장 강했습니다.
+         "A 테마가 오르면 몇 주 뒤 B 테마" 같은 시차 신호는 관측되지 않습니다.`,
+      tag:['모든 쌍에서 lag 0 우세','no'] },
+  ];
+  document.getElementById('findings').innerHTML = cards.map(c=>`
+    <div class="finding"><div class="k">${c.k}</div><div class="v">${c.v}</div>
+      <div class="d">${c.d}</div><span class="tag ${c.tag[1]}">${c.tag[0]}</span></div>`).join('');
+}
+
+/* --- theme index chart (log scale, direct labels) --- */
+function renderThemeIndex(){
+  const host = document.getElementById('cyc-index');
+  const W = Math.max(560, host.parentElement.clientWidth), H = 300;
+  const m = { t:14, r:112, b:24, l:44 };
+  const svg = d3.select(host).attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+  svg.selectAll('*').remove();
+  const n = CY.dates.length;
+  const all = THEME_IDS.flatMap(g => CY.themes[g].index).concat(CY.market_index).filter(v=>v>0);
+  const y = d3.scaleLog().domain([Math.min(...all)*0.95, Math.max(...all)*1.05]).range([H-m.b, m.t]);
+  const x = d3.scaleLinear().domain([0, n-1]).range([m.l, W-m.r]);
+
+  [100, 200, 400].concat(Math.max(...all) > 500 ? [800] : []).forEach(v=>{
+    if(v < y.domain()[0] || v > y.domain()[1]) return;
+    svg.append('line').attr('x1',m.l).attr('x2',W-m.r).attr('y1',y(v)).attr('y2',y(v))
+      .attr('stroke', v===100 ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.06)').attr('stroke-width',1);
+    svg.append('text').attr('x',m.l-7).attr('y',y(v)+3).attr('text-anchor','end').attr('font-size',9)
+      .attr('fill','#6b7380').attr('font-family',"'JetBrains Mono',monospace").text(v);
+  });
+  // year ticks
+  let lastYear = null;
+  CY.dates.forEach((d,i)=>{
+    const yr = d.slice(0,4);
+    if(yr !== lastYear){ lastYear = yr;
+      svg.append('text').attr('x',x(i)).attr('y',H-7).attr('text-anchor','middle').attr('font-size',9)
+        .attr('fill','#6b7380').attr('font-family',"'JetBrains Mono',monospace").text(yr);
+    }
+  });
+
+  const line = d3.line().x((d,i)=>x(i)).y(d=>y(d));
+  svg.append('path').datum(CY.market_index).attr('d',line).attr('fill','none')
+    .attr('stroke','#6b7380').attr('stroke-width',1.2).attr('stroke-dasharray','3,3');
+
+  const ends = THEME_IDS.map(g => ({ g, v: CY.themes[g].index[n-1], y: y(CY.themes[g].index[n-1]) }));
+  ends.sort((a,b)=>a.y-b.y);
+  for(let i=1;i<ends.length;i++) if(ends[i].y - ends[i-1].y < 13) ends[i].y = ends[i-1].y + 13;
+
+  THEME_IDS.forEach(g=>{
+    svg.append('path').datum(CY.themes[g].index).attr('class','tline t'+g).attr('d',line)
+      .attr('fill','none').attr('stroke',themeColor(g)).attr('stroke-width',1.7).attr('opacity',0.9);
+  });
+  ends.forEach(e=>{
+    svg.append('text').attr('x',W-m.r+8).attr('y',e.y+3).attr('font-size',9.5).attr('fill',themeColor(e.g))
+      .attr('font-weight',600).text(`${shortLabel(e.g)} ${Math.round(e.v/100*10)/10}배`);
+  });
+  svg.append('text').attr('x',W-m.r+8).attr('y',y(CY.market_index[n-1])+3).attr('font-size',9)
+    .attr('fill','#6b7380').text('');
+
+  document.getElementById('cyc-legend').innerHTML = THEME_IDS.map(g=>
+    `<div data-g="${g}"><span class="dot" style="width:8px;height:8px;background:${themeColor(g)};box-shadow:none"></span>${themeLabel(g)}</div>`
+  ).join('') + `<div style="color:var(--text-muted)"><span style="width:14px;border-top:1.5px dashed #6b7380;display:inline-block"></span>전체 평균</div>`;
+  document.querySelectorAll('#cyc-legend div[data-g]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const g = el.dataset.g, on = el.classList.toggle('dim');
+      svg.selectAll('.t'+g).attr('opacity', on ? 0.12 : 0.9).attr('stroke-width', on ? 1 : 1.7);
+    });
+  });
+}
+
+/* --- monthly return heatmap --- */
+function renderHeatmap(){
+  const host = document.getElementById('cyc-heat');
+  const labelW = 128, cell = 11, gap = 1.5, rowH = 20;
+  const months = CY.months;
+  const W = Math.max(labelW + months.length*(cell+gap) + 12, 480);
+  const H = THEME_IDS.length*rowH + 34;
+  const svg = d3.select(host).attr('viewBox',`0 0 ${W} ${H}`).attr('height',H).attr('width',W);
+  svg.selectAll('*').remove();
+  const vals = THEME_IDS.flatMap(g => CY.theme_month[g]).filter(v=>v!=null).map(Math.abs);
+  const cap = d3.quantile(vals.sort(d3.ascending), 0.92) || 10;
+  const col = v => {
+    const t = Math.max(-1, Math.min(1, v/cap));
+    return t >= 0 ? d3.interpolateRgb('#141a17','#3ddc84')(Math.max(0.12,t))
+                  : d3.interpolateRgb('#1c1416','#ff5c72')(Math.max(0.12,-t));
+  };
+  THEME_IDS.forEach((g,ri)=>{
+    svg.append('text').attr('x',labelW-8).attr('y',26+ri*rowH).attr('text-anchor','end')
+      .attr('font-size',10).attr('fill','var(--text-secondary)').text(shortLabel(g));
+    months.forEach((mk,ci)=>{
+      const v = CY.theme_month[g][ci];
+      if(v==null) return;
+      const isLead = CY.leaders[ci] === g;
+      svg.append('rect').attr('x',labelW+ci*(cell+gap)).attr('y',16+ri*rowH-9)
+        .attr('width',cell).attr('height',rowH-5).attr('rx',2)
+        .attr('fill',col(v))
+        .attr('stroke', isLead ? 'rgba(255,255,255,0.85)' : 'none').attr('stroke-width', isLead?1.2:0)
+        .style('cursor','pointer')
+        .append('title').text(`${mk} · ${themeLabel(g)} ${v>=0?'+':''}${v}%${isLead?'  (그 달 1위)':''}`);
+    });
+  });
+  months.forEach((mk,ci)=>{
+    if(!mk.endsWith('-01') && ci!==0) return;
+    svg.append('text').attr('x',labelW+ci*(cell+gap)+cell/2).attr('y',H-6).attr('text-anchor','middle')
+      .attr('font-size',9).attr('fill','#6b7380').attr('font-family',"'JetBrains Mono',monospace").text(mk.slice(0,4));
+  });
+}
+
+/* --- leadership transition matrix --- */
+function renderTransitions(){
+  const host = document.getElementById('cyc-trans');
+  const labelW = 118, cell = 30, top = 46;
+  const W = labelW + THEME_IDS.length*cell + 10, H = top + THEME_IDS.length*cell + 8;
+  const svg = d3.select(host).attr('viewBox',`0 0 ${W} ${H}`).attr('height',H).attr('width',W);
+  svg.selectAll('*').remove();
+  const maxV = Math.max(...THEME_IDS.flatMap(a => THEME_IDS.map(b => CY.transitions[a][b])));
+
+  THEME_IDS.forEach((b,ci)=>{
+    svg.append('text').attr('transform',`translate(${labelW+ci*cell+cell/2},${top-8}) rotate(-42)`)
+      .attr('font-size',9).attr('fill','var(--text-secondary)').text(shortLabel(b).slice(0,7));
+  });
+  THEME_IDS.forEach((a,ri)=>{
+    const rowTotal = THEME_IDS.reduce((s,b)=>s+CY.transitions[a][b],0);
+    svg.append('text').attr('x',labelW-8).attr('y',top+ri*cell+cell/2+3).attr('text-anchor','end')
+      .attr('font-size',9.5).attr('fill', rowTotal>=5?'var(--text-primary)':'var(--text-muted)')
+      .style('cursor','pointer').text(`${shortLabel(a).slice(0,8)} (${rowTotal})`)
+      .on('click',()=>showTransRow(a));
+    THEME_IDS.forEach((b,ci)=>{
+      const v = CY.transitions[a][b];
+      const t = maxV ? v/maxV : 0;
+      svg.append('rect').attr('x',labelW+ci*cell).attr('y',top+ri*cell)
+        .attr('width',cell-2).attr('height',cell-2).attr('rx',3)
+        .attr('fill', v ? d3.interpolateRgb('#151a21','#5fd0ff')(0.15+t*0.85) : 'rgba(255,255,255,0.03)')
+        .attr('stroke', a===b ? 'rgba(255,255,255,0.28)' : 'none')
+        .style('cursor','pointer').on('click',()=>showTransRow(a))
+        .append('title').text(`${themeLabel(a)} 1위 → 다음 달 ${themeLabel(b)} 1위: ${v}회 / ${rowTotal}회`);
+      if(v) svg.append('text').attr('x',labelW+ci*cell+(cell-2)/2).attr('y',top+ri*cell+cell/2+3.5)
+        .attr('text-anchor','middle').attr('font-size',10).attr('font-weight',600)
+        .attr('fill', t>0.5?'#0a0c10':'var(--text-primary)')
+        .attr('font-family',"'JetBrains Mono',monospace").style('pointer-events','none').text(v);
+    });
+  });
+}
+function showTransRow(a){
+  const row = THEME_IDS.map(b=>({b, v:CY.transitions[a][b]})).filter(d=>d.v>0).sort((x,y)=>y.v-x.v);
+  const total = row.reduce((s,d)=>s+d.v,0);
+  const parts = row.map(d=>{
+    const self = d.b===a ? ' (같은 테마 지속)' : '';
+    return `<b style="color:${themeColor(d.b)}">${shortLabel(d.b)}</b> ${d.v}회${self}`;
+  }).join(' · ');
+  document.getElementById('trans-detail').innerHTML = total
+    ? `<b>${themeLabel(a)}</b>가 1위였던 달은 총 ${total}회. 그 다음 달 1위는 → ${parts}
+       <div style="color:var(--text-muted);margin-top:5px">${total < 8 ? '표본이 작아 (10회 미만) 경향으로만 참고하세요.' : ''}</div>`
+    : `<b>${themeLabel(a)}</b>가 1위였던 달이 없습니다.`;
+}
+
+/* --- theme lead-lag small multiples --- */
+function renderThemeLag(){
+  const host = document.getElementById('cyc-lag');
+  const keys = Object.keys(CY.lead);
+  const ML = CY.max_lag;
+  const perRow = 7, bw = 9, chartW = (2*ML+1)*bw + 16, chartH = 62, labelH = 22;
+  const rows = Math.ceil(keys.length/perRow);
+  const W = Math.max(560, perRow*chartW + 12), H = rows*(chartH+labelH) + 10;
+  const svg = d3.select(host).attr('viewBox',`0 0 ${W} ${H}`).attr('height',H);
+  svg.selectAll('*').remove();
+
+  const band = 2/Math.sqrt(CY.weeks);
+  const maxAll = Math.max(...keys.flatMap(k=>CY.lead[k].filter(v=>v!=null).map(Math.abs)));
+  keys.forEach((key,i)=>{
+    const [a,b] = key.split('|');
+    const ox = (i%perRow)*chartW + 8, oy = Math.floor(i/perRow)*(chartH+labelH) + 6;
+    const y = v => oy + chartH/2 - (v/maxAll)*(chartH/2 - 4);
+    svg.append('rect').attr('x',ox).attr('y',y(band)).attr('width',(2*ML+1)*bw).attr('height',y(-band)-y(band))
+      .attr('fill','rgba(255,255,255,0.05)');
+    svg.append('line').attr('x1',ox).attr('x2',ox+(2*ML+1)*bw).attr('y1',y(0)).attr('y2',y(0))
+      .attr('stroke','rgba(255,255,255,0.18)');
+    CY.lead[key].forEach((v,j)=>{
+      if(v==null) return;
+      const k = j-ML;
+      svg.append('rect').attr('x',ox+j*bw+1.2).attr('width',bw-2.4)
+        .attr('y', v>=0?y(v):y(0)).attr('height',Math.max(1,Math.abs(y(v)-y(0)))).attr('rx',1)
+        .attr('fill', k===0 ? 'var(--accent)' : (v>=0?'var(--up)':'var(--down)'))
+        .attr('opacity', k===0?1:0.7)
+        .append('title').text(`${shortLabel(a)} ↔ ${shortLabel(b)} · ${k>0?'+':''}${k}주 시차 r=${v}`);
+    });
+    svg.append('text').attr('x',ox).attr('y',oy+chartH+11).attr('font-size',8.5).attr('fill','var(--text-secondary)')
+      .text(`${shortLabel(a).slice(0,6)}↔${shortLabel(b).slice(0,6)}`);
+    svg.append('text').attr('x',ox).attr('y',oy+chartH+20).attr('font-size',8).attr('fill','#565d69')
+      .attr('font-family',"'JetBrains Mono',monospace").text(`동시 r=${CY.lead[key][ML]}`);
+  });
+  document.getElementById('cyc-lag-sub').innerHTML =
+    `테마 쌍마다 −${ML}주 ~ +${ML}주 시차 상관을 그린 것. 가운데 하늘색 막대(동시)가 모든 쌍에서 가장 큽니다 —
+     회색 띠는 노이즈 한계(±2/√${CY.weeks}주). 즉 <b>테마 로테이션은 몇 주 앞서 예고되지 않고 같은 주에 함께 반영</b>됩니다.`;
+}
+
+let cycleDrawn = false;
+function renderCycle(){
+  renderFindings();
+  renderThemeIndex(); renderHeatmap(); renderTransitions(); renderThemeLag();
+  if(!cycleDrawn){ showTransRow(THEME_IDS[0]); cycleDrawn = true; }
+}
+window.addEventListener('resize', ()=>{ if(document.body.classList.contains('view-cycle')) renderCycle(); });
+
+initFavSync();   // last: every section's state exists by now
+
+function runCascade(start, direction){
+  simTimers.forEach(clearTimeout); simTimers = [];
+  clearFocus(); drawer.classList.remove('show');
+  nodeSel.attr('opacity',0.2).attr('stroke','rgba(255,255,255,0.35)').attr('stroke-width',1).attr('r',d=>d.r);
+  labelSel.attr('opacity',0.14).attr('fill','var(--text-primary)');
+  linkSel.attr('opacity',0.04);
+
+  const HOP = 480, MIN = 0.10, MAX_HOPS = 5;
+  const dir0 = direction === 'up' ? 1 : -1;
+  const visited = new Map([[start.id, {i:1, dir:dir0}]]);
+  let frontier = [{ id:start.id, i:1, dir:dir0 }];
+
+  const flash = (tk, intensity, dir, hop) => {
+    const col = dir > 0 ? 'var(--up)' : 'var(--down)';
+    const node = nodeIndex.get(tk);
+    simTimers.push(setTimeout(()=>{
+      nodeSel.filter(d=>d.id===tk).attr('opacity',1).attr('filter',`url(#pulse-${dir>0?'up':'down'})`)
+        .transition().duration(240).attr('stroke',col).attr('stroke-width',2+intensity*2.5)
+          .attr('r', node.r*(1+0.5*intensity))
+        .transition().delay(520).duration(700).attr('r', node.r);
+      labelSel.filter(d=>d.id===tk).attr('opacity',1).attr('fill',col);
+    }, hop*HOP));
+  };
+  const flashLink = (a,b,dir,hop) => {
+    const col = dir > 0 ? 'var(--up)' : 'var(--down)';
+    simTimers.push(setTimeout(()=>{
+      linkSel.filter(l => { const s=l.source.id, t=l.target.id; return (s===a&&t===b)||(s===b&&t===a); })
+        .attr('opacity',0.95).attr('stroke',col).attr('stroke-width',2.4).attr('stroke-opacity',1);
+    }, hop*HOP));
+  };
+
+  flash(start.id, 1, dir0, 0);
+
+  for(let hop=1; hop<=MAX_HOPS && frontier.length; hop++){
+    const next = [];
+    frontier.forEach(cur => {
+      links.forEach(l => {
+        const s = l.source.id||l.source, t = l.target.id||l.target;
+        if(s !== cur.id && t !== cur.id) return;
+        const other = s === cur.id ? t : s;
+        if(visited.has(other)) return;
+        const inten = cur.i * Math.abs(l.r);
+        if(inten < MIN) return;
+        const dir = cur.dir * (l.r >= 0 ? 1 : -1);
+        visited.set(other, {i:inten, dir});
+        flashLink(cur.id, other, dir, hop);
+        flash(other, inten, dir, hop);
+        next.push({ id:other, i:inten, dir });
+      });
+    });
+    frontier = next;
+  }
+
+  const ups = [...visited.values()].filter(v=>v.dir>0).length;
+  const downs = [...visited.values()].filter(v=>v.dir<0).length;
+  simTimers.push(setTimeout(()=>{
+    document.getElementById('infobar').innerHTML =
+      `<b style="color:${dir0>0?'var(--up)':'var(--down)'}">${start.id}</b> ${dir0>0?'상승':'하락'} 시나리오 →
+       <b style="color:var(--up)">동반 상승 ${ups-(dir0>0?1:0)}개</b> ·
+       <b style="color:var(--down)">반대로 하락 ${downs-(dir0>0?0:1)}개</b>
+       (|r| ≥ ${threshold.toFixed(2)} 연결을 따라 강도 감쇠 전파)
+       <span class="src">${CORR.meta.method} · 과거 상관관계이며 미래 수익률을 보장하지 않습니다.</span>`;
+  }, (MAX_HOPS+1)*HOP));
+}
+</script>

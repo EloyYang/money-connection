@@ -1,0 +1,614 @@
+{
+ "AAPL": {
+  "industry": "Computer Manufacturing",
+  "sector": "Technology",
+  "theme": 2,
+  "why": "override"
+ },
+ "ABNB": {
+  "industry": "Diversified Commercial Services",
+  "sector": "Consumer Discretionary",
+  "theme": 5,
+  "why": "override"
+ },
+ "ADBE": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "override"
+ },
+ "ADI": {
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "ADP": {
+  "industry": "EDP Services",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "override"
+ },
+ "ADSK": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "override"
+ },
+ "AEP": {
+  "industry": "Electric Utilities: Central",
+  "sector": "Utilities",
+  "theme": 8,
+  "why": "override"
+ },
+ "ALAB": {
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "ALNY": {
+  "industry": "Biotechnology: Pharmaceutical Preparations",
+  "sector": "Health Care",
+  "theme": 7,
+  "why": "override"
+ },
+ "AMAT": {
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "AMD": {
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "AMGN": {
+  "industry": "Biotechnology: Biological Products (No Diagnostic Substances)",
+  "sector": "Health Care",
+  "theme": 7,
+  "why": "override"
+ },
+ "AMZN": {
+  "industry": "Catalog/Specialty Distribution",
+  "sector": "Consumer Discretionary",
+  "theme": 2,
+  "why": "override"
+ },
+ "APP": {
+  "industry": "Computer Software: Programming, Data Processing",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "override"
+ },
+ "ARM": {
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "ASML": {
+  "industry": "Industrial Machinery/Components",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "AVGO": {
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "AXON": {
+  "industry": "Ordnance And Accessories",
+  "sector": "Industrials",
+  "theme": 4,
+  "why": "override"
+ },
+ "BKNG": {
+  "industry": "Transportation Services",
+  "sector": "Consumer Discretionary",
+  "theme": 5,
+  "why": "override"
+ },
+ "BKR": {
+  "industry": "Oil and Gas Field Machinery",
+  "sector": "Consumer Discretionary",
+  "theme": 8,
+  "why": "override"
+ },
+ "CCEP": {
+  "industry": "Beverages (Production/Distribution)",
+  "sector": "Consumer Staples",
+  "theme": 6,
+  "why": "override"
+ },
+ "CDNS": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "override"
+ },
+ "CEG": {
+  "industry": "Electric Utilities: Central",
+  "sector": "Utilities",
+  "theme": 8,
+  "why": "override"
+ },
+ "CMCSA": {
+  "industry": "Cable & Other Pay Television Services",
+  "sector": "Telecommunications",
+  "theme": 5,
+  "why": "override"
+ },
+ "COST": {
+  "industry": "Department/Specialty Retail Stores",
+  "sector": "Consumer Discretionary",
+  "theme": 6,
+  "why": "override"
+ },
+ "CPRT": {
+  "industry": "Retail-Auto Dealers and Gas Stations",
+  "sector": "Consumer Discretionary",
+  "theme": 6,
+  "why": "override"
+ },
+ "CRWD": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "override"
+ },
+ "CRWV": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 2,
+  "why": "override"
+ },
+ "CSCO": {
+  "industry": "Computer Communications Equipment",
+  "sector": "Telecommunications",
+  "theme": 2,
+  "why": "override"
+ },
+ "CSX": {
+  "industry": "Railroads",
+  "sector": "Industrials",
+  "theme": 8,
+  "why": "override"
+ },
+ "CTAS": {
+  "industry": "Garments and Clothing",
+  "sector": "Industrials",
+  "theme": 6,
+  "why": "override"
+ },
+ "DASH": {
+  "industry": "Business Services",
+  "sector": "Consumer Discretionary",
+  "theme": 5,
+  "why": "override"
+ },
+ "DDOG": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "override"
+ },
+ "DXCM": {
+  "industry": "Medical/Dental Instruments",
+  "sector": "Health Care",
+  "theme": 7,
+  "why": "override"
+ },
+ "EXC": {
+  "industry": "Power Generation",
+  "sector": "Utilities",
+  "theme": 8,
+  "why": "override"
+ },
+ "FANG": {
+  "industry": "Oil & Gas Production",
+  "sector": "Energy",
+  "theme": 8,
+  "why": "override"
+ },
+ "FAST": {
+  "industry": "RETAIL: Building Materials",
+  "sector": "Consumer Discretionary",
+  "theme": 6,
+  "why": "override"
+ },
+ "FER": {
+  "industry": "Military/Government/Technical",
+  "sector": "Industrials",
+  "theme": 8,
+  "why": "override"
+ },
+ "FTNT": {
+  "industry": "Computer peripheral equipment",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "override"
+ },
+ "GEHC": {
+  "industry": "Medical Electronics",
+  "sector": "Health Care",
+  "theme": 7,
+  "why": "override"
+ },
+ "GILD": {
+  "industry": "Biotechnology: Biological Products (No Diagnostic Substances)",
+  "sector": "Health Care",
+  "theme": 7,
+  "why": "override"
+ },
+ "GOOG": {
+  "industry": "Computer Software: Programming, Data Processing",
+  "sector": "Technology",
+  "theme": 2,
+  "why": "override"
+ },
+ "GOOGL": {
+  "industry": "Computer Software: Programming, Data Processing",
+  "sector": "Technology",
+  "theme": 2,
+  "why": "override"
+ },
+ "HON": {
+  "industry": "Aerospace",
+  "sector": "Industrials",
+  "theme": 8,
+  "why": "override"
+ },
+ "HONA": {
+  "industry": "Aerospace",
+  "sector": "Industrials",
+  "theme": 8,
+  "why": "override"
+ },
+ "IDXX": {
+  "industry": "Biotechnology: In Vitro & In Vivo Diagnostic Substances",
+  "sector": "Health Care",
+  "theme": 7,
+  "why": "override"
+ },
+ "INTC": {
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "INTU": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "override"
+ },
+ "ISRG": {
+  "industry": "Industrial Specialties",
+  "sector": "Health Care",
+  "theme": 7,
+  "why": "override"
+ },
+ "KDP": {
+  "industry": "Beverages (Production/Distribution)",
+  "sector": "Consumer Staples",
+  "theme": 6,
+  "why": "override"
+ },
+ "KHC": {
+  "industry": "Packaged Foods",
+  "sector": "Consumer Staples",
+  "theme": 6,
+  "why": "override"
+ },
+ "KLAC": {
+  "industry": "Electronic Components",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "LIN": {
+  "industry": "Major Chemicals",
+  "sector": "Basic Materials",
+  "theme": 8,
+  "why": "override"
+ },
+ "LITE": {
+  "industry": "Telecommunications Equipment",
+  "sector": "Telecommunications",
+  "theme": 1,
+  "why": "override"
+ },
+ "LRCX": {
+  "industry": "Industrial Machinery/Components",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "MAR": {
+  "industry": "Hotels/Resorts",
+  "sector": "Consumer Discretionary",
+  "theme": 6,
+  "why": "override"
+ },
+ "MCHP": {
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "MDLZ": {
+  "industry": "Packaged Foods",
+  "sector": "Consumer Staples",
+  "theme": 6,
+  "why": "override"
+ },
+ "MELI": {
+  "industry": "Business Services",
+  "sector": "Consumer Discretionary",
+  "theme": 5,
+  "why": "override"
+ },
+ "META": {
+  "industry": "Computer Software: Programming, Data Processing",
+  "sector": "Technology",
+  "theme": 2,
+  "why": "override"
+ },
+ "MNST": {
+  "industry": "Beverages (Production/Distribution)",
+  "sector": "Consumer Staples",
+  "theme": 6,
+  "why": "override"
+ },
+ "MPWR": {
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "MRVL": {
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "MSFT": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 2,
+  "why": "override"
+ },
+ "MSTR": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "override"
+ },
+ "MU": {
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "NBIS": {
+  "industry": "Computer Software: Programming, Data Processing",
+  "sector": "Technology",
+  "theme": 2,
+  "why": "override"
+ },
+ "NFLX": {
+  "industry": "Consumer Electronics/Video Chains",
+  "sector": "Consumer Discretionary",
+  "theme": 5,
+  "why": "override"
+ },
+ "NVDA": {
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "NXPI": {
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "ODFL": {
+  "industry": "Trucking Freight/Courier Services",
+  "sector": "Industrials",
+  "theme": 6,
+  "why": "override"
+ },
+ "ORLY": {
+  "industry": "Auto & Home Supply Stores",
+  "sector": "Consumer Discretionary",
+  "theme": 6,
+  "why": "override"
+ },
+ "PANW": {
+  "industry": "Computer peripheral equipment",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "override"
+ },
+ "PAYX": {
+  "industry": "Diversified Commercial Services",
+  "sector": "Industrials",
+  "theme": 3,
+  "why": "override"
+ },
+ "PCAR": {
+  "industry": "Auto Manufacturing",
+  "sector": "Industrials",
+  "theme": 6,
+  "why": "override"
+ },
+ "PDD": {
+  "industry": "Business Services",
+  "sector": "Consumer Discretionary",
+  "theme": 5,
+  "why": "override"
+ },
+ "PEP": {
+  "industry": "Beverages (Production/Distribution)",
+  "sector": "Consumer Staples",
+  "theme": 6,
+  "why": "override"
+ },
+ "PLTR": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "override"
+ },
+ "PYPL": {
+  "industry": "Diversified Commercial Services",
+  "sector": "Industrials",
+  "theme": 5,
+  "why": "override"
+ },
+ "QCOM": {
+  "industry": "Radio And Television Broadcasting And Communications Equipment",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "REGN": {
+  "industry": "Biotechnology: Pharmaceutical Preparations",
+  "sector": "Health Care",
+  "theme": 7,
+  "why": "override"
+ },
+ "RKLB": {
+  "industry": "Military/Government/Technical",
+  "sector": "Industrials",
+  "theme": 4,
+  "why": "override"
+ },
+ "ROP": {
+  "industry": "Industrial Machinery/Components",
+  "sector": "Industrials",
+  "theme": 8,
+  "why": "override"
+ },
+ "ROST": {
+  "industry": "Clothing/Shoe/Accessory Stores",
+  "sector": "Consumer Discretionary",
+  "theme": 6,
+  "why": "override"
+ },
+ "SBUX": {
+  "industry": "Restaurants",
+  "sector": "Consumer Discretionary",
+  "theme": 6,
+  "why": "override"
+ },
+ "SHOP": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 5,
+  "why": "override"
+ },
+ "SNDK": {
+  "industry": "Electronic Components",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "SNPS": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "override"
+ },
+ "SPCX": {
+  "industry": "Computer Software: Programming, Data Processing",
+  "sector": "Technology",
+  "theme": 4,
+  "why": "override"
+ },
+ "STX": {
+  "industry": "Electronic Components",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "TER": {
+  "industry": "Electrical Products",
+  "sector": "Industrials",
+  "theme": 1,
+  "why": "override"
+ },
+ "TMUS": {
+  "industry": "Telecommunications Equipment",
+  "sector": "Telecommunications",
+  "theme": 2,
+  "why": "override"
+ },
+ "TRI": {
+  "industry": "Publishing",
+  "sector": "Consumer Discretionary",
+  "theme": 3,
+  "why": "override"
+ },
+ "TSLA": {
+  "industry": "Auto Manufacturing",
+  "sector": "Industrials",
+  "theme": 4,
+  "why": "override"
+ },
+ "TTWO": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 5,
+  "why": "override"
+ },
+ "TXN": {
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "VRTX": {
+  "industry": "Biotechnology: Pharmaceutical Preparations",
+  "sector": "Health Care",
+  "theme": 7,
+  "why": "override"
+ },
+ "WBD": {
+  "industry": "Cable & Other Pay Television Services",
+  "sector": "Telecommunications",
+  "theme": 5,
+  "why": "override"
+ },
+ "WDAY": {
+  "industry": "EDP Services",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "override"
+ },
+ "WDC": {
+  "industry": "Electronic Components",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "override"
+ },
+ "WMT": {
+  "industry": "Department/Specialty Retail Stores",
+  "sector": "Consumer Discretionary",
+  "theme": 6,
+  "why": "override"
+ },
+ "XEL": {
+  "industry": "Power Generation",
+  "sector": "Utilities",
+  "theme": 8,
+  "why": "override"
+ }
+}

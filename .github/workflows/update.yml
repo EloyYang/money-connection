@@ -1,0 +1,65 @@
+name: Update dashboard
+
+on:
+  schedule:
+    # 22:00 UTC on weekdays = 07:00 KST the next morning, ~2h after the US close.
+    - cron: "0 22 * * 1-5"
+  workflow_dispatch:        # manual run button
+  push:
+    branches: [main]
+    paths: ["build/**", "data/themes.json", ".github/workflows/update.yml"]
+
+permissions:
+  contents: write           # commit the sector cache / build stamp
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build dashboard
+        run: python3 build/pipeline.py --out dist --max-workers 4
+
+      - name: Record build stamp
+        run: |
+          python3 - <<'PY'
+          import json, datetime, os
+          stamp = {"built": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+                   "run": os.environ.get("GITHUB_RUN_NUMBER")}
+          json.dump(stamp, open("data/last_build.json", "w"), indent=1)
+          PY
+
+      # Committing every run also keeps the repository "active", so GitHub does
+      # not auto-disable the schedule after 60 idle days.
+      - name: Commit data changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/sectors.json data/last_build.json
+          git diff --staged --quiet || git commit -m "chore: refresh index membership + build stamp [skip ci]"
+          git push
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
