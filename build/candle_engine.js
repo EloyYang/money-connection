@@ -233,6 +233,38 @@ function drawCandle(){
       }
       if(cSel){ clearSelection(); return; }
       beginDrag('pan', ev, { i0:cI0, i1:cI1 });
+    })
+    .on('wheel', function(ev){
+      ev.preventDefault();
+      const [mx] = d3.pointer(ev, this);
+      const maxSpan = rows.length - 1, minSpan = 12;
+
+      // Devices differ wildly: a mouse wheel sends one big notch, a trackpad a
+      // stream of small deltas, and pinch-to-zoom arrives as ctrl+wheel. Scale
+      // the zoom by the delta itself instead of applying a fixed step.
+      const unit = ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? 400 : 1;
+      const dy = ev.deltaY * unit, dx = ev.deltaX * unit;
+
+      // two-finger horizontal swipe pans the time axis
+      if(!ev.ctrlKey && Math.abs(dx) > Math.abs(dy) * 1.4){
+        const span = cI1 - cI0;
+        let n0 = cI0 + dx / step, n1 = cI1 + dx / step;
+        if(n0 < 0){ n0 = 0; n1 = span; }
+        if(n1 > maxSpan){ n1 = maxSpan; n0 = n1 - span; }
+        cI0 = n0; cI1 = n1;
+        drawCandle();
+        return;
+      }
+
+      const k = ev.ctrlKey ? 0.012 : 0.0017;   // pinch deltas are much smaller
+      const f = Math.min(3, Math.max(1/3, Math.exp(dy * k)));
+      const anchor = idxAt(mx);
+      let s0 = anchor - (anchor - cI0) * f, s1 = anchor + (cI1 - anchor) * f;
+      if(s1 - s0 < minSpan){ const c = (s0 + s1) / 2; s0 = c - minSpan/2; s1 = c + minSpan/2; }
+      if(s1 - s0 > maxSpan){ s0 = 0; s1 = maxSpan; }
+      cI0 = Math.max(0, s0); cI1 = Math.min(maxSpan, s1);
+      document.querySelectorAll('#m-range button').forEach(b => b.classList.remove('on'));
+      drawCandle();
     });
 
   drawUserLines(x, y, W);   // above the surface: lines stay selectable

@@ -285,6 +285,17 @@
                     font-size:10.5px; font-weight:600; padding:4px 10px; border-radius:5px; cursor:pointer; }
   .perf-seg button:hover{ color:var(--text-primary); }
   .perf-seg button.on{ background:#2c3138; color:var(--text-primary); }
+  .chart-tip{ position:absolute; z-index:6; pointer-events:none; background:#181c24;
+              border:1px solid var(--border-strong); border-radius:8px; padding:7px 9px;
+              font-size:11px; line-height:1.6; box-shadow:0 10px 26px rgba(0,0,0,0.5);
+              white-space:nowrap; }
+  .chart-tip[hidden]{ display:none; }
+  .chart-tip .tp{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:11.5px;
+                  margin-bottom:3px; }
+  .chart-tip .tr{ display:flex; align-items:center; gap:6px; }
+  .chart-tip .tr .sw{ width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
+  .chart-tip .tr .tv{ margin-left:auto; font-family:'JetBrains Mono',monospace; font-weight:600;
+                      padding-left:12px; }
   .combo-legend{ display:flex; flex-wrap:wrap; justify-content:center; gap:4px 14px;
                  padding:6px 5px 0; font-size:10.5px; }
   .combo-legend button{ display:flex; align-items:center; gap:5px; background:none; border:none;
@@ -542,7 +553,7 @@
     </div>
     <div class="modal-foot">
       <span class="ohlc-readout" id="m-readout">—</span>
-      <span class="modal-note" id="m-note">휠·축 드래그 = 확대/축소 · 차트 드래그 = 이동 · 선 클릭 = 선택 후 이동/복사 · Esc 닫기</span>
+      <span class="modal-note" id="m-note">휠·핀치·축 드래그 = 확대/축소 · 드래그 또는 두 손가락 좌우 = 이동 · Esc 닫기</span>
     </div>
   </div>
 </div>
@@ -1307,8 +1318,15 @@ function drawCombinedFin(host, f){
     });
   }
 
+  host.style.position = 'relative';
+  const tip = document.createElement('div');
+  tip.className = 'chart-tip'; tip.hidden = true;
+  host.appendChild(tip);
+
   const groupW = innerW / periods.length;
   const bw = series.length ? Math.max(4, (groupW * 0.62) / series.length) : 0;
+  const hoverBand = svg.append('rect').attr('y', mg.t).attr('width', groupW).attr('height', innerH)
+    .attr('fill', 'rgba(255,255,255,0.05)').attr('rx', 3).style('display', 'none');
   periods.forEach((d, gi) => {
     const gx = mg.l + gi * groupW;
     series.forEach((sr, si) => {
@@ -1324,6 +1342,33 @@ function drawCombinedFin(host, f){
     svg.append('text').attr('x', gx + groupW / 2).attr('y', H - 8).attr('text-anchor', 'middle')
       .attr('font-size', 9).attr('fill', '#7d8590').attr('font-family', "'JetBrains Mono',monospace")
       .text(periodLabel(d.p, quarterly));
+  });
+
+  // one hit area per period: hovering anywhere in the column reads out every series
+  periods.forEach((d, gi) => {
+    const gx = mg.l + gi * groupW;
+    svg.append('rect').attr('x', gx).attr('y', mg.t).attr('width', groupW).attr('height', innerH)
+      .attr('fill', 'transparent').style('cursor', 'crosshair')
+      .on('mouseenter', () => {
+        hoverBand.attr('x', gx).style('display', null);
+        const rows = series.map(sr => sr.vals[gi] == null ? '' :
+          `<div class="tr"><span class="sw" style="background:${sr.c}"></span>${sr.label}
+             <span class="tv">${fmtMoney(sr.vals[gi])}</span></div>`).join('');
+        const mv = margin[gi];
+        const mrow = (hasMargin && mv != null)
+          ? `<div class="tr"><span class="sw" style="background:${MARGIN_COLOR}"></span>순마진
+               <span class="tv" style="color:${mv >= 0 ? 'var(--up)' : 'var(--down)'}">${mv.toFixed(1)}%</span></div>`
+          : '';
+        tip.innerHTML = `<div class="tp">${periodLabel(d.p, quarterly)}</div>${rows}${mrow}`;
+        tip.hidden = false;
+      })
+      .on('mousemove', function(ev){
+        const [mx, my] = d3.pointer(ev, host);
+        const w = tip.offsetWidth || 130;
+        tip.style.left = Math.max(2, Math.min(host.clientWidth - w - 2, mx - w / 2)) + 'px';
+        tip.style.top = Math.max(2, my - tip.offsetHeight - 12) + 'px';
+      })
+      .on('mouseleave', () => { tip.hidden = true; hoverBand.style('display', 'none'); });
   });
 
   if(hasMargin){
@@ -1368,7 +1413,9 @@ function renderComboControls(host, f){
    Annual actuals do not exist in any Nasdaq endpoint, so the 연간 view anchors
    on trailing-twelve-month actual and extends with the yearly consensus —
    labelled as such rather than dressed up as fiscal-year history. */
-const EPS_COLOR = '#2bb8a3';
+const EPS_COLOR = '#2bb8a3';         // 발표 실적이 컨센서스 이상
+const EPS_MISS = '#ff5c72';          // 컨센서스 하회
+const EPS_EST  = 'rgba(255,255,255,0.55)';
 let epsPeriod = 'quarter';
 
 function drawEpsChart(host, f){
@@ -1377,63 +1424,108 @@ function drawEpsChart(host, f){
   let pts = [];
 
   if(quarterly){
-    const rep = (f.surprise || []).slice().reverse();        // oldest -> newest
-    pts = rep.map(r => ({ label: r.p, v: r.a == null ? null : +r.a, est: false,
-                          note: r.d ? `${r.d} 발표` : '', sur: r.s }));
+    // reported quarters carry BOTH the actual and the estimate it was measured
+    // against, so a miss is visible as the gap between the two dots
+    const rep = (f.surprise || []).slice().reverse();
+    pts = rep.map(r => ({
+      label: r.p, v: r.a == null ? null : +r.a, est: r.c == null ? null : +r.c,
+      reported: true, note: r.d ? `${r.d} 발표` : '', sur: r.s,
+    }));
     if(!pts.length){
       pts = (f.eps || []).filter(e => e.t === 'P' && e.a != null)
-        .map(e => ({ label: e.p, v: +e.a, est: false, note: '' }));
+        .map(e => ({ label: e.p, v: +e.a, est: e.c == null ? null : +e.c, reported: true, note: '' }));
     }
     const seen = new Set(pts.map(p => p.label));
     (f.fc_qtr || []).forEach(q => {
       if(q.c == null || seen.has(q.p)) return;
-      pts.push({ label: q.p, v: +q.c, est: true, note: q.n ? `추정 ${q.n}곳` : '' });
+      pts.push({ label: q.p, v: null, est: +q.c, reported: false, note: q.n ? `추정 ${q.n}곳` : '' });
     });
   } else {
-    if(f.eps_ttm != null) pts.push({ label: '최근 12개월', v: f.eps_ttm, est: false, note: '분기 실적 합계' });
+    if(f.eps_ttm != null)
+      pts.push({ label: '최근 12개월', v: f.eps_ttm, est: null, reported: true, note: '분기 실적 합계' });
     (f.fc_year || []).forEach(y => {
       if(y.c == null) return;
-      pts.push({ label: y.p, v: +y.c, est: true, note: y.n ? `추정 ${y.n}곳` : '' });
+      pts.push({ label: y.p, v: null, est: +y.c, reported: false, note: y.n ? `추정 ${y.n}곳` : '' });
     });
   }
-  pts = pts.filter(p => p.v != null);
+  pts = pts.filter(p => p.v != null || p.est != null);
   if(pts.length < 2){ host.innerHTML = '<div class="cap">EPS 데이터가 부족합니다.</div>'; renderEpsLegend(host, f); return; }
 
   const W = 298, H = 168, mg = { t: 14, r: 40, b: 26, l: 8 };
   const innerW = W - mg.l - mg.r, innerH = H - mg.t - mg.b;
-  const vals = pts.map(p => p.v);
+  const vals = pts.flatMap(p => [p.v, p.est]).filter(v => v != null);
   const hi = Math.max(0, ...vals), lo = Math.min(0, ...vals);
   const pad = (hi - lo) * 0.12 || 1;
   const y = v => mg.t + innerH - ((v - (lo - pad)) / ((hi + pad) - (lo - pad))) * innerH;
   const x = i => mg.l + (i + 0.5) * (innerW / pts.length);
 
-  const svg = d3.select(host).append('svg')
+  host.style.position = 'relative';
+  const sel = d3.select(host).append('svg')
     .attr('viewBox', `0 0 ${W} ${H}`).attr('width', '100%').attr('height', H);
+  const tip = document.createElement('div');       // after the svg: draws above it
+  tip.className = 'chart-tip'; tip.hidden = true;
+  host.appendChild(tip);
 
   d3.ticks(lo, hi, 4).forEach(t => {
-    svg.append('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', y(t)).attr('y2', y(t))
+    sel.append('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', y(t)).attr('y2', y(t))
       .attr('stroke', t === 0 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)');
-    svg.append('text').attr('x', W - mg.r + 6).attr('y', y(t) + 3).attr('font-size', 8.5)
+    sel.append('text').attr('x', W - mg.r + 6).attr('y', y(t) + 3).attr('font-size', 8.5)
       .attr('fill', '#7d8590').attr('font-family', "'JetBrains Mono',monospace").text(t.toFixed(2));
   });
 
+  const missOf = p => (p.v != null && p.est != null) ? p.v < p.est : false;
+
   pts.forEach((p, i) => {
-    const c = svg.append('circle').attr('cx', x(i)).attr('cy', y(p.v)).attr('r', 6)
-      .attr('fill', p.est ? 'none' : EPS_COLOR)
-      .attr('stroke', p.est ? 'rgba(255,255,255,0.55)' : 'none')
-      .attr('stroke-width', p.est ? 1.6 : 0)
-      .attr('opacity', p.est ? 1 : 0.9);
-    c.append('title').text(`${p.label} · EPS ${p.v}${p.est ? ' (컨센서스)' : ''}`
-      + (p.note ? ` · ${p.note}` : '')
-      + (p.sur != null ? ` · 서프라이즈 ${p.sur > 0 ? '+' : ''}${p.sur}%` : ''));
+    // the estimate this quarter was judged against
+    if(p.est != null){
+      if(p.v != null){
+        sel.append('line').attr('x1', x(i)).attr('x2', x(i))
+          .attr('y1', y(p.est)).attr('y2', y(p.v))
+          .attr('stroke', missOf(p) ? EPS_MISS : EPS_COLOR).attr('stroke-width', 1.2).attr('opacity', 0.5);
+      }
+      sel.append('circle').attr('cx', x(i)).attr('cy', y(p.est)).attr('r', p.v != null ? 4.2 : 6)
+        .attr('fill', 'none').attr('stroke', EPS_EST).attr('stroke-width', 1.6);
+    }
+    if(p.v != null){
+      sel.append('circle').attr('cx', x(i)).attr('cy', y(p.v)).attr('r', 6)
+        .attr('fill', missOf(p) ? EPS_MISS : EPS_COLOR).attr('opacity', 0.92);
+    }
+
     const stride = pts.length > 6 ? 2 : 1;
-    const showLabel = (i % stride === 0) || i === pts.length - 1;
-    if(showLabel){
-      svg.append('text').attr('x', x(i)).attr('y', H - 8).attr('text-anchor', 'middle')
+    if((i % stride === 0) || i === pts.length - 1){
+      sel.append('text').attr('x', x(i)).attr('y', H - 8).attr('text-anchor', 'middle')
         .attr('font-size', 8.5).attr('fill', '#7d8590')
         .attr('font-family', "'JetBrains Mono',monospace")
         .text(p.label === '최근 12개월' ? 'TTM' : periodLabel2(p.label));
     }
+
+    sel.append('rect').attr('x', x(i) - innerW / pts.length / 2).attr('y', mg.t)
+      .attr('width', innerW / pts.length).attr('height', innerH)
+      .attr('fill', 'transparent').style('cursor', 'crosshair')
+      .on('mouseenter', () => {
+        const miss = missOf(p);
+        const rows = [];
+        if(p.est != null) rows.push(
+          `<div class="tr"><span class="sw" style="background:none;border:1.5px solid ${EPS_EST}"></span>예상
+             <span class="tv">${p.est}</span></div>`);
+        if(p.v != null) rows.push(
+          `<div class="tr"><span class="sw" style="background:${miss ? EPS_MISS : EPS_COLOR}"></span>발표
+             <span class="tv" style="color:${miss ? EPS_MISS : EPS_COLOR}">${p.v}</span></div>`);
+        if(p.sur != null) rows.push(
+          `<div class="tr" style="color:var(--text-muted)">서프라이즈
+             <span class="tv" style="color:${p.sur >= 0 ? EPS_COLOR : EPS_MISS}">${p.sur > 0 ? '+' : ''}${p.sur}%</span></div>`);
+        if(!p.reported) rows.push('<div class="tr" style="color:var(--text-muted)">발표 예정</div>');
+        tip.innerHTML = `<div class="tp">${p.label}</div>${rows.join('')}`
+          + (p.note ? `<div class="tr" style="color:var(--text-muted);font-size:10px">${p.note}</div>` : '');
+        tip.hidden = false;
+      })
+      .on('mousemove', function(ev){
+        const [mx, my] = d3.pointer(ev, host);
+        const w = tip.offsetWidth || 130;
+        tip.style.left = Math.max(2, Math.min(host.clientWidth - w - 2, mx - w / 2)) + 'px';
+        tip.style.top = Math.max(2, my - tip.offsetHeight - 12) + 'px';
+      })
+      .on('mouseleave', () => { tip.hidden = true; });
   });
 
   renderEpsLegend(host, f);
@@ -1452,9 +1544,11 @@ function renderEpsLegend(host, f){
   legend.className = 'combo-legend';
   legend.innerHTML =
     `<span style="display:flex;align-items:center;gap:5px;color:var(--text-secondary)">
-       <span class="sw" style="background:${EPS_COLOR}"></span>발표</span>
+       <span class="sw" style="background:${EPS_COLOR}"></span>발표 (예상 이상)</span>
      <span style="display:flex;align-items:center;gap:5px;color:var(--text-secondary)">
-       <span class="sw" style="background:none;border:1.6px solid rgba(255,255,255,0.55)"></span>평가</span>`;
+       <span class="sw" style="background:${EPS_MISS}"></span>발표 (예상 하회)</span>
+     <span style="display:flex;align-items:center;gap:5px;color:var(--text-secondary)">
+       <span class="sw" style="background:none;border:1.6px solid ${EPS_EST}"></span>예상</span>`;
   host.appendChild(legend);
   if(epsPeriod === 'annual'){
     const cap = document.createElement('div');
@@ -1837,7 +1931,7 @@ function openCandle(tk){
   document.getElementById('m-nm').textContent = node ? node.name : '';
   document.getElementById('m-note').textContent = (OH.closeOnly||[]).includes(tk)
     ? '이 종목은 종가만 제공되어 봉이 아닌 선으로 표시됩니다 · 휠·축 드래그 = 확대/축소 · Esc 닫기'
-    : '휠·축 드래그 = 확대/축소 · 차트 드래그 = 이동 · 선 클릭 = 선택 후 이동/복사 · Esc 닫기';
+    : '휠·핀치·축 드래그 = 확대/축소 · 드래그 또는 두 손가락 좌우 = 이동 · 선 클릭 = 선택 후 이동/복사 · Esc 닫기';
   // show first: the panel has no measurable size while hidden, and drawCandle
   // bails out on a hidden modal
   modal.hidden = false;
