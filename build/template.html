@@ -267,9 +267,19 @@
   .fund-kpi{ background:rgba(255,255,255,0.04); border-radius:8px; padding:7px 9px; }
   .fund-kpi .l{ font-size:9.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; }
   .fund-kpi .v{ font-size:13.5px; font-weight:600; font-family:'JetBrains Mono',monospace; margin-top:2px; }
-  .fin-row{ display:grid; grid-template-columns:58px 1fr auto; gap:8px; align-items:baseline;
-            padding:3px 0; font-size:11.5px; }
+  .fin-row{ display:grid; grid-template-columns:64px 1fr auto; gap:8px; align-items:baseline;
+            padding:3.5px 5px; font-size:11.5px; border-radius:6px; cursor:pointer;
+            transition:background .12s; }
+  .fin-row:hover{ background:rgba(255,255,255,0.05); }
+  .fin-row.open{ background:rgba(95,208,255,0.10); }
   .fin-row .lab{ color:var(--text-secondary); }
+  .fin-row .lab::before{ content:'▸'; font-size:8.5px; color:var(--text-muted); margin-right:4px;
+                         display:inline-block; transition:transform .15s; }
+  .fin-row.open .lab::before{ transform:rotate(90deg); color:var(--accent); }
+  .fin-chart{ padding:2px 0 10px; }
+  .fin-chart .cap{ font-size:10px; color:var(--text-muted); line-height:1.45; padding:0 5px 4px; }
+  .eps-head{ cursor:pointer; }
+  .eps-head:hover span:first-child{ color:var(--text-primary); }
   .fin-row .val{ font-family:'JetBrains Mono',monospace; text-align:right; }
   .fin-row .yoy{ font-family:'JetBrains Mono',monospace; font-size:10.5px; min-width:46px; text-align:right; }
   .eps-row{ display:grid; grid-template-columns:1fr auto auto auto; gap:7px; align-items:baseline;
@@ -468,7 +478,8 @@
       <div class="sec-title"><span>펀더멘털</span><span class="mono" id="fund-period"></span></div>
       <div class="fund-grid" id="fund-kpis"></div>
       <div id="fund-fin"></div>
-      <div class="sec-title" id="fund-eps-title"><span>실적 발표 · 추정</span><span class="mono" id="fund-eps-note"></span></div>
+      <div class="sec-title eps-head" id="fund-eps-title"><span>▸ 실적 발표 · 추정</span><span class="mono" id="fund-eps-note"></span></div>
+      <div id="fund-eps-chart"></div>
       <div id="fund-eps"></div>
       <div class="fund-note" id="fund-src"></div>
     </div>
@@ -1128,6 +1139,132 @@ function yoyHTML(arr){
   return `<span class="yoy" style="color:${col}">${v >= 0 ? '+' : ''}${v.toFixed(0)}%</span>`;
 }
 
+function fyLabel(period){
+  // "1/25/2026" / "12/31/2025" -> "FY26"
+  const m = String(period || '').match(/(\d{4})\s*$/);
+  return m ? "FY" + m[1].slice(2) : (period || '');
+}
+
+/* 4-year bar chart for one statement line. Values arrive newest-first and in
+   thousands; bars read left(oldest) -> right(newest) like every other chart here. */
+function drawFinChart(host, f, key, label){
+  const raw = f[key] || [];
+  const pts = raw.map((v, i) => ({ v, p: (f.periods || [])[i] }))
+                 .filter(d => d.v != null).reverse();
+  if(pts.length < 2){ host.innerHTML = '<div class="cap">연도별 데이터가 부족합니다.</div>'; return; }
+
+  const W = 298, H = 118, m = { t: 16, r: 6, b: 26, l: 6 };
+  const innerW = W - m.l - m.r, innerH = H - m.t - m.b;
+  const vals = pts.map(d => d.v);
+  const hi = Math.max(0, ...vals), lo = Math.min(0, ...vals);
+  const span = (hi - lo) || 1;
+  const y = v => m.t + innerH - ((v - lo) / span) * innerH;
+  const bw = Math.min(46, innerW / pts.length * 0.62);
+  const x = i => m.l + (i + 0.5) * (innerW / pts.length);
+
+  const svg = d3.select(host).append('svg')
+    .attr('viewBox', `0 0 ${W} ${H}`).attr('width', '100%').attr('height', H);
+
+  svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(0)).attr('y2', y(0))
+    .attr('stroke', 'rgba(255,255,255,0.16)').attr('stroke-width', 1);
+
+  pts.forEach((d, i) => {
+    const up = d.v >= 0;
+    const newest = i === pts.length - 1;
+    const col = up ? 'var(--up)' : 'var(--down)';
+    const top = up ? y(d.v) : y(0);
+    const h = Math.max(1.5, Math.abs(y(d.v) - y(0)));
+    svg.append('rect').attr('x', x(i) - bw / 2).attr('y', top).attr('width', bw).attr('height', h)
+      .attr('rx', 2.5).attr('fill', col).attr('opacity', newest ? 0.95 : 0.42);
+    svg.append('text').attr('x', x(i)).attr('y', (up ? top - 4.5 : top + h + 10))
+      .attr('text-anchor', 'middle').attr('font-size', 9.5)
+      .attr('font-family', "'JetBrains Mono',monospace")
+      .attr('font-weight', newest ? 700 : 400)
+      .attr('fill', newest ? 'var(--text-primary)' : 'var(--text-secondary)')
+      .text(fmtMoney(d.v));
+    svg.append('text').attr('x', x(i)).attr('y', H - 8).attr('text-anchor', 'middle')
+      .attr('font-size', 9).attr('fill', '#6b7380').attr('font-family', "'JetBrains Mono',monospace")
+      .text(fyLabel(d.p));
+    if(i > 0 && pts[i-1].v){
+      const g = (d.v - pts[i-1].v) / Math.abs(pts[i-1].v) * 100;
+      svg.append('text').attr('x', (x(i) + x(i-1)) / 2).attr('y', H - 17)
+        .attr('text-anchor', 'middle').attr('font-size', 8.5)
+        .attr('font-family', "'JetBrains Mono',monospace")
+        .attr('fill', g >= 0 ? 'var(--up)' : 'var(--down)')
+        .text(`${g >= 0 ? '+' : ''}${g.toFixed(0)}%`);
+    }
+  });
+
+  const first = pts[0].v, last = pts[pts.length - 1].v;
+  const total = first ? (last - first) / Math.abs(first) * 100 : null;
+  const cagr = (first > 0 && last > 0 && pts.length > 1)
+    ? (Math.pow(last / first, 1 / (pts.length - 1)) - 1) * 100 : null;
+  const cap = document.createElement('div');
+  cap.className = 'cap';
+  cap.innerHTML = `${label} · ${fyLabel(pts[0].p)}→${fyLabel(pts[pts.length-1].p)} `
+    + (total != null ? `누적 <b style="color:${total >= 0 ? 'var(--up)' : 'var(--down)'}">${total >= 0 ? '+' : ''}${total.toFixed(0)}%</b>` : '')
+    + (cagr != null ? ` · 연평균 <b>${cagr >= 0 ? '+' : ''}${cagr.toFixed(0)}%</b>` : '');
+  host.appendChild(cap);
+}
+
+/* quarterly EPS: actual bars with the consensus marked, then upcoming consensus */
+function drawEpsChart(host, f){
+  const eps = (f.eps || []).filter(e => e.p);
+  const past = eps.filter(e => e.t === 'P').slice(-4);
+  const next = eps.filter(e => e.t === 'U').slice(0, 3);
+  const pts = past.concat(next);
+  if(pts.length < 2){ host.innerHTML = '<div class="cap">분기 실적 데이터가 부족합니다.</div>'; return; }
+
+  const W = 298, H = 124, m = { t: 16, r: 6, b: 30, l: 6 };
+  const innerW = W - m.l - m.r, innerH = H - m.t - m.b;
+  const nums = pts.flatMap(e => [e.a || 0, e.c || 0]).filter(v => v != null);
+  const hi = Math.max(0, ...nums), lo = Math.min(0, ...nums);
+  const span = (hi - lo) || 1;
+  const y = v => m.t + innerH - ((v - lo) / span) * innerH;
+  const bw = Math.min(30, innerW / pts.length * 0.6);
+  const x = i => m.l + (i + 0.5) * (innerW / pts.length);
+
+  const svg = d3.select(host).append('svg')
+    .attr('viewBox', `0 0 ${W} ${H}`).attr('width', '100%').attr('height', H);
+  svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(0)).attr('y2', y(0))
+    .attr('stroke', 'rgba(255,255,255,0.16)');
+
+  pts.forEach((e, i) => {
+    const future = e.t === 'U';
+    const v = future ? e.c : e.a;
+    if(v == null) return;
+    const up = v >= 0, top = up ? y(v) : y(0), h = Math.max(1.5, Math.abs(y(v) - y(0)));
+    svg.append('rect').attr('x', x(i) - bw / 2).attr('y', top).attr('width', bw).attr('height', h)
+      .attr('rx', 2.5)
+      .attr('fill', future ? 'none' : (up ? 'var(--up)' : 'var(--down)'))
+      .attr('opacity', future ? 1 : 0.85)
+      .attr('stroke', future ? 'var(--accent)' : 'none')
+      .attr('stroke-width', future ? 1.3 : 0)
+      .attr('stroke-dasharray', future ? '3,2' : null);
+    // consensus tick on reported quarters, so beats/misses read at a glance
+    if(!future && e.c != null){
+      svg.append('line').attr('x1', x(i) - bw / 2 - 2).attr('x2', x(i) + bw / 2 + 2)
+        .attr('y1', y(e.c)).attr('y2', y(e.c))
+        .attr('stroke', 'var(--text-primary)').attr('stroke-width', 1.4).attr('opacity', 0.75);
+    }
+    svg.append('text').attr('x', x(i)).attr('y', top - 4.5).attr('text-anchor', 'middle')
+      .attr('font-size', 9).attr('font-family', "'JetBrains Mono',monospace")
+      .attr('fill', future ? 'var(--accent)' : 'var(--text-primary)').text(v);
+    svg.append('text').attr('x', x(i)).attr('y', H - 18).attr('text-anchor', 'middle')
+      .attr('font-size', 8.5).attr('fill', '#6b7380')
+      .text(String(e.p).replace(/\s+/, "'").slice(0, 6));
+  });
+  svg.append('text').attr('x', m.l).attr('y', H - 5).attr('font-size', 8.5).attr('fill', '#565d69')
+    .text('막대=실제 · 가로선=컨센서스 · 점선=추정');
+  host.querySelector('svg').insertAdjacentHTML('afterend', '');
+}
+
+function toggleFinChart(rowEl, hostEl, drawFn){
+  const open = rowEl.classList.toggle('open');
+  hostEl.innerHTML = '';
+  if(open) drawFn(hostEl);
+}
+
 function renderFundamentals(tk){
   const block = document.getElementById('fund-block');
   const f = FUND[tk];
@@ -1150,15 +1287,23 @@ function renderFundamentals(tk){
 
   const netMargin = (f.revenue && f.net_income && f.revenue[0]) ? f.net_income[0] / f.revenue[0] * 100 : null;
   const debtEq = (f.liabilities && f.equity && f.equity[0]) ? f.liabilities[0] / f.equity[0] : null;
-  const row = (lab, arr, extra) => `<div class="fin-row"><span class="lab">${lab}</span>
+  const row = (key, lab, arr, extra) => `<div class="fin-row" data-metric="${key}"><span class="lab">${lab}</span>
       <span class="val">${fmtMoney(arr && arr[0])}${extra ? ` <span style="color:var(--text-muted);font-size:10.5px">${extra}</span>` : ''}</span>
-      ${yoyHTML(arr)}</div>`;
+      ${yoyHTML(arr)}</div><div class="fin-chart" data-chart="${key}"></div>`;
   document.getElementById('fund-fin').innerHTML =
-    row('매출', f.revenue) +
-    row('영업이익', f.op_income) +
-    row('순이익', f.net_income, netMargin != null ? `순이익률 ${netMargin.toFixed(0)}%` : '') +
-    row('총부채', f.liabilities, debtEq != null ? `부채/자본 ${debtEq.toFixed(2)}` : '') +
-    row('현금성자산', f.cash);
+    row('revenue', '매출', f.revenue) +
+    row('op_income', '영업이익', f.op_income) +
+    row('net_income', '순이익', f.net_income, netMargin != null ? `순이익률 ${netMargin.toFixed(0)}%` : '') +
+    row('liabilities', '총부채', f.liabilities, debtEq != null ? `부채/자본 ${debtEq.toFixed(2)}` : '') +
+    row('cash', '현금성자산', f.cash);
+
+  const labels = { revenue:'매출', op_income:'영업이익', net_income:'순이익',
+                   liabilities:'총부채', cash:'현금성자산' };
+  document.querySelectorAll('#fund-fin .fin-row').forEach(rowEl => {
+    const key = rowEl.dataset.metric;
+    const host = rowEl.nextElementSibling;
+    rowEl.addEventListener('click', ()=> toggleFinChart(rowEl, host, h => drawFinChart(h, f, key, labels[key])));
+  });
 
   const eps = f.eps || [];
   const prev = eps.filter(e => e.t === 'P').slice(-4).reverse();
@@ -1179,6 +1324,17 @@ function renderFundamentals(tk){
   document.getElementById('fund-eps').innerHTML =
     (prev.length ? prev.map(epsRow).join('') : '<div class="empty">실적 데이터 없음</div>') +
     (next.length ? `<div class="lead-split" style="margin:7px 0 2px">추정</div>` + next.map(fcRow).join('') : '');
+
+  const epsHead = document.getElementById('fund-eps-title');
+  const epsHost = document.getElementById('fund-eps-chart');
+  epsHost.innerHTML = '';
+  epsHead.querySelector('span').textContent = '▸ 실적 발표 · 추정';
+  epsHead.onclick = ()=>{
+    const open = !epsHost.innerHTML;
+    epsHost.innerHTML = '';
+    epsHead.querySelector('span').textContent = (open ? '▾' : '▸') + ' 실적 발표 · 추정';
+    if(open) drawEpsChart(epsHost, f);
+  };
 
   document.getElementById('fund-src').textContent =
     `연간 재무제표 ${f.periods ? f.periods.filter(Boolean).join(' / ') : ''} · 출처 Nasdaq (${f.fetched} 수집)`;
