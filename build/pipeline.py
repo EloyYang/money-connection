@@ -145,6 +145,46 @@ def fetch_kospi100(usdkrw):
     return out
 
 
+def resolve_kospi_themes(kospi_members, cfg, cache_path):
+    """KOSPI gets the SAME 8 themes as Nasdaq, not its own bucket — each
+    stock's WICS industry label (Naver's item page, `업종명 : <a>...</a>`)
+    maps onto whichever Nasdaq theme it resembles (data/themes.json
+    `kospi_industry_map`). Cached like resolve_themes(): only new/never-seen
+    codes get fetched."""
+    cache = json.load(open(cache_path)) if os.path.exists(cache_path) else {}
+    codes = list(kospi_members)
+    missing = [c for c in codes if c not in cache]
+    if missing:
+        log(f"looking up WICS industry for {len(missing)} new KOSPI ticker(s)")
+
+    def one(code):
+        try:
+            html = get_text(f"https://finance.naver.com/item/main.naver?code={code}",
+                            encoding="utf-8", retries=3, timeout=20)
+            m = re.search(r'업종명\s*:\s*<a[^>]*>([^<]+)</a>', html)
+            return code, (m.group(1).strip() if m else None)
+        except Exception as e:                        # noqa: BLE001
+            log(f"  ! industry lookup failed for {code}: {e}")
+            return code, None
+
+    if missing:
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            for code, industry in ex.map(one, missing):
+                cache[code] = industry
+
+    assign = {}
+    imap = cfg.get("kospi_industry_map", {})
+    for code in codes:
+        ind = cache.get(code)
+        theme = imap.get(ind, 9)
+        assign[code] = theme
+        if theme == 9:
+            log(f"  ! {code} ({kospi_members[code]['name']}) industry '{ind}' has no theme mapping")
+    cache = {c: v for c, v in cache.items() if c in set(codes)}   # drop removed members
+    json.dump(cache, open(cache_path, "w"), indent=1, ensure_ascii=False, sort_keys=True)
+    return assign
+
+
 def fetch_extra_assets():
     """US ETFs / crypto / gold from the curated data/assets.json list. Market
     cap is unknown at this point for ETFs and gold (no AUM endpoint); it is
@@ -907,10 +947,12 @@ def main():
     log(f"total universe: {len(members)} "
         f"({len(nasdaq_members)} Nasdaq-100 + {len(kospi_members)} KOSPI100 + {len(extra_members)} ETF/crypto/gold)")
 
-    # theme: Nasdaq-100 keeps sector/industry classification; every other
-    # universe gets one fixed theme (10=KOSPI100, 11=ETF, 12=crypto, 13=gold)
+    # theme: Nasdaq-100 and KOSPI100 both classify into the same 8 sector
+    # themes (KOSPI via its own WICS industry label -> theme mapping); ETF/
+    # crypto/gold get one fixed theme each (11/12/13) since "industry" is
+    # not a meaningful concept for those instrument types.
     themes, _ = resolve_themes(list(nasdaq_members), cfg, os.path.join(a.cache, "sectors.json"))
-    themes.update({t: 10 for t in kospi_members})
+    themes.update(resolve_kospi_themes(kospi_members, cfg, os.path.join(a.cache, "kospi_industries.json")))
     themes.update({t: (12 if m["asset_class"] == "crypto" else 13 if m["asset_class"] == "commodity" else 11)
                    for t, m in extra_members.items()})
 
