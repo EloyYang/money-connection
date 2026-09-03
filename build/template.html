@@ -19,6 +19,7 @@
     --g1:#3987e5; --g2:#d95926; --g3:#199e70; --g4:#c98500;
     --g5:#d55181; --g6:#3fae3f; --g7:#9085e9; --g8:#e66767;
     --g10:#2dd4bf; --g11:#94a3b8; --g12:#f7931a; --g13:#d4af37;
+    --m1:#3987e5; --m2:#e0457b; --m3:#94a3b8; --m4:#f7931a; --m5:#d4af37;
     color-scheme: dark;
   }
   *{box-sizing:border-box;}
@@ -95,6 +96,10 @@
   }
   .left-stack > *{ pointer-events:auto; }
   .legend{ position:relative; padding:14px; flex:0 1 auto; overflow-y:auto; }
+  .legend-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .legend-head h3{ margin:0 !important; flex:1 1 auto; }
+  #group-mode{ margin:0; flex:0 0 auto; }
+  #group-mode button{ padding:3px 9px; }
   .legend h3{ margin:0 0 9px; font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); font-weight:600; }
   .legend-row{ display:flex; align-items:center; gap:9px; padding:4px; border-radius:7px; cursor:pointer; font-size:12.5px; user-select:none; }
   .legend-row:hover{ background:rgba(255,255,255,0.05); }
@@ -440,7 +445,12 @@
 
   <div class="left-stack graph-only">
   <div class="panel legend">
-    <h3>테마 (클릭하여 강조/숨김)</h3>
+    <div class="legend-head">
+      <h3 id="legend-title">테마 (클릭하여 강조/숨김)</h3>
+      <span class="seg-mini" id="group-mode">
+        <button data-mode="theme" class="on">테마</button><button data-mode="market">시장</button>
+      </span>
+    </div>
     <div id="legend-rows"></div>
     <div class="legend-sec">
       <div class="slider-head"><span>상관계수 임계값 |r|</span><b class="mono" id="thr-val">0.35</b></div>
@@ -605,6 +615,22 @@ const GROUPS = Object.entries(META.themes).map(([id, label]) => ({
   tickers: NODES.filter(n => n.group === +id).map(n => [n.id, n.name])
 })).filter(g => g.tickers.length);
 
+/* Second way to colour the same graph: by market / asset class rather than by
+   sector theme. Node POSITIONS never change — those are correlation-driven —
+   only the colour, legend and filter switch. */
+const MARKET_DEFS = [
+  { id: 1, key: 'us_stock',  label: '나스닥100',  color: 'var(--m1)' },
+  { id: 2, key: 'kr_stock',  label: '코스피100',  color: 'var(--m2)' },
+  { id: 3, key: 'etf',       label: '미국 ETF',   color: 'var(--m3)' },
+  { id: 4, key: 'crypto',    label: '암호화폐',   color: 'var(--m4)' },
+  { id: 5, key: 'commodity', label: '금 · 원자재', color: 'var(--m5)' },
+];
+const MARKETS = MARKET_DEFS.map(m => ({
+  ...m, tickers: NODES.filter(n => (n.assetClass || 'us_stock') === m.key).map(n => [n.id, n.name])
+})).filter(m => m.tickers.length);
+const marketOf = new Map();
+MARKETS.forEach(m => m.tickers.forEach(([tk]) => marketOf.set(tk, m)));
+
 const capOf = new Map(NODES.map(n => [n.id, n.cap || 0]));
 const capValues = [...capOf.values()].filter(v => v > 0);
 const capScale = d3.scaleSqrt()
@@ -620,7 +646,11 @@ const assetClassOf = new Map(NODES.map(n => [n.id, n.assetClass || 'us_stock']))
 GROUPS.forEach(g => g.tickers.forEach(([tk,name]) => {
   if(!idx.has(tk)) return;
   const r = capScale(capOf.get(tk) || 1);
-  const n = { id:tk, name, group:g.id, color:g.color, r,
+  const mk = marketOf.get(tk);
+  const n = { id:tk, name, r,
+              themeId: g.id, themeColor: g.color,
+              marketId: mk ? mk.id : 0, marketColor: mk ? mk.color : 'var(--g9)',
+              group: g.id, color: g.color,          // active grouping (see applyGroupMode)
               tier: r >= 17 ? 'A' : r >= 12 ? 'B' : 'C',   // controls label density only
               currency: currencyOf.get(tk) || 'USD', assetClass: assetClassOf.get(tk) || 'us_stock',
               stats: CORR.stats[tk] || {} };
@@ -832,7 +862,7 @@ document.getElementById('method-note').textContent =
 const tooltipEl = document.getElementById('tooltip');
 function fmtRet(v){ return (v>=0?'+':'') + v.toFixed(1) + '%'; }
 function tooltipHTML(d){
-  const g = GROUPS.find(x=>x.id===d.group), s = d.stats;
+  const g = currentGroups().find(x=>x.id===d.group), s = d.stats;
   const rc = s.ret_1y >= 0 ? 'var(--up)' : 'var(--down)';
   return `<div class="tk" style="color:${d.color}">${d.id}</div><div class="nm">${d.name}</div>
     <div class="kv"><span>최근 종가</span><span class="v">${fmtPx((latestClose(d.id)||{px:s.last_close}).px, d.currency)}</span>
@@ -850,19 +880,59 @@ function hideTooltip(){ tooltipEl.style.opacity = 0; }
 /* =====================================================================
    LEGEND + THRESHOLD
    ===================================================================== */
-const activeGroups = new Set(GROUPS.map(g=>g.id));
+let groupMode = 'theme';                       // 'theme' | 'market'
+const currentGroups = () => groupMode === 'theme' ? GROUPS : MARKETS;
+// filter state is kept per mode, so switching back restores what was hidden
+const activeByMode = {
+  theme:  new Set(GROUPS.map(g=>g.id)),
+  market: new Set(MARKETS.map(g=>g.id)),
+};
+let activeGroups = activeByMode.theme;
+
 const legendRows = document.getElementById('legend-rows');
-GROUPS.forEach(g => {
-  const row = document.createElement('div');
-  row.className = 'legend-row';
-  const count = g.tickers.filter(([tk])=>nodeIndex.has(tk)).length;
-  row.innerHTML = `<span class="dot" style="background:${g.color};color:${g.color}"></span>${g.label}<span class="cnt mono">${count}</span>`;
-  row.addEventListener('click', ()=>{
-    activeGroups.has(g.id) ? activeGroups.delete(g.id) : activeGroups.add(g.id);
-    row.classList.toggle('off', !activeGroups.has(g.id));
-    resetOpacities();
+function renderLegend(){
+  legendRows.innerHTML = '';
+  currentGroups().forEach(g => {
+    const row = document.createElement('div');
+    row.className = 'legend-row';
+    if(!activeGroups.has(g.id)) row.classList.add('off');
+    const count = g.tickers.filter(([tk])=>nodeIndex.has(tk)).length;
+    row.innerHTML = `<span class="dot" style="background:${g.color};color:${g.color}"></span>${g.label}<span class="cnt mono">${count}</span>`;
+    row.addEventListener('click', ()=>{
+      activeGroups.has(g.id) ? activeGroups.delete(g.id) : activeGroups.add(g.id);
+      row.classList.toggle('off', !activeGroups.has(g.id));
+      resetOpacities();
+    });
+    legendRows.appendChild(row);
   });
-  legendRows.appendChild(row);
+}
+
+function applyGroupMode(mode){
+  groupMode = mode;
+  activeGroups = activeByMode[mode];
+  nodes.forEach(n => {
+    n.group = mode === 'theme' ? n.themeId : n.marketId;
+    n.color = mode === 'theme' ? n.themeColor : n.marketColor;
+  });
+  nodeSel.attr('fill', d=>d.color);
+  document.getElementById('legend-title').textContent =
+    (mode === 'theme' ? '테마' : '시장 · 자산군') + ' (클릭하여 강조/숨김)';
+  document.querySelectorAll('#group-mode button')
+    .forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+  renderLegend();
+  clearFocus();
+  resetOpacities();
+  renderFavorites();                          // its rows carry the node colour
+  renderLeaders();
+  // an open drawer keeps stale colours/labels otherwise — re-focus rebuilds both
+  if(selectedTk && drawer.classList.contains('show')){
+    const n = nodeIndex.get(selectedTk);
+    if(n) focusNode(n);
+  }
+}
+renderLegend();
+document.querySelectorAll('#group-mode button').forEach(b => {
+  b.addEventListener('click', ()=> applyGroupMode(b.dataset.mode));
 });
 
 const thrInput = document.getElementById('thr');
@@ -913,7 +983,7 @@ function renderSearchResults(matches, total){
     ? matches.map((n,i) => `<div class="sr-row${i===0?' active':''}" data-tk="${n.id}">
         <span class="dot" style="width:7px;height:7px;background:${n.color};box-shadow:none"></span>
         <span class="tk5">${n.id}</span><span class="nm5">${n.name}</span>
-        <span class="th5">${GROUPS.find(g=>g.id===n.group)?.label.split(' · ')[0] || ''}</span>
+        <span class="th5">${currentGroups().find(g=>g.id===n.group)?.label.split(' · ')[0] || ''}</span>
       </div>`).join('') + (total > matches.length
         ? `<div class="sr-more">외 ${total - matches.length}개 종목 더 있음 — 검색어를 좁혀보세요</div>` : '')
     : '<div class="sr-empty">일치하는 종목이 없습니다</div>';
@@ -1756,7 +1826,7 @@ function renderFundamentals(tk){
 }
 
 function openDrawer(d, peers){
-  const g = GROUPS.find(x=>x.id===d.group), s = d.stats;
+  const g = currentGroups().find(x=>x.id===d.group), s = d.stats;
   document.getElementById('d-tk').textContent = d.id;
   document.getElementById('d-tk').style.color = d.color;
   document.getElementById('d-nm').textContent = d.name;
