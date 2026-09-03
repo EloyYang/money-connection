@@ -285,7 +285,7 @@ function drawCandle(){
   positionSelBar();
 
   const last = vis[vis.length-1].d, prev = vis.length > 1 ? vis[vis.length-2].d : null;
-  document.getElementById('m-px').textContent = '$' + last[3];
+  document.getElementById('m-px').textContent = fmtPx(last[3], nodeIndex.get(cTk)?.currency || 'USD');
   const dChg = prev ? (last[3]-prev[3])/prev[3]*100 : 0;
   const chgEl = document.getElementById('m-chg');
   chgEl.textContent = `${dChg>=0?'+':''}${dChg.toFixed(2)}%  (${OH.dates[vis[vis.length-1].i]})`;

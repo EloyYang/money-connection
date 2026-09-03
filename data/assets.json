@@ -1,0 +1,31 @@
+{
+  "_comment": "Non-Nasdaq-100 assets the pipeline also fetches and folds into the same network/cycle/leaders views. Each entry needs only a ticker; theme/name/currency are filled in by the pipeline.",
+  "etfs": [
+    { "t": "SPY",  "label": "S&P500 (SPY)" },
+    { "t": "QQQ",  "label": "나스닥100 (QQQ)" },
+    { "t": "DIA",  "label": "다우존스 (DIA)" },
+    { "t": "IWM",  "label": "러셀2000 (IWM)" },
+    { "t": "VTI",  "label": "미국전체시장 (VTI)" },
+    { "t": "VOO",  "label": "S&P500 (VOO)" },
+    { "t": "XLK",  "label": "기술 섹터 (XLK)" },
+    { "t": "XLF",  "label": "금융 섹터 (XLF)" },
+    { "t": "XLE",  "label": "에너지 섹터 (XLE)" },
+    { "t": "XLV",  "label": "헬스케어 섹터 (XLV)" },
+    { "t": "XLY",  "label": "임의소비재 섹터 (XLY)" },
+    { "t": "XLP",  "label": "필수소비재 섹터 (XLP)" },
+    { "t": "XLI",  "label": "산업재 섹터 (XLI)" },
+    { "t": "XLU",  "label": "유틸리티 섹터 (XLU)" },
+    { "t": "ARKK", "label": "혁신기업 (ARKK)" },
+    { "t": "TLT",  "label": "미국 장기국채 (TLT)" },
+    { "t": "HYG",  "label": "하이일드채권 (HYG)" },
+    { "t": "SLV",  "label": "은 (SLV)" },
+    { "t": "USO",  "label": "원유 (USO)" }
+  ],
+  "crypto": [
+    { "t": "BTC", "label": "비트코인", "circulating_supply": 19800000 },
+    { "t": "ETH", "label": "이더리움", "circulating_supply": 120700000 }
+  ],
+  "gold": [
+    { "t": "GLD", "label": "금 (GLD)" }
+  ]
+}

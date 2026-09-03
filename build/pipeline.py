@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
-"""Nasdaq-100 dashboard build pipeline.
+"""Multi-asset correlation dashboard build pipeline.
 
 One run does everything:
-  1. current index membership          (api.nasdaq.com list-type/nasdaq100)
-  2. sector/industry for new tickers   (api.nasdaq.com quote/<tk>/summary)  -> theme
-  3. 5 years of daily OHLCV per ticker (api.nasdaq.com quote/<tk>/historical)
-  4. correlation / lead-lag / rotation analytics
+  1. current membership for every universe:
+       - Nasdaq-100                (api.nasdaq.com list-type/nasdaq100)
+       - KOSPI100                  (finance.naver.com constituent pages)
+       - major US ETFs / BTC / ETH / gold (data/assets.json, curated list)
+  2. sector/industry for new Nasdaq-100 tickers -> theme (KOSPI/ETF/crypto/gold
+     get a single fixed theme each; classify() only runs for US equities)
+  3. 5 years of daily OHLCV per ticker (Nasdaq for US assets, Naver for KOSPI)
+  4. correlation / lead-lag / rotation analytics across the WHOLE universe
   5. render index.html from the template
 
 Membership, market caps and prices all come from the same daily pull, so an
 index change (add, drop, ticker rename) flows through without hand edits.
+"지수" figures (주도주 leaders, index_chg) stay scoped to Nasdaq-100 only —
+a market-cap-weighted blend of Samsung, Bitcoin and Apple would not mean
+anything as a single "index". Fundamentals likewise only exist for the
+original Nasdaq-100 set: Nasdaq's financials/EPS endpoints are US-equity only.
 
 Usage:  python3 build/pipeline.py [--out dist] [--cache cache] [--max-workers 4]
 """
@@ -27,20 +35,42 @@ CLIP = 0.25          # winsorise daily returns: one corporate action must not ow
 MAX_LAG = 5          # lead-lag window, trading days
 PAIR_MIN_R = 0.20    # store a lag profile only for pairs the UI can surface
 MIN_OVERLAP = 40     # trading days required before a pair gets a correlation
-CORR_WINDOW = 252    # correlation/network uses the most recent year
+CORR_WINDOW_DAYS = 365   # correlation/network uses the most recent calendar year.
+                         # Calendar days, not a row count: `dates` is now the UNION
+                         # of every universe's trading days, and crypto trades all 7 —
+                         # a fixed 252-row slice would silently cover less than a year
+                         # once enough weekend-only crypto rows are mixed in.
 
 
 def log(msg): print(f"[{datetime.datetime.now():%H:%M:%S}] {msg}", flush=True)
 
 
-def get_json(url, retries=4, timeout=30):
+def get_json(url, retries=4, timeout=30, headers=None):
     last = None
+    h = dict(HEADERS)
+    if headers: h.update(headers)
     for attempt in range(retries):
         try:
-            req = urllib.request.Request(url, headers=HEADERS)
+            req = urllib.request.Request(url, headers=h)
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return json.loads(r.read().decode())
         except Exception as e:                       # noqa: BLE001 - any failure is retryable here
+            last = e
+            time.sleep(1.5 * (attempt + 1))
+    raise RuntimeError(f"GET failed after {retries} tries: {url} ({last})")
+
+
+def get_text(url, encoding="utf-8", retries=4, timeout=30, headers=None):
+    """Like get_json but for non-JSON responses (Naver's HTML/JS-literal pages)."""
+    last = None
+    h = dict(HEADERS)
+    if headers: h.update(headers)
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(url, headers=h)
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read().decode(encoding, errors="replace")
+        except Exception as e:                       # noqa: BLE001
             last = e
             time.sleep(1.5 * (attempt + 1))
     raise RuntimeError(f"GET failed after {retries} tries: {url} ({last})")
@@ -63,9 +93,76 @@ def fetch_constituents():
         px = str(r.get("lastSalePrice", "")).replace("$", "").replace(",", "")
         try: px = float(px)
         except ValueError: px = None
-        out[tk] = {"name": name, "market_cap": cap, "quote_px": px}
-    log(f"index members: {len(out)} (as of {d['data'].get('date')})")
+        out[tk] = {"name": name, "market_cap": cap, "quote_px": px,
+                   "asset_class": "us_stock", "currency": "USD", "source": "nasdaq_stock"}
+    log(f"Nasdaq-100 members: {len(out)} (as of {d['data'].get('date')})")
     return out, d["data"].get("date")
+
+
+# --------------------------------------------------------------------------
+# 1b. other universes: KOSPI100, US ETFs, crypto, gold
+# --------------------------------------------------------------------------
+def fetch_usdkrw_rate():
+    """Live rate to convert KOSPI market caps into the same USD scale used for
+    node sizing everywhere else. Falls back to a fixed estimate if the free
+    endpoint is unreachable — sizing only, never shown to the user as a quote."""
+    try:
+        d = get_json("https://api.exchangerate-api.com/v4/latest/USD", retries=2, timeout=15)
+        rate = float(d["rates"]["KRW"])
+        log(f"USD/KRW: {rate}")
+        return rate
+    except Exception as e:                            # noqa: BLE001
+        log(f"  ! USD/KRW lookup failed ({e}), falling back to 1350")
+        return 1350.0
+
+
+def fetch_kospi100(usdkrw):
+    """Scrape Naver's KOSPI100 constituent pages: name, code, price, market cap
+    (원 표기 억원 -> 원). No public JSON endpoint for this list; the HTML table
+    is stable and cheap (~10 short pages)."""
+    out = {}
+    pat = re.compile(
+        r'<td class="ctg"><a href="/item/main\.naver\?code=(\d{6})"[^>]*>([^<]+)</a></td>\s*'
+        r'<td class="number_2">([\d,]+)</td>.*?'
+        r'<td class="number_2">([\d,]+)</td>\s*</tr>', re.S)
+    for page in range(1, 15):
+        html = get_text(
+            f"https://finance.naver.com/sise/entryJongmok.naver?type=KPI100&page={page}",
+            encoding="euc-kr", retries=3, headers={"Referer": "https://finance.naver.com/"})
+        rows = pat.findall(html)
+        if not rows:
+            break
+        for code, name, price, cap_eok in rows:
+            cap_krw = float(cap_eok.replace(",", "")) * 1e8
+            out[code] = {
+                "name": name.strip(), "quote_px": float(price.replace(",", "")),
+                "market_cap": cap_krw / usdkrw,          # USD-equivalent, for node sizing
+                "market_cap_krw": cap_krw,
+                "asset_class": "kr_stock", "currency": "KRW", "source": "naver_stock",
+            }
+        time.sleep(0.15)
+    log(f"KOSPI100 members: {len(out)}")
+    return out
+
+
+def fetch_extra_assets():
+    """US ETFs / crypto / gold from the curated data/assets.json list. Market
+    cap is unknown at this point for ETFs and gold (no AUM endpoint); it is
+    backfilled from the price series in fetch_all_prices() once fetched."""
+    cfg = json.load(open(os.path.join(ROOT, "data", "assets.json")))
+    out = {}
+    for e in cfg["etfs"]:
+        out[e["t"]] = {"name": e["label"], "quote_px": None, "market_cap": 0.0,
+                       "asset_class": "etf", "currency": "USD", "source": "nasdaq_etf"}
+    for e in cfg["crypto"]:
+        out[e["t"]] = {"name": e["label"], "quote_px": None, "market_cap": 0.0,
+                       "asset_class": "crypto", "currency": "USD", "source": "nasdaq_crypto",
+                       "circulating_supply": e["circulating_supply"]}
+    for e in cfg["gold"]:
+        out[e["t"]] = {"name": e["label"], "quote_px": None, "market_cap": 0.0,
+                       "asset_class": "commodity", "currency": "USD", "source": "nasdaq_etf"}
+    log(f"extra assets: {len(cfg['etfs'])} ETF + {len(cfg['crypto'])} crypto + {len(cfg['gold'])} gold")
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -254,9 +351,9 @@ def parse_money(v):
     except ValueError: return None
 
 
-def fetch_history(tk, frm, to):
+def fetch_history(tk, frm, to, assetclass="stocks"):
     url = (f"https://api.nasdaq.com/api/quote/{tk}/historical"
-           f"?assetclass=stocks&fromdate={frm}&todate={to}&limit=99999")
+           f"?assetclass={assetclass}&fromdate={frm}&todate={to}&limit=99999")
     rows = ((get_json(url).get("data") or {}).get("tradesTable") or {}).get("rows") or []
     out = {}
     for r in rows:
@@ -268,6 +365,23 @@ def fetch_history(tk, frm, to):
         h = parse_money(r.get("high")) or max(o, c)
         l = parse_money(r.get("low")) or min(o, c)
         v = parse_money(r.get("volume")) or 0
+        out[dt] = [round(o, 2), round(h, 2), round(l, 2), round(c, 2), int(v / 1000)]
+    return out
+
+
+def fetch_naver_history(code, frm, to):
+    """Naver returns the whole requested range in one call — a JS-array-literal
+    payload, not strict JSON (the header row uses single quotes), so the data
+    rows are pulled out with a regex rather than json.loads."""
+    url = (f"https://api.finance.naver.com/siseJson.naver?symbol={code}&requestType=1"
+           f"&startTime={frm.replace('-','')}&endTime={to.replace('-','')}&timeframe=day")
+    text = get_text(url, retries=3, headers={"Referer": "https://finance.naver.com/"})
+    out = {}
+    for m in re.finditer(r'\["(\d{8})",\s*([\d.]+),\s*([\d.]+),\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)', text):
+        ds, o, h, l, c, v = m.groups()
+        try: dt = datetime.datetime.strptime(ds, "%Y%m%d").date()
+        except Exception: continue
+        o, h, l, c, v = float(o), float(h), float(l), float(c), float(v)
         out[dt] = [round(o, 2), round(h, 2), round(l, 2), round(c, 2), int(v / 1000)]
     return out
 
@@ -298,6 +412,15 @@ def fetch_yahoo(tk, frm, to):
     return out
 
 
+def fetch_one_series(tk, member, frm, to):
+    """Dispatch to the right source/assetclass for this member."""
+    src = member.get("source", "nasdaq_stock")
+    if src == "naver_stock":
+        return fetch_naver_history(tk, frm.isoformat(), to.isoformat())
+    assetclass = {"nasdaq_stock": "stocks", "nasdaq_etf": "etf", "nasdaq_crypto": "crypto"}[src]
+    return fetch_history(tk, frm.isoformat(), to.isoformat(), assetclass=assetclass)
+
+
 def fetch_all_prices(members, workers):
     to = datetime.date.today()
     frm = to - datetime.timedelta(days=int(YEARS * 365.25) + 5)
@@ -305,7 +428,7 @@ def fetch_all_prices(members, workers):
 
     def one(tk):
         try:
-            rows = fetch_history(tk, frm.isoformat(), to.isoformat())
+            rows = fetch_one_series(tk, members[tk], frm, to)
         except Exception as e:                        # noqa: BLE001
             return tk, {}, f"historical failed: {e}"
         if not rows:
@@ -313,6 +436,9 @@ def fetch_all_prices(members, workers):
         # Sanity gate: the historical series must agree with today's quote.
         # Nasdaq's endpoint has resolved a symbol to an unrelated instrument
         # before, and a silently wrong series would poison every correlation.
+        # Skipped when quote_px is unknown (ETF/crypto/gold: no separate quote
+        # call for those, so nothing to cross-check against, and none of them
+        # share Nasdaq's stock-symbol-collision failure mode anyway).
         quote = members[tk].get("quote_px")
         last = rows[max(rows)][3]
         if quote and last and abs(last - quote) / quote > 0.25:
@@ -340,6 +466,26 @@ def fetch_all_prices(members, workers):
                 continue
             series[tk] = rows
     log(f"prices: {len(series)}/{len(members)} tickers")
+
+    # Backfill size/quote for assets whose membership source had none:
+    #  - ETF / gold: no AUM endpoint, so approximate size with recent dollar
+    #    turnover (median close x volume over the trailing ~60 sessions) —
+    #    a liquidity proxy, not literal fund size, but a reasonable ordering.
+    #  - crypto: circulating_supply x latest close IS a real market cap.
+    for tk, m in members.items():
+        rows = series.get(tk)
+        if not rows or m.get("market_cap"):
+            continue
+        by_date = sorted(rows.items())
+        last_close = by_date[-1][1][3]
+        m["quote_px"] = last_close
+        if m.get("asset_class") == "crypto" and m.get("circulating_supply"):
+            m["market_cap"] = last_close * m["circulating_supply"]
+        else:
+            recent = by_date[-60:]
+            turnovers = sorted(row[3] * row[4] * 1000 for _, row in recent)
+            m["market_cap"] = turnovers[len(turnovers) // 2] if turnovers else 0.0
+
     return series, problems
 
 
@@ -365,7 +511,7 @@ def build_returns(dates, closes):
     return r
 
 
-def analyse(series, members, themes, index_date):
+def analyse(series, members, themes, index_date, nasdaq_tickers):
     dates = sorted({d for rows in series.values() for d in rows})
     di = {d: i for i, d in enumerate(dates)}
     tickers = sorted(series, key=lambda t: -members[t]["market_cap"])
@@ -380,7 +526,8 @@ def analyse(series, members, themes, index_date):
     rets5y = {t: build_returns(dates, closes[t]) for t in tickers}
 
     # ---- 1-year window: network + charts ----
-    w0 = max(0, len(dates) - CORR_WINDOW)
+    cutoff = dates[-1] - datetime.timedelta(days=CORR_WINDOW_DAYS)
+    w0 = next((i for i, d in enumerate(dates) if d > cutoff), 0)
     w_dates = dates[w0:]
     w_close = {t: closes[t][w0:] for t in tickers}
     w_rets = {t: rets5y[t][w0:] for t in tickers}
@@ -427,7 +574,7 @@ def analyse(series, members, themes, index_date):
             "range_from": stats[tickers[0]]["first_date"] if tickers else "",
             "range_to": max(s["last_date"] for s in stats.values()) if stats else "",
             "method": f"일별 종가 수익률의 피어슨 상관계수 (공통 거래일 기준, 최소 {MIN_OVERLAP}일 중복 필요, 일간수익률 ±{int(CLIP*100)}% 윈저화)",
-            "sources": "api.nasdaq.com historical quotes",
+            "sources": "api.nasdaq.com (미국주식·ETF·암호화폐), finance.naver.com (코스피100)",
         },
     }
 
@@ -487,7 +634,9 @@ def analyse(series, members, themes, index_date):
             (row is None or (row[0] == row[1] == row[2] == row[3])) for row in ohlc[t] if row)],
     }
 
-    leaders = latest_session_leaders(dates, ohlc, tickers, members)
+    # 지수/주도주 stays Nasdaq-100-only — see module docstring
+    nd_scope = [t for t in tickers if t in nasdaq_tickers]
+    leaders = latest_session_leaders(dates, ohlc, nd_scope, members)
     cycle = analyse_cycle(dates, rets5y, tickers, themes)
     return corr, px, oh, cycle, leaders
 
@@ -496,9 +645,17 @@ def latest_session_leaders(dates, ohlc, tickers, members, top=6):
     """Who moved the index on the most recent session.
 
     `chg` is the plain close-to-close move; `contrib` weights it by the share
-    of total market cap, which is what actually pushed the index around."""
-    if len(dates) < 2: return {}
+    of total market cap, which is what actually pushed the index around.
+
+    `dates` is the shared axis across every universe in the build (KOSPI closes
+    before the US session, crypto trades weekends), so its last index is not
+    necessarily a Nasdaq-100 trading day. Walk back to the most recent date at
+    least half of `tickers` actually has a close for."""
+    if len(dates) < 2 or not tickers: return {}
     last = len(dates) - 1
+    need = max(1, len(tickers) // 2)
+    while last > 0 and sum(1 for t in tickers if ohlc[t][last] is not None) < need:
+        last -= 1
     total_cap = sum(members[t]["market_cap"] for t in tickers) or 1
     rows, index_chg = [], 0.0
     for t in tickers:
@@ -672,8 +829,10 @@ def render(corr, px, oh, cycle, leaders, fund, members, themes, index_date, prob
 
     nodes = []
     for t in corr["tickers"]:
-        nodes.append({"id": t, "name": members[t]["name"], "group": themes.get(t, 9),
-                      "cap": members[t]["market_cap"]})
+        m = members[t]
+        nodes.append({"id": t, "name": m["name"], "group": themes.get(t, 9),
+                      "cap": m["market_cap"], "currency": m.get("currency", "USD"),
+                      "assetClass": m.get("asset_class", "us_stock")})
     meta = {
         "built": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "index_date": index_date,
@@ -706,9 +865,9 @@ def render(corr, px, oh, cycle, leaders, fund, members, themes, index_date, prob
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<meta name="description" content="나스닥 100 종목의 수익률 상관관계 네트워크와 5년 테마 로테이션 분석. 매일 자동 갱신.">
-<meta property="og:title" content="나스닥 100 상관관계 그래프">
-<meta property="og:description" content="상관계수 네트워크 · 테마 로테이션 · 봉차트. 구성종목과 시세가 매일 자동 갱신됩니다.">
+<meta name="description" content="나스닥100·코스피100·주요 ETF·비트코인·이더리움·금의 수익률 상관관계 네트워크와 5년 테마 로테이션 분석. 매일 자동 갱신.">
+<meta property="og:title" content="글로벌 자산 상관관계 그래프">
+<meta property="og:description" content="나스닥100 · 코스피100 · 미국 ETF · 암호화폐 · 금을 한 네트워크에서 비교합니다. 상관계수 · 테마 로테이션 · 봉차트. 구성종목과 시세가 매일 자동 갱신됩니다.">
 <link rel="icon" href="{icon}">
 </head>
 <body>
@@ -733,21 +892,44 @@ def main():
     a = ap.parse_args()
 
     cfg = load_theme_config()
-    members, index_date = fetch_constituents()
-    themes, _ = resolve_themes(list(members), cfg, os.path.join(a.cache, "sectors.json"))
+
+    # ---- membership: Nasdaq-100 + KOSPI100 + ETF/crypto/gold ----
+    nasdaq_members, index_date = fetch_constituents()
+    nasdaq_tickers = set(nasdaq_members)
+    usdkrw = fetch_usdkrw_rate()
+    kospi_members = fetch_kospi100(usdkrw)
+    extra_members = fetch_extra_assets()
+
+    members = {}
+    members.update(nasdaq_members)
+    members.update(kospi_members)
+    members.update(extra_members)
+    log(f"total universe: {len(members)} "
+        f"({len(nasdaq_members)} Nasdaq-100 + {len(kospi_members)} KOSPI100 + {len(extra_members)} ETF/crypto/gold)")
+
+    # theme: Nasdaq-100 keeps sector/industry classification; every other
+    # universe gets one fixed theme (10=KOSPI100, 11=ETF, 12=crypto, 13=gold)
+    themes, _ = resolve_themes(list(nasdaq_members), cfg, os.path.join(a.cache, "sectors.json"))
+    themes.update({t: 10 for t in kospi_members})
+    themes.update({t: (12 if m["asset_class"] == "crypto" else 13 if m["asset_class"] == "commodity" else 11)
+                   for t, m in extra_members.items()})
+
     series, problems = fetch_all_prices(members, a.max_workers)
 
     if len(series) < 0.8 * len(members):
         log(f"ABORT: only {len(series)}/{len(members)} tickers fetched — refusing to publish a thin build")
         sys.exit(1)
 
-    corr, px, oh, cycle, leaders = analyse(series, members, themes, index_date)
+    corr, px, oh, cycle, leaders = analyse(series, members, themes, index_date, nasdaq_tickers)
     log(f"analysed: {len(corr['tickers'])} tickers, {len(px['profiles'])} lag profiles, "
         f"{len(cycle['themes'])} themes, {len(cycle['months'])} months")
-    log(f"latest session {leaders.get('date')}: index {leaders.get('index_chg')}% "
+    log(f"latest session {leaders.get('date')}: 나스닥100 지수 {leaders.get('index_chg')}% "
         f"({leaders.get('advancers')} up / {leaders.get('decliners')} down)")
 
-    fund = fetch_fundamentals(corr["tickers"], os.path.join(a.cache, "fundamentals.json"),
+    # fundamentals (PER/EPS/재무제표) only exist for the original Nasdaq-100
+    # equities — Nasdaq's financials endpoints do not cover KOSPI/ETF/crypto/gold
+    fund_scope = [t for t in corr["tickers"] if t in nasdaq_tickers]
+    fund = fetch_fundamentals(fund_scope, os.path.join(a.cache, "fundamentals.json"),
                               a.fundamentals_refresh, a.max_workers)
     render(corr, px, oh, cycle, leaders, fund, members, themes, index_date, problems, a.out)
 

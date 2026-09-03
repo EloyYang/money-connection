@@ -1,4 +1,4 @@
-<title>나스닥 100 상관관계 그래프</title>
+<title>글로벌 자산 상관관계 그래프</title>
 <style>
   :root{
     --bg:#0a0c10;
@@ -18,6 +18,7 @@
     --g9:#8a8f98;
     --g1:#3987e5; --g2:#d95926; --g3:#199e70; --g4:#c98500;
     --g5:#d55181; --g6:#3fae3f; --g7:#9085e9; --g8:#e66767;
+    --g10:#2dd4bf; --g11:#94a3b8; --g12:#f7931a; --g13:#d4af37;
     color-scheme: dark;
   }
   *{box-sizing:border-box;}
@@ -361,7 +362,7 @@
 
 <header>
   <div class="brand">
-    <div class="title">나스닥 100 상관관계 그래프</div>
+    <div class="title">글로벌 자산 상관관계 그래프</div>
     <div class="sub" id="brand-sub">최근 1년 일별 종가 수익률 상관계수 · 상승/하락 연쇄 시뮬레이션</div>
   </div>
   <div class="tabs">
@@ -406,7 +407,7 @@
 
         <div class="card">
           <h3>리더십 전이 행렬</h3>
-          <p class="sub">행 = 이번 달 1위 테마, 열 = 다음 달 1위 테마. 숫자는 관측 횟수(총 59회)이며, 행을 클릭하면 분포가 아래에 표시됩니다.</p>
+          <p class="sub">행 = 이번 달 1위 테마, 열 = 다음 달 1위 테마. 숫자는 관측 횟수(총 <span id="trans-total">–</span>회)이며, 행을 클릭하면 분포가 아래에 표시됩니다.</p>
           <div class="chart-box"><svg id="cyc-trans" width="100%"></svg></div>
           <div class="trans-detail" id="trans-detail">행을 클릭해 특정 테마 다음에 무엇이 왔는지 확인하세요.</div>
         </div>
@@ -597,14 +598,25 @@ const capScale = d3.scaleSqrt()
 const idx = new Map(CORR.tickers.map((t,i)=>[t,i]));   // ticker -> matrix index
 const nodes = [];
 const nodeIndex = new Map();
+const currencyOf = new Map(NODES.map(n => [n.id, n.currency || 'USD']));
+const assetClassOf = new Map(NODES.map(n => [n.id, n.assetClass || 'us_stock']));
 GROUPS.forEach(g => g.tickers.forEach(([tk,name]) => {
   if(!idx.has(tk)) return;
   const r = capScale(capOf.get(tk) || 1);
   const n = { id:tk, name, group:g.id, color:g.color, r,
               tier: r >= 17 ? 'A' : r >= 12 ? 'B' : 'C',   // controls label density only
+              currency: currencyOf.get(tk) || 'USD', assetClass: assetClassOf.get(tk) || 'us_stock',
               stats: CORR.stats[tk] || {} };
   nodes.push(n); nodeIndex.set(tk, n);
 }));
+
+// $224.41 for USD, ₩250,000 for KRW — every price display routes through this
+// so a KOSPI or crypto node never shows a misleading dollar sign.
+function fmtPx(v, currency){
+  if(v == null) return '—';
+  if(currency === 'KRW') return '\u20a9' + Math.round(v).toLocaleString('ko-KR');
+  return '$' + (v >= 1000 ? Math.round(v).toLocaleString('en-US') : v.toFixed(v < 20 ? 2 : 1));
+}
 
 function corr(a, b){
   const i = idx.get(a), j = idx.get(b);
@@ -806,7 +818,7 @@ function tooltipHTML(d){
   const g = GROUPS.find(x=>x.id===d.group), s = d.stats;
   const rc = s.ret_1y >= 0 ? 'var(--up)' : 'var(--down)';
   return `<div class="tk" style="color:${d.color}">${d.id}</div><div class="nm">${d.name}</div>
-    <div class="kv"><span>최근 종가</span><span class="v">$${(latestClose(d.id)||{px:s.last_close}).px}</span>
+    <div class="kv"><span>최근 종가</span><span class="v">${fmtPx((latestClose(d.id)||{px:s.last_close}).px, d.currency)}</span>
       <span>1년 수익률</span><span class="v" style="color:${rc}">${fmtRet(s.ret_1y)}</span>
       <span>테마</span><span class="v" style="font-family:inherit">${g.label.split(' · ')[0]}</span></div>`;
 }
@@ -936,7 +948,8 @@ function drawPriceChart(main, peer){
     fmtY = v => Math.round(v);
   } else {
     sa = a.slice();
-    fmtY = v => '$' + (v >= 1000 ? Math.round(v) : v.toFixed(v < 20 ? 2 : 1));
+    const cur = nodeIndex.get(main)?.currency || 'USD';
+    fmtY = v => fmtPx(v, cur);
   }
   const vals = sa.filter(v=>v!=null).concat(sb ? sb.filter(v=>v!=null) : []);
   if(!vals.length) return;
@@ -1012,8 +1025,9 @@ function drawPriceChart(main, peer){
       if(dotB && sb[j]!=null) dotB.attr('cx',X(j)).attr('cy',Y(sb[j])).style('display',null);
       else if(dotB) dotB.style('display','none');
       const pxa = PX.prices[main][j], pxb = peer ? PX.prices[peer][j] : null;
-      readout.innerHTML = `${dates[j]} · <b style="color:${colA}">${main} $${pxa}</b>` +
-        (peer && pxb!=null ? ` · <b style="color:${colB}">${peer} $${pxb}</b>` : '');
+      const curA = nodeIndex.get(main)?.currency || 'USD', curB = peer ? (nodeIndex.get(peer)?.currency || 'USD') : null;
+      readout.innerHTML = `${dates[j]} · <b style="color:${colA}">${main} ${fmtPx(pxa, curA)}</b>` +
+        (peer && pxb!=null ? ` · <b style="color:${colB}">${peer} ${fmtPx(pxb, curB)}</b>` : '');
     });
 }
 
@@ -1668,7 +1682,7 @@ function openDrawer(d, peers){
   document.getElementById('d-group').textContent = g.label;
   document.querySelector('#d-badge .dot').style.background = d.color;
   const fresh = latestClose(d.id);
-  document.getElementById('d-close').textContent = '$' + (fresh ? fresh.px : s.last_close);
+  document.getElementById('d-close').textContent = fmtPx(fresh ? fresh.px : s.last_close, d.currency);
   const retEl = document.getElementById('d-ret');
   retEl.textContent = fmtRet(s.ret_1y);
   retEl.style.color = s.ret_1y >= 0 ? 'var(--up)' : 'var(--down)';
@@ -2002,7 +2016,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     document.body.className = 'view-' + v;
     const sub = document.getElementById('brand-sub');
     if(v === 'cycle'){
-      sub.textContent = `${CY.range[0]} ~ ${CY.range[1]} 5년 · 8개 테마 로테이션 분석`;
+      sub.textContent = `${CY.range[0]} ~ ${CY.range[1]} 5년 · ${THEME_IDS.length}개 테마 로테이션 분석`;
       renderCycle();
     } else {
       sub.textContent = graphSubtitle;
@@ -2016,10 +2030,11 @@ document.body.className = 'view-graph';
 /* --- intro + finding cards --- */
 function renderFindings(){
   const s = CY.stats;
+  const totalAssets = THEME_IDS.reduce((n, g) => n + CY.themes[g].members.length, 0);
   document.getElementById('cyc-intro').innerHTML =
-    `${CY.range[0]} ~ ${CY.range[1]} · ${CY.months.length}개월 · 100개 종목을 8개 테마로 묶어 동일가중 지수를 만들고,
+    `${CY.range[0]} ~ ${CY.range[1]} · ${CY.months.length}개월 · ${totalAssets}개 종목/자산을 ${THEME_IDS.length}개 테마로 묶어 동일가중 지수를 만들고,
      매달 1위 테마가 다음 달 어떤 테마로 넘어갔는지 집계했습니다.
-     표본이 59회 전이뿐이라 개별 칸의 확률보다 <b>전체 경향</b>을 보는 용도입니다.`;
+     표본이 ${s.persist.total}회 전이뿐이라 개별 칸의 확률보다 <b>전체 경향</b>을 보는 용도입니다.`;
 
   const cards = [
     { k:'리더 지속성', v:`${s.persist.pct}%`,
@@ -2034,7 +2049,7 @@ function renderFindings(){
          떨어진 테마가 바로 반등한다는 근거는 없습니다.`,
       tag:['반전 효과 없음','no'] },
     { k:'테마 간 선행–후행', v:'없음',
-      d:`8개 테마 모든 조합에서 주간 수익률 상관은 <b>동시(lag 0)</b>가 가장 강했습니다.
+      d:`${THEME_IDS.length}개 테마 모든 조합에서 주간 수익률 상관은 <b>동시(lag 0)</b>가 가장 강했습니다.
          "A 테마가 오르면 몇 주 뒤 B 테마" 같은 시차 신호는 관측되지 않습니다.`,
       tag:['모든 쌍에서 lag 0 우세','no'] },
   ];
@@ -2142,6 +2157,7 @@ function renderHeatmap(){
 
 /* --- leadership transition matrix --- */
 function renderTransitions(){
+  document.getElementById('trans-total').textContent = CY.stats.persist.total;
   const host = document.getElementById('cyc-trans');
   const labelW = 118, cell = 30, top = 46;
   const W = labelW + THEME_IDS.length*cell + 10, H = top + THEME_IDS.length*cell + 8;
