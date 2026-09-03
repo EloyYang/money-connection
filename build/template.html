@@ -277,6 +277,25 @@
                          display:inline-block; transition:transform .15s; }
   .fin-row.open .lab::before{ transform:rotate(90deg); color:var(--accent); }
   .fin-chart{ padding:2px 0 10px; }
+  .fin-combo-head{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center;
+                   padding:5px; margin-bottom:2px; border-radius:6px; cursor:pointer;
+                   font-size:11.5px; font-weight:600; background:rgba(255,255,255,0.04); }
+  .fin-combo-head:hover{ background:rgba(255,255,255,0.07); }
+  .fin-combo-head.open{ background:rgba(95,208,255,0.10); }
+  .fin-combo-head .lab::before{ content:'▸'; font-size:8.5px; color:var(--text-muted); margin-right:5px;
+                                display:inline-block; transition:transform .15s; }
+  .fin-combo-head.open .lab::before{ transform:rotate(90deg); color:var(--accent); }
+  .fin-combo-head .hint2{ font-size:9.5px; font-weight:400; color:var(--text-muted); }
+  .combo-legend{ display:flex; flex-wrap:wrap; gap:4px 10px; padding:2px 5px 0; font-size:10.5px; }
+  .combo-legend button{ display:flex; align-items:center; gap:5px; background:none; border:none;
+                        color:var(--text-secondary); font-family:inherit; font-size:10.5px;
+                        cursor:pointer; padding:2px 0; }
+  .combo-legend button.off{ opacity:0.34; text-decoration:line-through; }
+  .combo-legend .sw{ width:9px; height:9px; border-radius:2px; }
+  .combo-scale{ margin-left:auto; border:1px solid var(--border-strong); background:none;
+                color:var(--text-secondary); font-family:inherit; font-size:9.5px; font-weight:600;
+                border-radius:5px; padding:2px 7px; cursor:pointer; }
+  .combo-scale.on{ border-color:var(--accent); color:var(--accent); background:rgba(95,208,255,0.12); }
   .fin-chart .cap{ font-size:10px; color:var(--text-muted); line-height:1.45; padding:0 5px 4px; }
   .eps-head{ cursor:pointer; }
   .eps-head:hover span:first-child{ color:var(--text-primary); }
@@ -477,6 +496,8 @@
     <div id="fund-block">
       <div class="sec-title"><span>펀더멘털</span><span class="mono" id="fund-period"></span></div>
       <div class="fund-grid" id="fund-kpis"></div>
+      <div class="fin-combo-head" id="combo-head"><span class="lab">4개 지표 함께 보기</span><span class="hint2">매출 · 순이익 · 현금 · 부채</span></div>
+      <div class="fin-chart" id="combo-chart"></div>
       <div id="fund-fin"></div>
       <div class="sec-title eps-head" id="fund-eps-title"><span>▸ 실적 발표 · 추정</span><span class="mono" id="fund-eps-note"></span></div>
       <div id="fund-eps-chart"></div>
@@ -1207,6 +1228,110 @@ function drawFinChart(host, f, key, label){
   host.appendChild(cap);
 }
 
+/* Four statement lines on one year axis. Magnitudes differ a lot (revenue can
+   dwarf cash), so the legend hides series and an indexed mode compares growth
+   instead of size. */
+const COMBO_METRICS = [
+  { k:'revenue',     label:'매출',       c:'#3987e5' },
+  { k:'net_income',  label:'순이익',     c:'#199e70' },
+  { k:'cash',        label:'현금성자산', c:'#9085e9' },
+  { k:'liabilities', label:'부채',       c:'#e66767' },
+];
+let comboHidden = new Set(), comboIndexed = false;
+
+function drawCombinedFin(host, f){
+  host.innerHTML = '';
+  const years = (f.periods || []).map((p, i) => ({ p, i }))
+    .filter(d => d.p).reverse();                        // oldest -> newest
+  if(years.length < 2){ host.innerHTML = '<div class="cap">연도별 데이터가 부족합니다.</div>'; return; }
+
+  const active = COMBO_METRICS.filter(m => !comboHidden.has(m.k) && (f[m.k] || []).some(v => v != null));
+  const skipped = [];
+  const series = active.map(m => {
+    const vals = years.map(y => (f[m.k] || [])[y.i]);
+    if(!comboIndexed) return { ...m, vals, raw: vals };
+    const base = vals.find(v => v != null);
+    if(base == null || base <= 0){ skipped.push(m.label); return null; }
+    return { ...m, raw: vals, vals: vals.map(v => v == null ? null : v / base * 100) };
+  }).filter(Boolean);
+
+  const W = 298, H = 168, mg = { t: 14, r: 36, b: 24, l: 6 };
+  const innerW = W - mg.l - mg.r, innerH = H - mg.t - mg.b;
+  const flat = series.flatMap(s => s.vals).filter(v => v != null);
+  if(!flat.length){ host.innerHTML = '<div class="cap">표시할 계열이 없습니다.</div>'; return; }
+  const hi = Math.max(0, ...flat), lo = Math.min(0, ...flat), span = (hi - lo) || 1;
+  const y = v => mg.t + innerH - ((v - lo) / span) * innerH;
+  const groupW = innerW / years.length;
+  const bw = Math.max(4, (groupW * 0.74) / Math.max(1, series.length));
+  const gx = i => mg.l + i * groupW;
+
+  const svg = d3.select(host).append('svg')
+    .attr('viewBox', `0 0 ${W} ${H}`).attr('width', '100%').attr('height', H);
+
+  const fmtAxis = v => comboIndexed ? Math.round(v) : fmtMoney(v);
+  d3.ticks(lo, hi, 4).forEach(t => {
+    svg.append('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', y(t)).attr('y2', y(t))
+      .attr('stroke', t === 0 ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.06)');
+    svg.append('text').attr('x', W - mg.r + 5).attr('y', y(t) + 3).attr('font-size', 8.5)
+      .attr('fill', '#6b7380').attr('font-family', "'JetBrains Mono',monospace").text(fmtAxis(t));
+  });
+  if(comboIndexed){
+    svg.append('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', y(100)).attr('y2', y(100))
+      .attr('stroke', 'rgba(255,255,255,0.22)').attr('stroke-dasharray', '3,3');
+  }
+
+  years.forEach((yr, gi) => {
+    series.forEach((s, si) => {
+      const v = s.vals[gi];
+      if(v == null) return;
+      const x = gx(gi) + groupW * 0.13 + si * bw;
+      const up = v >= 0, top = up ? y(v) : y(0);
+      const h = Math.max(1.2, Math.abs(y(v) - y(0)));
+      const rect = svg.append('rect').attr('x', x).attr('y', top).attr('width', bw - 1).attr('height', h)
+        .attr('rx', 1.6).attr('fill', s.c)
+        .attr('opacity', gi === years.length - 1 ? 0.95 : 0.55);
+      rect.append('title').text(`${fyLabel(yr.p)} · ${s.label} ${fmtMoney(s.raw[gi])}`
+        + (comboIndexed ? ` (지수 ${Math.round(v)})` : ''));
+    });
+    svg.append('text').attr('x', gx(gi) + groupW / 2).attr('y', H - 7).attr('text-anchor', 'middle')
+      .attr('font-size', 9).attr('font-family', "'JetBrains Mono',monospace")
+      .attr('font-weight', gi === years.length - 1 ? 700 : 400)
+      .attr('fill', gi === years.length - 1 ? 'var(--text-secondary)' : '#6b7380')
+      .text(fyLabel(yr.p));
+  });
+
+  // legend doubles as the series filter — hiding revenue lets the rest breathe
+  const legend = document.createElement('div');
+  legend.className = 'combo-legend';
+  legend.innerHTML = COMBO_METRICS.map(m => {
+    const off = comboHidden.has(m.k);
+    return `<button data-k="${m.k}" class="${off ? 'off' : ''}">
+        <span class="sw" style="background:${m.c}"></span>${m.label}</button>`;
+  }).join('') + `<button class="combo-scale ${comboIndexed ? 'on' : ''}" data-scale="1">지수화 (첫 해=100)</button>`;
+  host.appendChild(legend);
+
+  const cap = document.createElement('div');
+  cap.className = 'cap';
+  cap.textContent = comboIndexed
+    ? '첫 해를 100으로 맞춰 성장 속도를 비교합니다. 막대에 마우스를 올리면 실제 금액이 표시됩니다.'
+      + (skipped.length ? ` (${skipped.join('·')}은 기준연도 값이 0 이하라 지수화 불가)` : '')
+    : '금액 그대로 비교합니다. 규모 차이가 크면 범례를 눌러 계열을 숨기거나 지수화를 켜세요.';
+  host.appendChild(cap);
+
+  legend.querySelectorAll('button[data-k]').forEach(b => {
+    b.addEventListener('click', () => {
+      const k = b.dataset.k;
+      comboHidden.has(k) ? comboHidden.delete(k) : comboHidden.add(k);
+      if(comboHidden.size === COMBO_METRICS.length) comboHidden.delete(k);   // never blank the chart
+      drawCombinedFin(host, f);
+    });
+  });
+  legend.querySelector('[data-scale]').addEventListener('click', () => {
+    comboIndexed = !comboIndexed;
+    drawCombinedFin(host, f);
+  });
+}
+
 /* quarterly EPS: actual bars with the consensus marked, then upcoming consensus */
 function drawEpsChart(host, f){
   const eps = (f.eps || []).filter(e => e.p);
@@ -1296,6 +1421,16 @@ function renderFundamentals(tk){
     row('net_income', '순이익', f.net_income, netMargin != null ? `순이익률 ${netMargin.toFixed(0)}%` : '') +
     row('liabilities', '총부채', f.liabilities, debtEq != null ? `부채/자본 ${debtEq.toFixed(2)}` : '') +
     row('cash', '현금성자산', f.cash);
+
+  const comboHead = document.getElementById('combo-head');
+  const comboHost = document.getElementById('combo-chart');
+  comboHidden = new Set(); comboIndexed = false;
+  comboHost.innerHTML = ''; comboHead.classList.remove('open');
+  comboHead.onclick = ()=>{
+    const open = comboHead.classList.toggle('open');
+    comboHost.innerHTML = '';
+    if(open) drawCombinedFin(comboHost, f);
+  };
 
   const labels = { revenue:'매출', op_income:'영업이익', net_income:'순이익',
                    liabilities:'총부채', cash:'현금성자산' };
