@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <title>머니 커넥션</title>
+  <rect width="32" height="32" rx="7" fill="#0a0c10"/>
+  <path d="M22.6 8.4a9.8 9.8 0 1 0 0 15.2" fill="none" stroke="#5fd0ff" stroke-width="2.9" stroke-linecap="round"/>
+  <g stroke="#7e8794" stroke-width="1">
+    <line x1="15.6" y1="16.4" x2="12.4" y2="11.4"/>
+    <line x1="15.6" y1="16.4" x2="20.6" y2="13.6"/>
+    <line x1="15.6" y1="16.4" x2="13.6" y2="21"/>
+    <line x1="12.4" y1="11.4" x2="20.6" y2="13.6"/>
+  </g>
+  <circle cx="15.6" cy="16.4" r="2.3" fill="#e8eaed"/>
+  <circle cx="12.4" cy="11.4" r="1.8" fill="#3987e5"/>
+  <circle cx="20.6" cy="13.6" r="1.8" fill="#3ddc84"/>
+  <circle cx="13.6" cy="21" r="1.8" fill="#f7931a"/>
+</svg>

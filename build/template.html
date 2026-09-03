@@ -1,4 +1,4 @@
-<title>글로벌 자산 상관관계 그래프</title>
+<title>머니 커넥션</title>
 <style>
   :root{
     --bg:#0a0c10;
@@ -38,7 +38,9 @@
     z-index:20; flex:0 0 auto;
   }
   .brand{ display:flex; flex-direction:column; gap:2px; flex:0 0 auto; white-space:nowrap; }
-  .brand .title{ font-family:'Space Grotesk', system-ui, sans-serif; font-size:18px; font-weight:600; letter-spacing:0.2px; white-space:nowrap; }
+  .brand .title{ font-family:'Space Grotesk', system-ui, sans-serif; font-size:18px; font-weight:600;
+                 letter-spacing:0.2px; white-space:nowrap; display:flex; align-items:center; gap:7px; }
+  .brand .logo{ width:24px; height:24px; flex:0 0 auto; }
   .brand .sub{ font-size:11.5px; color:var(--text-muted); white-space:nowrap; }
   .stat{ display:flex; flex-direction:column; gap:1px; padding:0 14px; border-left:1px solid var(--border); flex:0 0 auto; white-space:nowrap; }
   .stat .n{ font-size:16px; font-weight:600; }
@@ -389,7 +391,17 @@
 
 <header>
   <div class="brand">
-    <div class="title">글로벌 자산 상관관계 그래프</div>
+    <div class="title">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M22.6 8.4a9.8 9.8 0 1 0 0 15.2" fill="none" stroke="#5fd0ff" stroke-width="2.9" stroke-linecap="round"/>
+        <g stroke="#7e8794" stroke-width="1">
+          <line x1="15.6" y1="16.4" x2="12.4" y2="11.4"/><line x1="15.6" y1="16.4" x2="20.6" y2="13.6"/>
+          <line x1="15.6" y1="16.4" x2="13.6" y2="21"/><line x1="12.4" y1="11.4" x2="20.6" y2="13.6"/>
+        </g>
+        <circle cx="15.6" cy="16.4" r="2.3" fill="#e8eaed"/><circle cx="12.4" cy="11.4" r="1.8" fill="#3987e5"/>
+        <circle cx="20.6" cy="13.6" r="1.8" fill="#3ddc84"/><circle cx="13.6" cy="21" r="1.8" fill="#f7931a"/>
+      </svg><span>머니 커넥션</span>
+    </div>
     <div class="sub" id="brand-sub">최근 1년 일별 종가 수익률 상관계수 · 상승/하락 연쇄 시뮬레이션</div>
   </div>
   <div class="tabs">

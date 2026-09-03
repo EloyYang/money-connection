@@ -894,20 +894,30 @@ def render(corr, px, oh, cycle, leaders, fund, members, themes, index_date, prob
     # The template is written for the Artifact wrapper, which supplies the
     # document head. A standalone site has to bring its own — without the
     # viewport meta, phones lay the page out at 980px and zoom out.
+    # Logo: a "C" (Connection) whose bowl holds a small node network — the same
+    # thing the dashboard draws. Inline SVG data URI so there is no extra file.
     icon = ("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>"
-            "<circle cx='16' cy='16' r='14' fill='%230a0c10'/>"
-            "<circle cx='11' cy='12' r='3.4' fill='%233987e5'/>"
-            "<circle cx='21' cy='19' r='3.4' fill='%23d95926'/>"
-            "<path d='M11 12 L21 19' stroke='%233ddc84' stroke-width='1.6'/></svg>")
+            "<rect width='32' height='32' rx='7' fill='%230a0c10'/>"
+            "<path d='M22.6 8.4a9.8 9.8 0 1 0 0 15.2' fill='none' stroke='%235fd0ff'"
+            " stroke-width='2.9' stroke-linecap='round'/>"
+            "<g stroke='%237e8794' stroke-width='1'>"
+            "<line x1='15.6' y1='16.4' x2='12.4' y2='11.4'/>"
+            "<line x1='15.6' y1='16.4' x2='20.6' y2='13.6'/>"
+            "<line x1='15.6' y1='16.4' x2='13.6' y2='21'/>"
+            "<line x1='12.4' y1='11.4' x2='20.6' y2='13.6'/></g>"
+            "<circle cx='15.6' cy='16.4' r='2.3' fill='%23e8eaed'/>"
+            "<circle cx='12.4' cy='11.4' r='1.8' fill='%233987e5'/>"
+            "<circle cx='20.6' cy='13.6' r='1.8' fill='%233ddc84'/>"
+            "<circle cx='13.6' cy='21' r='1.8' fill='%23f7931a'/></svg>")
     html = f"""<!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<meta name="description" content="나스닥100·코스피100·주요 ETF·비트코인·이더리움·금의 수익률 상관관계 네트워크와 5년 테마 로테이션 분석. 매일 자동 갱신.">
-<meta property="og:title" content="글로벌 자산 상관관계 그래프">
-<meta property="og:description" content="나스닥100 · 코스피100 · 미국 ETF · 암호화폐 · 금을 한 네트워크에서 비교합니다. 상관계수 · 테마 로테이션 · 봉차트. 구성종목과 시세가 매일 자동 갱신됩니다.">
+<meta name="description" content="머니 커넥션 — 나스닥100·코스피100·주요 ETF·비트코인·이더리움·금이 서로 어떻게 연결돼 움직이는지 보여주는 상관관계 네트워크. 테마 로테이션·계절성·봉차트, 매일 자동 갱신.">
+<meta property="og:title" content="머니 커넥션">
+<meta property="og:description" content="돈이 어디에서 어디로 흐르는지 — 나스닥100 · 코스피100 · 미국 ETF · 암호화폐 · 금을 한 네트워크에서 비교합니다. 매일 자동 갱신.">
 <link rel="icon" href="{icon}">
 </head>
 <body>
@@ -916,6 +926,9 @@ def render(corr, px, oh, cycle, leaders, fund, members, themes, index_date, prob
 </html>
 """
     os.makedirs(out_dir, exist_ok=True)
+    logo_src = os.path.join(ROOT, "logo.svg")          # ship the mark alongside the page
+    if os.path.exists(logo_src):
+        open(os.path.join(out_dir, "logo.svg"), "w").write(open(logo_src).read())
     path = os.path.join(out_dir, "index.html")
     open(path, "w").write(html)
     log(f"wrote {path}  {os.path.getsize(path)/1024/1024:.2f} MB")
