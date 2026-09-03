@@ -138,8 +138,13 @@ def money(v):
     return -x if neg else x
 
 
+# Bump when the shape of a fundamentals entry changes: cached rows built by an
+# older pipeline are then refetched instead of silently missing new fields.
+FUND_SCHEMA = 2
+
+
 def fetch_fundamentals_one(tk):
-    f = {"fetched": datetime.date.today().isoformat()}
+    f = {"fetched": datetime.date.today().isoformat(), "v": FUND_SCHEMA}
     sd = ((get_json(f"https://api.nasdaq.com/api/quote/{tk}/summary?assetclass=stocks", retries=2)
            .get("data") or {}).get("summaryData") or {})
     val = lambda k: (sd.get(k) or {}).get("value")
@@ -163,6 +168,18 @@ def fetch_fundamentals_one(tk):
     f["equity"] = pick(bal, "Total Equity")
     f["assets"] = pick(bal, "Total Assets")
 
+    # quarterly cut of the same statements, for the 분기별 toggle
+    dq = get_json(f"https://api.nasdaq.com/api/company/{tk}/financials?frequency=2", retries=2).get("data") or {}
+    rq = lambda tab: {r["value1"].strip(): r for r in (dq.get(tab) or {}).get("rows", [])}
+    qinc, qbal, qcf = rq("incomeStatementTable"), rq("balanceSheetTable"), rq("cashFlowTable")
+    qhdr = (dq.get("incomeStatementTable") or {}).get("headers", {})
+    f["q_periods"] = [qhdr.get(f"value{i}") for i in (2, 3, 4, 5)]
+    f["q_revenue"] = pick(qinc, "Total Revenue")
+    f["q_op_income"] = pick(qinc, "Operating Income")
+    f["q_net_income"] = pick(qinc, "Net Income") if "Net Income" in qinc else pick(qcf, "Net Income")
+    f["q_liabilities"] = pick(qbal, "Total Liabilities")
+    f["q_cash"] = pick(qbal, "Cash and Cash Equivalents")
+
     eps = (get_json(f"https://api.nasdaq.com/api/quote/{tk}/eps", retries=2).get("data") or {}).get("earningsPerShare") or []
     f["eps"] = [{"t": "P" if e.get("type") == "PreviousQuarter" else "U",
                  "p": e.get("period"),
@@ -170,6 +187,29 @@ def fetch_fundamentals_one(tk):
                  "a": e.get("earnings")} for e in eps]
     prev = [e for e in f["eps"] if e["t"] == "P" and e.get("a")]
     f["eps_ttm"] = round(sum(float(e["a"]) for e in prev[-4:]), 2) if len(prev) >= 4 else None
+
+    # reported quarters carry their actual report date; forecasts extend further
+    # out than /eps does, and yearlyForecast is the only annual EPS series that
+    # exists here (no endpoint serves historical annual EPS).
+    try:
+        sur = (get_json(f"https://api.nasdaq.com/api/company/{tk}/earnings-surprise", retries=2)
+               .get("data") or {}).get("earningsSurpriseTable") or {}
+        f["surprise"] = [{"p": r.get("fiscalQtrEnd"), "d": r.get("dateReported"),
+                          "a": r.get("eps"), "c": money(r.get("consensusForecast")),
+                          "s": money(r.get("percentageSurprise"))}
+                         for r in (sur.get("rows") or [])]
+    except Exception:
+        f["surprise"] = []
+    try:
+        fc = get_json(f"https://api.nasdaq.com/api/analyst/{tk}/earnings-forecast", retries=2).get("data") or {}
+        conv = lambda tab: [{"p": r.get("fiscalEnd"), "c": r.get("consensusEPSForecast"),
+                             "hi": r.get("highEPSForecast"), "lo": r.get("lowEPSForecast"),
+                             "n": r.get("noOfEstimates")}
+                            for r in ((fc.get(tab) or {}).get("rows") or [])]
+        f["fc_year"] = conv("yearlyForecast")
+        f["fc_qtr"] = conv("quarterlyForecast")
+    except Exception:
+        f["fc_year"] = f["fc_qtr"] = []
     return f
 
 
@@ -179,8 +219,8 @@ def fetch_fundamentals(tickers, cache_path, max_refresh, workers):
     ticker; this keeps the daily job cheap while nothing goes stale for long."""
     cache = json.load(open(cache_path)) if os.path.exists(cache_path) else {}
     today = datetime.date.today().isoformat()
-    missing = [t for t in tickers if t not in cache]
-    stale = sorted([t for t in tickers if t in cache],
+    missing = [t for t in tickers if t not in cache or cache[t].get("v") != FUND_SCHEMA]
+    stale = sorted([t for t in tickers if t in cache and cache[t].get("v") == FUND_SCHEMA],
                    key=lambda t: cache[t].get("fetched", ""))
     todo = missing + [t for t in stale if cache[t].get("fetched", "") != today]
     todo = todo[:max(len(missing), max_refresh)]

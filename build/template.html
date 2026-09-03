@@ -277,25 +277,21 @@
                          display:inline-block; transition:transform .15s; }
   .fin-row.open .lab::before{ transform:rotate(90deg); color:var(--accent); }
   .fin-chart{ padding:2px 0 10px; }
-  .fin-combo-head{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center;
-                   padding:5px; margin-bottom:2px; border-radius:6px; cursor:pointer;
-                   font-size:11.5px; font-weight:600; background:rgba(255,255,255,0.04); }
-  .fin-combo-head:hover{ background:rgba(255,255,255,0.07); }
-  .fin-combo-head.open{ background:rgba(95,208,255,0.10); }
-  .fin-combo-head .lab::before{ content:'▸'; font-size:8.5px; color:var(--text-muted); margin-right:5px;
-                                display:inline-block; transition:transform .15s; }
-  .fin-combo-head.open .lab::before{ transform:rotate(90deg); color:var(--accent); }
-  .fin-combo-head .hint2{ font-size:9.5px; font-weight:400; color:var(--text-muted); }
-  .combo-legend{ display:flex; flex-wrap:wrap; gap:4px 10px; padding:2px 5px 0; font-size:10.5px; }
+  .perf-head{ display:flex; align-items:center; gap:8px; padding:2px 4px 6px; }
+  .perf-head .ttl{ font-size:12px; font-weight:600; }
+  #fund-eps-note{ font-size:10px; color:var(--text-muted); padding:0 5px 4px; }
+  .perf-seg{ display:flex; gap:2px; background:rgba(255,255,255,0.06); padding:2px; border-radius:7px; margin-left:auto; }
+  .perf-seg button{ border:none; background:none; color:var(--text-muted); font-family:inherit;
+                    font-size:10.5px; font-weight:600; padding:4px 10px; border-radius:5px; cursor:pointer; }
+  .perf-seg button:hover{ color:var(--text-primary); }
+  .perf-seg button.on{ background:#2c3138; color:var(--text-primary); }
+  .combo-legend{ display:flex; flex-wrap:wrap; justify-content:center; gap:4px 14px;
+                 padding:6px 5px 0; font-size:10.5px; }
   .combo-legend button{ display:flex; align-items:center; gap:5px; background:none; border:none;
                         color:var(--text-secondary); font-family:inherit; font-size:10.5px;
                         cursor:pointer; padding:2px 0; }
   .combo-legend button.off{ opacity:0.34; text-decoration:line-through; }
-  .combo-legend .sw{ width:9px; height:9px; border-radius:2px; }
-  .combo-scale{ margin-left:auto; border:1px solid var(--border-strong); background:none;
-                color:var(--text-secondary); font-family:inherit; font-size:9.5px; font-weight:600;
-                border-radius:5px; padding:2px 7px; cursor:pointer; }
-  .combo-scale.on{ border-color:var(--accent); color:var(--accent); background:rgba(95,208,255,0.12); }
+  .combo-legend .sw{ width:9px; height:9px; border-radius:50%; }
   .fin-chart .cap{ font-size:10px; color:var(--text-muted); line-height:1.45; padding:0 5px 4px; }
   .eps-head{ cursor:pointer; }
   .eps-head:hover span:first-child{ color:var(--text-primary); }
@@ -496,11 +492,22 @@
     <div id="fund-block">
       <div class="sec-title"><span>펀더멘털</span><span class="mono" id="fund-period"></span></div>
       <div class="fund-grid" id="fund-kpis"></div>
-      <div class="fin-combo-head" id="combo-head"><span class="lab">4개 지표 함께 보기</span><span class="hint2">매출 · 순이익 · 현금 · 부채</span></div>
+      <div class="perf-head">
+        <span class="ttl">성과</span>
+        <span class="perf-seg" id="perf-period">
+          <button data-p="annual" class="on">연간</button><button data-p="quarter">분기별</button>
+        </span>
+      </div>
       <div class="fin-chart" id="combo-chart"></div>
       <div id="fund-fin"></div>
-      <div class="sec-title eps-head" id="fund-eps-title"><span>▸ 실적 발표 · 추정</span><span class="mono" id="fund-eps-note"></span></div>
-      <div id="fund-eps-chart"></div>
+      <div class="perf-head" style="margin-top:14px">
+        <span class="ttl">어닝</span>
+        <span class="perf-seg" id="eps-period">
+          <button data-p="annual">연간</button><button data-p="quarter" class="on">분기별</button>
+        </span>
+      </div>
+      <div class="mono" id="fund-eps-note"></div>
+      <div class="fin-chart" id="fund-eps-chart"></div>
       <div id="fund-eps"></div>
       <div class="fund-note" id="fund-src"></div>
     </div>
@@ -1233,155 +1240,228 @@ function drawFinChart(host, f, key, label){
    instead of size. */
 const COMBO_METRICS = [
   { k:'revenue',     label:'매출',       c:'#3987e5' },
-  { k:'net_income',  label:'순이익',     c:'#199e70' },
-  { k:'cash',        label:'현금성자산', c:'#9085e9' },
-  { k:'liabilities', label:'부채',       c:'#e66767' },
+  { k:'net_income',  label:'순이익',     c:'#2bb8a3' },
+  { k:'cash',        label:'현금성자산', c:'#9085e9', off:true },
+  { k:'liabilities', label:'부채',       c:'#e66767', off:true },
 ];
-let comboHidden = new Set(), comboIndexed = false;
+const MARGIN_COLOR = '#e08033';
+let comboHidden = new Set(COMBO_METRICS.filter(m => m.off).map(m => m.k));
+let comboShowMargin = true, comboPeriod = 'annual';
 
+function periodLabel(p, quarterly){
+  const m = String(p || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(!m) return p || '';
+  return quarterly ? `${m[3].slice(2)}.${m[1].padStart(2,'0')}` : m[3];
+}
+
+/* Bars carry the money on the right axis; the net-margin line carries percent on
+   the left. Two scales in one frame is only safe if each axis is unmistakably
+   bound to its series, so the tick labels are painted in their series' colour. */
 function drawCombinedFin(host, f){
   host.innerHTML = '';
-  const years = (f.periods || []).map((p, i) => ({ p, i }))
-    .filter(d => d.p).reverse();                        // oldest -> newest
-  if(years.length < 2){ host.innerHTML = '<div class="cap">연도별 데이터가 부족합니다.</div>'; return; }
+  const quarterly = comboPeriod === 'quarter';
+  const px = quarterly ? 'q_' : '';
+  const periods = (f[px + 'periods'] || []).map((p, i) => ({ p, i })).filter(d => d.p).reverse();
+  if(periods.length < 2){
+    host.innerHTML = `<div class="cap">${quarterly ? '분기' : '연도'}별 데이터가 부족합니다.</div>`;
+    renderComboControls(host, f);
+    return;
+  }
 
-  const active = COMBO_METRICS.filter(m => !comboHidden.has(m.k) && (f[m.k] || []).some(v => v != null));
-  const skipped = [];
-  const series = active.map(m => {
-    const vals = years.map(y => (f[m.k] || [])[y.i]);
-    if(!comboIndexed) return { ...m, vals, raw: vals };
-    const base = vals.find(v => v != null);
-    if(base == null || base <= 0){ skipped.push(m.label); return null; }
-    return { ...m, raw: vals, vals: vals.map(v => v == null ? null : v / base * 100) };
-  }).filter(Boolean);
+  const series = COMBO_METRICS.filter(m => !comboHidden.has(m.k))
+    .map(m => ({ ...m, vals: periods.map(d => (f[px + m.k] || [])[d.i]) }))
+    .filter(sr => sr.vals.some(v => v != null));
 
-  const W = 298, H = 168, mg = { t: 14, r: 36, b: 24, l: 6 };
+  const rev = periods.map(d => (f[px + 'revenue'] || [])[d.i]);
+  const net = periods.map(d => (f[px + 'net_income'] || [])[d.i]);
+  const margin = periods.map((_, i) => (rev[i] && net[i] != null) ? net[i] / rev[i] * 100 : null);
+  const hasMargin = comboShowMargin && margin.some(v => v != null);
+
+  const W = 298, H = 176, mg = { t: 12, r: 42, b: 26, l: 34 };
   const innerW = W - mg.l - mg.r, innerH = H - mg.t - mg.b;
-  const flat = series.flatMap(s => s.vals).filter(v => v != null);
-  if(!flat.length){ host.innerHTML = '<div class="cap">표시할 계열이 없습니다.</div>'; return; }
-  const hi = Math.max(0, ...flat), lo = Math.min(0, ...flat), span = (hi - lo) || 1;
-  const y = v => mg.t + innerH - ((v - lo) / span) * innerH;
-  const groupW = innerW / years.length;
-  const bw = Math.max(4, (groupW * 0.74) / Math.max(1, series.length));
-  const gx = i => mg.l + i * groupW;
-
   const svg = d3.select(host).append('svg')
     .attr('viewBox', `0 0 ${W} ${H}`).attr('width', '100%').attr('height', H);
 
-  const fmtAxis = v => comboIndexed ? Math.round(v) : fmtMoney(v);
-  d3.ticks(lo, hi, 4).forEach(t => {
-    svg.append('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', y(t)).attr('y2', y(t))
-      .attr('stroke', t === 0 ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.06)');
-    svg.append('text').attr('x', W - mg.r + 5).attr('y', y(t) + 3).attr('font-size', 8.5)
-      .attr('fill', '#6b7380').attr('font-family', "'JetBrains Mono',monospace").text(fmtAxis(t));
+  const money = series.flatMap(sr => sr.vals).filter(v => v != null);
+  const mHi = Math.max(0, ...money), mLo = Math.min(0, ...money);
+  const mSpan = (mHi - mLo) || 1;
+  const yMoney = v => mg.t + innerH - ((v - mLo) / mSpan) * innerH;
+
+  const mgVals = margin.filter(v => v != null);
+  const pHi = hasMargin ? Math.max(...mgVals) : 1, pLo = hasMargin ? Math.min(...mgVals) : 0;
+  const padP = Math.max(2, (pHi - pLo) * 0.18);
+  const pTop = pHi + padP, pBot = Math.min(pLo - padP, 0);
+  const yPct = v => mg.t + innerH - ((v - pBot) / ((pTop - pBot) || 1)) * innerH;
+
+  d3.ticks(mLo, mHi, 4).forEach(t => {
+    svg.append('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', yMoney(t)).attr('y2', yMoney(t))
+      .attr('stroke', t === 0 ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.07)');
+    svg.append('text').attr('x', W - mg.r + 5).attr('y', yMoney(t) + 3).attr('font-size', 8.5)
+      .attr('fill', '#7d8590').attr('font-family', "'JetBrains Mono',monospace").text(fmtMoney(t));
   });
-  if(comboIndexed){
-    svg.append('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', y(100)).attr('y2', y(100))
-      .attr('stroke', 'rgba(255,255,255,0.22)').attr('stroke-dasharray', '3,3');
+  if(hasMargin){
+    d3.ticks(pBot, pTop, 4).forEach(t => {
+      svg.append('text').attr('x', mg.l - 5).attr('y', yPct(t) + 3).attr('text-anchor', 'end')
+        .attr('font-size', 8.5).attr('fill', MARGIN_COLOR)
+        .attr('font-family', "'JetBrains Mono',monospace").text(Math.round(t) + '%');
+    });
   }
 
-  years.forEach((yr, gi) => {
-    series.forEach((s, si) => {
-      const v = s.vals[gi];
+  const groupW = innerW / periods.length;
+  const bw = series.length ? Math.max(4, (groupW * 0.62) / series.length) : 0;
+  periods.forEach((d, gi) => {
+    const gx = mg.l + gi * groupW;
+    series.forEach((sr, si) => {
+      const v = sr.vals[gi];
       if(v == null) return;
-      const x = gx(gi) + groupW * 0.13 + si * bw;
-      const up = v >= 0, top = up ? y(v) : y(0);
-      const h = Math.max(1.2, Math.abs(y(v) - y(0)));
-      const rect = svg.append('rect').attr('x', x).attr('y', top).attr('width', bw - 1).attr('height', h)
-        .attr('rx', 1.6).attr('fill', s.c)
-        .attr('opacity', gi === years.length - 1 ? 0.95 : 0.55);
-      rect.append('title').text(`${fyLabel(yr.p)} · ${s.label} ${fmtMoney(s.raw[gi])}`
-        + (comboIndexed ? ` (지수 ${Math.round(v)})` : ''));
+      const x = gx + groupW * 0.19 + si * bw;
+      const up = v >= 0, top = up ? yMoney(v) : yMoney(0);
+      svg.append('rect').attr('x', x).attr('y', top).attr('width', Math.max(2, bw - 1.5))
+        .attr('height', Math.max(1.2, Math.abs(yMoney(v) - yMoney(0)))).attr('rx', 1.5)
+        .attr('fill', sr.c)
+        .append('title').text(`${periodLabel(d.p, quarterly)} · ${sr.label} ${fmtMoney(v)}`);
     });
-    svg.append('text').attr('x', gx(gi) + groupW / 2).attr('y', H - 7).attr('text-anchor', 'middle')
-      .attr('font-size', 9).attr('font-family', "'JetBrains Mono',monospace")
-      .attr('font-weight', gi === years.length - 1 ? 700 : 400)
-      .attr('fill', gi === years.length - 1 ? 'var(--text-secondary)' : '#6b7380')
-      .text(fyLabel(yr.p));
+    svg.append('text').attr('x', gx + groupW / 2).attr('y', H - 8).attr('text-anchor', 'middle')
+      .attr('font-size', 9).attr('fill', '#7d8590').attr('font-family', "'JetBrains Mono',monospace")
+      .text(periodLabel(d.p, quarterly));
   });
 
-  // legend doubles as the series filter — hiding revenue lets the rest breathe
+  if(hasMargin){
+    const pts = margin.map((v, i) => ({ v, x: mg.l + i * groupW + groupW / 2 })).filter(d => d.v != null);
+    svg.append('path').datum(pts)
+      .attr('d', d3.line().x(d => d.x).y(d => yPct(d.v)))
+      .attr('fill', 'none').attr('stroke', MARGIN_COLOR).attr('stroke-width', 1.8);
+    pts.forEach(d => {
+      svg.append('circle').attr('cx', d.x).attr('cy', yPct(d.v)).attr('r', 3.2)
+        .attr('fill', '#0f1319').attr('stroke', MARGIN_COLOR).attr('stroke-width', 1.6)
+        .append('title').text(`순마진 ${d.v.toFixed(1)}%`);
+    });
+  }
+  renderComboControls(host, f);
+}
+
+function renderComboControls(host, f){
   const legend = document.createElement('div');
   legend.className = 'combo-legend';
-  legend.innerHTML = COMBO_METRICS.map(m => {
-    const off = comboHidden.has(m.k);
-    return `<button data-k="${m.k}" class="${off ? 'off' : ''}">
-        <span class="sw" style="background:${m.c}"></span>${m.label}</button>`;
-  }).join('') + `<button class="combo-scale ${comboIndexed ? 'on' : ''}" data-scale="1">지수화 (첫 해=100)</button>`;
+  legend.innerHTML = COMBO_METRICS.map(m =>
+    `<button data-k="${m.k}" class="${comboHidden.has(m.k) ? 'off' : ''}">
+       <span class="sw" style="background:${m.c}"></span>${m.label}</button>`).join('')
+    + `<button data-margin="1" class="${comboShowMargin ? '' : 'off'}">
+         <span class="sw" style="background:${MARGIN_COLOR}"></span>순마진 %</button>`;
   host.appendChild(legend);
-
-  const cap = document.createElement('div');
-  cap.className = 'cap';
-  cap.textContent = comboIndexed
-    ? '첫 해를 100으로 맞춰 성장 속도를 비교합니다. 막대에 마우스를 올리면 실제 금액이 표시됩니다.'
-      + (skipped.length ? ` (${skipped.join('·')}은 기준연도 값이 0 이하라 지수화 불가)` : '')
-    : '금액 그대로 비교합니다. 규모 차이가 크면 범례를 눌러 계열을 숨기거나 지수화를 켜세요.';
-  host.appendChild(cap);
 
   legend.querySelectorAll('button[data-k]').forEach(b => {
     b.addEventListener('click', () => {
       const k = b.dataset.k;
       comboHidden.has(k) ? comboHidden.delete(k) : comboHidden.add(k);
-      if(comboHidden.size === COMBO_METRICS.length) comboHidden.delete(k);   // never blank the chart
+      if(comboHidden.size === COMBO_METRICS.length) comboHidden.delete(k);
       drawCombinedFin(host, f);
     });
   });
-  legend.querySelector('[data-scale]').addEventListener('click', () => {
-    comboIndexed = !comboIndexed;
+  legend.querySelector('[data-margin]').addEventListener('click', () => {
+    comboShowMargin = !comboShowMargin;
     drawCombinedFin(host, f);
   });
 }
 
-/* quarterly EPS: actual bars with the consensus marked, then upcoming consensus */
-function drawEpsChart(host, f){
-  const eps = (f.eps || []).filter(e => e.p);
-  const past = eps.filter(e => e.t === 'P').slice(-4);
-  const next = eps.filter(e => e.t === 'U').slice(0, 3);
-  const pts = past.concat(next);
-  if(pts.length < 2){ host.innerHTML = '<div class="cap">분기 실적 데이터가 부족합니다.</div>'; return; }
+/* Earnings as a dot plot: filled = reported, hollow = consensus estimate.
+   Annual actuals do not exist in any Nasdaq endpoint, so the 연간 view anchors
+   on trailing-twelve-month actual and extends with the yearly consensus —
+   labelled as such rather than dressed up as fiscal-year history. */
+const EPS_COLOR = '#2bb8a3';
+let epsPeriod = 'quarter';
 
-  const W = 298, H = 124, m = { t: 16, r: 6, b: 30, l: 6 };
-  const innerW = W - m.l - m.r, innerH = H - m.t - m.b;
-  const nums = pts.flatMap(e => [e.a || 0, e.c || 0]).filter(v => v != null);
-  const hi = Math.max(0, ...nums), lo = Math.min(0, ...nums);
-  const span = (hi - lo) || 1;
-  const y = v => m.t + innerH - ((v - lo) / span) * innerH;
-  const bw = Math.min(30, innerW / pts.length * 0.6);
-  const x = i => m.l + (i + 0.5) * (innerW / pts.length);
+function drawEpsChart(host, f){
+  host.innerHTML = '';
+  const quarterly = epsPeriod === 'quarter';
+  let pts = [];
+
+  if(quarterly){
+    const rep = (f.surprise || []).slice().reverse();        // oldest -> newest
+    pts = rep.map(r => ({ label: r.p, v: r.a == null ? null : +r.a, est: false,
+                          note: r.d ? `${r.d} 발표` : '', sur: r.s }));
+    if(!pts.length){
+      pts = (f.eps || []).filter(e => e.t === 'P' && e.a != null)
+        .map(e => ({ label: e.p, v: +e.a, est: false, note: '' }));
+    }
+    const seen = new Set(pts.map(p => p.label));
+    (f.fc_qtr || []).forEach(q => {
+      if(q.c == null || seen.has(q.p)) return;
+      pts.push({ label: q.p, v: +q.c, est: true, note: q.n ? `추정 ${q.n}곳` : '' });
+    });
+  } else {
+    if(f.eps_ttm != null) pts.push({ label: '최근 12개월', v: f.eps_ttm, est: false, note: '분기 실적 합계' });
+    (f.fc_year || []).forEach(y => {
+      if(y.c == null) return;
+      pts.push({ label: y.p, v: +y.c, est: true, note: y.n ? `추정 ${y.n}곳` : '' });
+    });
+  }
+  pts = pts.filter(p => p.v != null);
+  if(pts.length < 2){ host.innerHTML = '<div class="cap">EPS 데이터가 부족합니다.</div>'; renderEpsLegend(host, f); return; }
+
+  const W = 298, H = 168, mg = { t: 14, r: 40, b: 26, l: 8 };
+  const innerW = W - mg.l - mg.r, innerH = H - mg.t - mg.b;
+  const vals = pts.map(p => p.v);
+  const hi = Math.max(0, ...vals), lo = Math.min(0, ...vals);
+  const pad = (hi - lo) * 0.12 || 1;
+  const y = v => mg.t + innerH - ((v - (lo - pad)) / ((hi + pad) - (lo - pad))) * innerH;
+  const x = i => mg.l + (i + 0.5) * (innerW / pts.length);
 
   const svg = d3.select(host).append('svg')
     .attr('viewBox', `0 0 ${W} ${H}`).attr('width', '100%').attr('height', H);
-  svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(0)).attr('y2', y(0))
-    .attr('stroke', 'rgba(255,255,255,0.16)');
 
-  pts.forEach((e, i) => {
-    const future = e.t === 'U';
-    const v = future ? e.c : e.a;
-    if(v == null) return;
-    const up = v >= 0, top = up ? y(v) : y(0), h = Math.max(1.5, Math.abs(y(v) - y(0)));
-    svg.append('rect').attr('x', x(i) - bw / 2).attr('y', top).attr('width', bw).attr('height', h)
-      .attr('rx', 2.5)
-      .attr('fill', future ? 'none' : (up ? 'var(--up)' : 'var(--down)'))
-      .attr('opacity', future ? 1 : 0.85)
-      .attr('stroke', future ? 'var(--accent)' : 'none')
-      .attr('stroke-width', future ? 1.3 : 0)
-      .attr('stroke-dasharray', future ? '3,2' : null);
-    // consensus tick on reported quarters, so beats/misses read at a glance
-    if(!future && e.c != null){
-      svg.append('line').attr('x1', x(i) - bw / 2 - 2).attr('x2', x(i) + bw / 2 + 2)
-        .attr('y1', y(e.c)).attr('y2', y(e.c))
-        .attr('stroke', 'var(--text-primary)').attr('stroke-width', 1.4).attr('opacity', 0.75);
-    }
-    svg.append('text').attr('x', x(i)).attr('y', top - 4.5).attr('text-anchor', 'middle')
-      .attr('font-size', 9).attr('font-family', "'JetBrains Mono',monospace")
-      .attr('fill', future ? 'var(--accent)' : 'var(--text-primary)').text(v);
-    svg.append('text').attr('x', x(i)).attr('y', H - 18).attr('text-anchor', 'middle')
-      .attr('font-size', 8.5).attr('fill', '#6b7380')
-      .text(String(e.p).replace(/\s+/, "'").slice(0, 6));
+  d3.ticks(lo, hi, 4).forEach(t => {
+    svg.append('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', y(t)).attr('y2', y(t))
+      .attr('stroke', t === 0 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)');
+    svg.append('text').attr('x', W - mg.r + 6).attr('y', y(t) + 3).attr('font-size', 8.5)
+      .attr('fill', '#7d8590').attr('font-family', "'JetBrains Mono',monospace").text(t.toFixed(2));
   });
-  svg.append('text').attr('x', m.l).attr('y', H - 5).attr('font-size', 8.5).attr('fill', '#565d69')
-    .text('막대=실제 · 가로선=컨센서스 · 점선=추정');
-  host.querySelector('svg').insertAdjacentHTML('afterend', '');
+
+  pts.forEach((p, i) => {
+    const c = svg.append('circle').attr('cx', x(i)).attr('cy', y(p.v)).attr('r', 6)
+      .attr('fill', p.est ? 'none' : EPS_COLOR)
+      .attr('stroke', p.est ? 'rgba(255,255,255,0.55)' : 'none')
+      .attr('stroke-width', p.est ? 1.6 : 0)
+      .attr('opacity', p.est ? 1 : 0.9);
+    c.append('title').text(`${p.label} · EPS ${p.v}${p.est ? ' (컨센서스)' : ''}`
+      + (p.note ? ` · ${p.note}` : '')
+      + (p.sur != null ? ` · 서프라이즈 ${p.sur > 0 ? '+' : ''}${p.sur}%` : ''));
+    const stride = pts.length > 6 ? 2 : 1;
+    const showLabel = (i % stride === 0) || i === pts.length - 1;
+    if(showLabel){
+      svg.append('text').attr('x', x(i)).attr('y', H - 8).attr('text-anchor', 'middle')
+        .attr('font-size', 8.5).attr('fill', '#7d8590')
+        .attr('font-family', "'JetBrains Mono',monospace")
+        .text(p.label === '최근 12개월' ? 'TTM' : periodLabel2(p.label));
+    }
+  });
+
+  renderEpsLegend(host, f);
+}
+
+const MONTH_NUM = { jan:'01', feb:'02', mar:'03', apr:'04', may:'05', jun:'06',
+                    jul:'07', aug:'08', sep:'09', oct:'10', nov:'11', dec:'12' };
+function periodLabel2(label){
+  const m = String(label || '').match(/([A-Za-z]{3})\s*(\d{4})/);
+  if(!m) return String(label || '').slice(0, 7);
+  return `${m[2].slice(2)}.${MONTH_NUM[m[1].toLowerCase()] || m[1]}`;
+}
+
+function renderEpsLegend(host, f){
+  const legend = document.createElement('div');
+  legend.className = 'combo-legend';
+  legend.innerHTML =
+    `<span style="display:flex;align-items:center;gap:5px;color:var(--text-secondary)">
+       <span class="sw" style="background:${EPS_COLOR}"></span>발표</span>
+     <span style="display:flex;align-items:center;gap:5px;color:var(--text-secondary)">
+       <span class="sw" style="background:none;border:1.6px solid rgba(255,255,255,0.55)"></span>평가</span>`;
+  host.appendChild(legend);
+  if(epsPeriod === 'annual'){
+    const cap = document.createElement('div');
+    cap.className = 'cap';
+    cap.textContent = '연간 실적 EPS 이력은 제공되지 않아, 최근 12개월(TTM) 실적과 회계연도별 컨센서스를 잇습니다.';
+    host.appendChild(cap);
+  }
 }
 
 function toggleFinChart(rowEl, hostEl, drawFn){
@@ -1422,15 +1502,19 @@ function renderFundamentals(tk){
     row('liabilities', '총부채', f.liabilities, debtEq != null ? `부채/자본 ${debtEq.toFixed(2)}` : '') +
     row('cash', '현금성자산', f.cash);
 
-  const comboHead = document.getElementById('combo-head');
   const comboHost = document.getElementById('combo-chart');
-  comboHidden = new Set(); comboIndexed = false;
-  comboHost.innerHTML = ''; comboHead.classList.remove('open');
-  comboHead.onclick = ()=>{
-    const open = comboHead.classList.toggle('open');
-    comboHost.innerHTML = '';
-    if(open) drawCombinedFin(comboHost, f);
-  };
+  comboHidden = new Set(COMBO_METRICS.filter(m => m.off).map(m => m.k));
+  comboShowMargin = true;
+  document.querySelectorAll('#perf-period button').forEach(b => {
+    b.classList.toggle('on', b.dataset.p === comboPeriod);
+    b.onclick = () => {
+      comboPeriod = b.dataset.p;
+      document.querySelectorAll('#perf-period button')
+        .forEach(x => x.classList.toggle('on', x.dataset.p === comboPeriod));
+      drawCombinedFin(comboHost, f);
+    };
+  });
+  drawCombinedFin(comboHost, f);
 
   const labels = { revenue:'매출', op_income:'영업이익', net_income:'순이익',
                    liabilities:'총부채', cash:'현금성자산' };
@@ -1444,7 +1528,7 @@ function renderFundamentals(tk){
   const prev = eps.filter(e => e.t === 'P').slice(-4).reverse();
   const next = eps.filter(e => e.t === 'U').slice(0, 3);
   const beats = prev.filter(e => e.a != null && e.c != null && e.a > e.c).length;
-  document.getElementById('fund-eps-note').textContent = prev.length ? `최근 ${prev.length}분기 중 ${beats}회 상회` : '';
+  const beatNote = prev.length ? `최근 ${prev.length}분기 중 ${beats}회 상회` : '';
   const epsRow = e => {
     const sur = (e.a && e.c) ? (e.a - e.c) / Math.abs(e.c) * 100 : null;
     const col = sur == null ? 'var(--text-muted)' : (sur >= 0 ? 'var(--up)' : 'var(--down)');
@@ -1457,19 +1541,26 @@ function renderFundamentals(tk){
       <span class="num" style="color:var(--accent)">컨센서스 ${e.c ?? '—'}</span>
       <span class="num" style="color:var(--text-muted)">발표 예정</span><span class="sur"></span></div>`;
   document.getElementById('fund-eps').innerHTML =
+    (beatNote ? `<div class="lead-split" style="margin:2px 0 3px">${beatNote}</div>` : '') +
     (prev.length ? prev.map(epsRow).join('') : '<div class="empty">실적 데이터 없음</div>') +
     (next.length ? `<div class="lead-split" style="margin:7px 0 2px">추정</div>` + next.map(fcRow).join('') : '');
 
-  const epsHead = document.getElementById('fund-eps-title');
   const epsHost = document.getElementById('fund-eps-chart');
-  epsHost.innerHTML = '';
-  epsHead.querySelector('span').textContent = '▸ 실적 발표 · 추정';
-  epsHead.onclick = ()=>{
-    const open = !epsHost.innerHTML;
-    epsHost.innerHTML = '';
-    epsHead.querySelector('span').textContent = (open ? '▾' : '▸') + ' 실적 발표 · 추정';
-    if(open) drawEpsChart(epsHost, f);
-  };
+  const lastRep = (f.surprise || [])[0];
+  const nextQ = (f.fc_qtr || [])[0];
+  document.getElementById('fund-eps-note').textContent =
+    (lastRep && lastRep.d ? `최근 발표 ${lastRep.d}` : '') +
+    (nextQ ? `${lastRep && lastRep.d ? ' · ' : ''}다음 ${nextQ.p} 예정` : '');
+  document.querySelectorAll('#eps-period button').forEach(b => {
+    b.classList.toggle('on', b.dataset.p === epsPeriod);
+    b.onclick = () => {
+      epsPeriod = b.dataset.p;
+      document.querySelectorAll('#eps-period button')
+        .forEach(x => x.classList.toggle('on', x.dataset.p === epsPeriod));
+      drawEpsChart(epsHost, f);
+    };
+  });
+  drawEpsChart(epsHost, f);
 
   document.getElementById('fund-src').textContent =
     `연간 재무제표 ${f.periods ? f.periods.filter(Boolean).join(' / ') : ''} · 출처 Nasdaq (${f.fetched} 수집)`;
