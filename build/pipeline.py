@@ -125,6 +125,85 @@ def resolve_themes(tickers, cfg, cache_path):
 
 
 # --------------------------------------------------------------------------
+# 2b. fundamentals
+# --------------------------------------------------------------------------
+def money(v):
+    """Nasdaq statement figures are strings in thousands: '$215,938,000'."""
+    if v is None: return None
+    s = str(v).strip().replace("$", "").replace(",", "").replace("%", "")
+    if s in ("", "N/A", "--", "n/a"): return None
+    neg = s.startswith("(") and s.endswith(")")
+    try: x = float(s.strip("()"))
+    except ValueError: return None
+    return -x if neg else x
+
+
+def fetch_fundamentals_one(tk):
+    f = {"fetched": datetime.date.today().isoformat()}
+    sd = ((get_json(f"https://api.nasdaq.com/api/quote/{tk}/summary?assetclass=stocks", retries=2)
+           .get("data") or {}).get("summaryData") or {})
+    val = lambda k: (sd.get(k) or {}).get("value")
+    f["target"] = money(val("OneYrTarget"))
+    f["range52"] = val("FiftTwoWeekHighLow")
+    f["yield"] = val("Yield")
+    f["div"] = val("AnnualizedDividend")
+
+    d = get_json(f"https://api.nasdaq.com/api/company/{tk}/financials?frequency=1", retries=2).get("data") or {}
+    rows = lambda tab: {r["value1"].strip(): r for r in (d.get(tab) or {}).get("rows", [])}
+    inc, bal, cf = rows("incomeStatementTable"), rows("balanceSheetTable"), rows("cashFlowTable")
+    hdr = (d.get("incomeStatementTable") or {}).get("headers", {})
+    f["periods"] = [hdr.get(f"value{i}") for i in (2, 3, 4, 5)]
+    pick = lambda t, label: [money((t.get(label) or {}).get(f"value{i}")) for i in (2, 3, 4, 5)]
+    f["revenue"] = pick(inc, "Total Revenue")
+    f["op_income"] = pick(inc, "Operating Income")
+    f["net_income"] = pick(inc, "Net Income") if "Net Income" in inc else pick(cf, "Net Income")
+    f["liabilities"] = pick(bal, "Total Liabilities")
+    f["lt_debt"] = pick(bal, "Long-Term Debt")
+    f["cash"] = pick(bal, "Cash and Cash Equivalents")
+    f["equity"] = pick(bal, "Total Equity")
+    f["assets"] = pick(bal, "Total Assets")
+
+    eps = (get_json(f"https://api.nasdaq.com/api/quote/{tk}/eps", retries=2).get("data") or {}).get("earningsPerShare") or []
+    f["eps"] = [{"t": "P" if e.get("type") == "PreviousQuarter" else "U",
+                 "p": e.get("period"),
+                 "c": e.get("consensus"),
+                 "a": e.get("earnings")} for e in eps]
+    prev = [e for e in f["eps"] if e["t"] == "P" and e.get("a")]
+    f["eps_ttm"] = round(sum(float(e["a"]) for e in prev[-4:]), 2) if len(prev) >= 4 else None
+    return f
+
+
+def fetch_fundamentals(tickers, cache_path, max_refresh, workers):
+    """Statements move quarterly, so refresh a rotating slice: the oldest
+    `max_refresh` entries plus anything missing. A full run costs 3 calls per
+    ticker; this keeps the daily job cheap while nothing goes stale for long."""
+    cache = json.load(open(cache_path)) if os.path.exists(cache_path) else {}
+    today = datetime.date.today().isoformat()
+    missing = [t for t in tickers if t not in cache]
+    stale = sorted([t for t in tickers if t in cache],
+                   key=lambda t: cache[t].get("fetched", ""))
+    todo = missing + [t for t in stale if cache[t].get("fetched", "") != today]
+    todo = todo[:max(len(missing), max_refresh)]
+    if todo:
+        log(f"fundamentals: refreshing {len(todo)} ({len(missing)} new)")
+
+    def one(tk):
+        try:
+            return tk, fetch_fundamentals_one(tk), None
+        except Exception as e:                        # noqa: BLE001
+            return tk, None, str(e)
+
+    if todo:
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            for tk, data, err in ex.map(one, todo):
+                if data: cache[tk] = data
+                else: log(f"  ! fundamentals failed for {tk}: {err}")
+    cache = {t: v for t, v in cache.items() if t in set(tickers)}   # drop removed members
+    json.dump(cache, open(cache_path, "w"), separators=(",", ":"), ensure_ascii=False, sort_keys=True)
+    return cache
+
+
+# --------------------------------------------------------------------------
 # 3. prices
 # --------------------------------------------------------------------------
 def parse_money(v):
@@ -368,8 +447,44 @@ def analyse(series, members, themes, index_date):
             (row is None or (row[0] == row[1] == row[2] == row[3])) for row in ohlc[t] if row)],
     }
 
+    leaders = latest_session_leaders(dates, ohlc, tickers, members)
     cycle = analyse_cycle(dates, rets5y, tickers, themes)
-    return corr, px, oh, cycle
+    return corr, px, oh, cycle, leaders
+
+
+def latest_session_leaders(dates, ohlc, tickers, members, top=6):
+    """Who moved the index on the most recent session.
+
+    `chg` is the plain close-to-close move; `contrib` weights it by the share
+    of total market cap, which is what actually pushed the index around."""
+    if len(dates) < 2: return {}
+    last = len(dates) - 1
+    total_cap = sum(members[t]["market_cap"] for t in tickers) or 1
+    rows, index_chg = [], 0.0
+    for t in tickers:
+        cur = ohlc[t][last]
+        prev_i = last - 1
+        while prev_i >= 0 and ohlc[t][prev_i] is None: prev_i -= 1
+        if cur is None or prev_i < 0: continue
+        prev = ohlc[t][prev_i]
+        if not prev[3]: continue
+        chg = (cur[3] - prev[3]) / prev[3] * 100
+        w = members[t]["market_cap"] / total_cap
+        contrib = chg * w
+        index_chg += contrib
+        rows.append({"t": t, "chg": round(chg, 2), "contrib": round(contrib, 4),
+                     "close": cur[3], "vol": cur[4]})
+    rows.sort(key=lambda r: -r["chg"])
+    return {
+        "date": dates[last].isoformat(),
+        "index_chg": round(index_chg, 2),
+        "advancers": sum(1 for r in rows if r["chg"] > 0),
+        "decliners": sum(1 for r in rows if r["chg"] < 0),
+        "up": rows[:top],
+        "down": list(reversed(rows[-top:])),
+        "by_contrib_up": sorted(rows, key=lambda r: -r["contrib"])[:top],
+        "by_contrib_down": sorted(rows, key=lambda r: r["contrib"])[:top],
+    }
 
 
 def analyse_cycle(dates, rets, tickers, themes):
@@ -510,7 +625,7 @@ def analyse_cycle(dates, rets, tickers, themes):
 # --------------------------------------------------------------------------
 # 5. render
 # --------------------------------------------------------------------------
-def render(corr, px, oh, cycle, members, themes, index_date, problems, out_dir):
+def render(corr, px, oh, cycle, leaders, fund, members, themes, index_date, problems, out_dir):
     tpl = open(os.path.join(ROOT, "build", "template.html")).read()
     engine = open(os.path.join(ROOT, "build", "candle_engine.js")).read()
     cfg = load_theme_config()
@@ -525,6 +640,7 @@ def render(corr, px, oh, cycle, members, themes, index_date, problems, out_dir):
         "count": len(nodes),
         "problems": [{"ticker": t, "note": p} for t, p in problems],
         "themes": {g: cfg["themes"][g]["label"] for g in cfg["themes"]},
+        "leaders": leaders,
     }
     blob = lambda o: json.dumps(o, separators=(",", ":"), ensure_ascii=False)
     body = (tpl.replace("/*__CANDLE_ENGINE__*/", engine, 1)
@@ -533,6 +649,7 @@ def render(corr, px, oh, cycle, members, themes, index_date, problems, out_dir):
                .replace("/*__CY__*/", blob(cycle))
                .replace("/*__OH__*/", blob(oh))
                .replace("/*__NODES__*/", blob(nodes))
+               .replace("/*__FUND__*/", blob(fund))
                .replace("/*__META__*/", blob(meta)))
 
     # The template is written for the Artifact wrapper, which supplies the
@@ -571,6 +688,8 @@ def main():
     ap.add_argument("--out", default=os.path.join(ROOT, "dist"))
     ap.add_argument("--cache", default=os.path.join(ROOT, "data"))
     ap.add_argument("--max-workers", type=int, default=4)
+    ap.add_argument("--fundamentals-refresh", type=int, default=25,
+                    help="how many tickers refresh their statements per run")
     a = ap.parse_args()
 
     cfg = load_theme_config()
@@ -582,10 +701,15 @@ def main():
         log(f"ABORT: only {len(series)}/{len(members)} tickers fetched — refusing to publish a thin build")
         sys.exit(1)
 
-    corr, px, oh, cycle = analyse(series, members, themes, index_date)
+    corr, px, oh, cycle, leaders = analyse(series, members, themes, index_date)
     log(f"analysed: {len(corr['tickers'])} tickers, {len(px['profiles'])} lag profiles, "
         f"{len(cycle['themes'])} themes, {len(cycle['months'])} months")
-    render(corr, px, oh, cycle, members, themes, index_date, problems, a.out)
+    log(f"latest session {leaders.get('date')}: index {leaders.get('index_chg')}% "
+        f"({leaders.get('advancers')} up / {leaders.get('decliners')} down)")
+
+    fund = fetch_fundamentals(corr["tickers"], os.path.join(a.cache, "fundamentals.json"),
+                              a.fundamentals_refresh, a.max_workers)
+    render(corr, px, oh, cycle, leaders, fund, members, themes, index_date, problems, a.out)
 
 
 if __name__ == "__main__":

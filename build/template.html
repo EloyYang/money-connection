@@ -242,6 +242,43 @@
   #sel-bar button:hover{ background:rgba(255,255,255,0.08); color:var(--text-primary); }
   #sel-bar #sel-del:hover{ color:var(--down); }
 
+  /* ---- daily leaders ---- */
+  .lead-panel{ position:relative; padding:13px 14px; flex:0 1 auto; overflow-y:auto; }
+  .seg-mini{ display:flex; gap:2px; background:rgba(255,255,255,0.05); padding:2px; border-radius:7px; margin-bottom:8px; }
+  .seg-mini button{ flex:1; border:none; background:none; color:var(--text-muted); font-family:inherit;
+                    font-size:10.5px; font-weight:600; padding:4px 6px; border-radius:5px; cursor:pointer; }
+  .seg-mini button:hover{ color:var(--text-primary); }
+  .seg-mini button.on{ background:var(--panel-solid); color:var(--text-primary); }
+  .lead-row{ display:flex; align-items:center; gap:7px; padding:3px 3px; border-radius:6px; cursor:pointer; font-size:11.5px; }
+  .lead-row:hover{ background:rgba(255,255,255,0.05); }
+  .lead-row .rk{ color:var(--text-muted); font-family:'JetBrains Mono',monospace; font-size:10px; width:11px; }
+  .lead-row .tk4{ font-family:'JetBrains Mono',monospace; font-weight:600; min-width:46px; }
+  .lead-row .barwrap{ flex:1 1 auto; height:4px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden; }
+  .lead-row .barwrap span{ display:block; height:100%; border-radius:2px; }
+  .lead-row .pct{ font-family:'JetBrains Mono',monospace; font-size:11px; min-width:50px; text-align:right; }
+  .lead-split{ font-size:9.5px; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted);
+               margin:8px 0 3px; }
+  .lead-breadth{ margin-top:9px; padding-top:8px; border-top:1px solid var(--border);
+                 font-size:10.5px; color:var(--text-muted); line-height:1.5; }
+  .lead-breadth b{ font-family:'JetBrains Mono',monospace; }
+
+  /* ---- fundamentals ---- */
+  .fund-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:7px; margin:4px 0 2px; }
+  .fund-kpi{ background:rgba(255,255,255,0.04); border-radius:8px; padding:7px 9px; }
+  .fund-kpi .l{ font-size:9.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; }
+  .fund-kpi .v{ font-size:13.5px; font-weight:600; font-family:'JetBrains Mono',monospace; margin-top:2px; }
+  .fin-row{ display:grid; grid-template-columns:58px 1fr auto; gap:8px; align-items:baseline;
+            padding:3px 0; font-size:11.5px; }
+  .fin-row .lab{ color:var(--text-secondary); }
+  .fin-row .val{ font-family:'JetBrains Mono',monospace; text-align:right; }
+  .fin-row .yoy{ font-family:'JetBrains Mono',monospace; font-size:10.5px; min-width:46px; text-align:right; }
+  .eps-row{ display:grid; grid-template-columns:1fr auto auto auto; gap:7px; align-items:baseline;
+            font-size:11px; padding:2.5px 0; }
+  .eps-row .per{ color:var(--text-secondary); }
+  .eps-row .num{ font-family:'JetBrains Mono',monospace; }
+  .eps-row .sur{ font-family:'JetBrains Mono',monospace; min-width:44px; text-align:right; }
+  .fund-note{ font-size:10px; color:var(--text-muted); line-height:1.45; margin-top:6px; }
+
   /* ---- watchlist ---- */
   .star{ background:none; border:none; cursor:pointer; font-size:18px; line-height:1; padding:2px 4px;
          color:var(--text-muted); font-family:inherit; }
@@ -299,9 +336,6 @@
   <div class="stat graph-only"><div class="n mono" id="stat-links">–</div><div class="l">상관 연결</div></div>
   <div class="stat graph-only"><div class="n mono" id="stat-days">–</div><div class="l">거래일</div></div>
   <div class="sim-controls graph-only" style="border-left:1px solid var(--border); padding-left:16px;">
-    <button class="btn up" id="mode-up">▲ 상승 파급</button>
-    <button class="btn down" id="mode-down">▼ 하락 파급</button>
-    <button class="btn ghost" id="mode-random">🎲 랜덤</button>
     <button class="btn ghost" id="mode-reset">↺ 초기화</button>
     <button class="btn ghost" id="mode-fit">⤢ 전체보기</button>
   </div>
@@ -366,6 +400,19 @@
     </div>
   </div>
 
+  <div class="panel lead-panel" id="lead-panel">
+    <div class="fav-head">
+      <h3>주도주</h3><span class="cnt mono" id="lead-date">—</span>
+      <button class="fav-only" id="lead-only">주도주만</button>
+    </div>
+    <div class="seg-mini" id="lead-mode">
+      <button data-mode="chg" class="on">등락률</button>
+      <button data-mode="contrib">지수 기여도</button>
+    </div>
+    <div id="lead-list"></div>
+    <div class="lead-breadth" id="lead-breadth"></div>
+  </div>
+
   <div class="panel fav-panel" id="fav-panel">
     <div class="fav-head">
       <h3>★ 즐겨찾기</h3><span class="cnt" id="fav-count">0</span>
@@ -376,9 +423,9 @@
   </div>
 
   <div class="panel infobar" id="infobar">
-    종목을 클릭하면 <b>주가 차트</b>와 <b>상관계수 순위</b>가 열립니다. 목록의 연관 종목을 클릭하면
+    종목을 클릭하면 <b>주가 차트 · 펀더멘털 · 상관계수 순위</b>가 열립니다. 목록의 연관 종목을 클릭하면
     두 종목 주가를 겹쳐 보고 <b>선행·후행 분석</b>까지 확인할 수 있습니다.
-    <b>상승/하락 파급</b> 모드에서는 상관계수의 부호와 크기를 따라 연쇄 반응이 전파됩니다.
+    좌측 <b>주도주</b> 패널은 직전 거래일에 지수를 움직인 종목을 보여줍니다.
     <span class="src" id="method-note"></span>
   </div>
   </div>
@@ -415,6 +462,15 @@
       <svg id="lagchart" viewBox="0 0 298 92" width="100%" height="92"></svg>
       <div class="ll-note" id="ll-note"></div>
       <button class="linkbtn go" id="ll-go">이 종목으로 이동 →</button>
+    </div>
+
+    <div id="fund-block">
+      <div class="sec-title"><span>펀더멘털</span><span class="mono" id="fund-period"></span></div>
+      <div class="fund-grid" id="fund-kpis"></div>
+      <div id="fund-fin"></div>
+      <div class="sec-title" id="fund-eps-title"><span>실적 발표 · 추정</span><span class="mono" id="fund-eps-note"></span></div>
+      <div id="fund-eps"></div>
+      <div class="fund-note" id="fund-src"></div>
     </div>
 
     <div class="sec-title"><span>같이 오르내리는 종목 (+)</span><span class="mono" id="d-poscount"></span></div>
@@ -474,6 +530,7 @@ const OH = /*__OH__*/;
    build — an index add/drop flows through without anyone editing this file. */
 const NODES = /*__NODES__*/;
 const META  = /*__META__*/;
+const FUND  = /*__FUND__*/;   // PER/EPS, 연간 재무제표, 분기 실적·추정
 
 const GROUPS = Object.entries(META.themes).map(([id, label]) => ({
   id: +id, label, color: `var(--g${id})`,
@@ -744,6 +801,7 @@ document.getElementById('mode-fit').addEventListener('click', ()=>fitToView(400)
 
 function visibleNode(d){
   if(favOnly && !favorites.has(d.id)) return false;
+  if(typeof leadOnly !== 'undefined' && leadOnly && !leadTickers().has(d.id)) return false;
   return activeGroups.has(d.group);
 }
 function resetOpacities(){
@@ -1046,6 +1104,86 @@ function corrRowHTML(p){
     </div>`;
 }
 
+/* =====================================================================
+   FUNDAMENTALS — annual statements, valuation, and quarterly actual vs
+   consensus EPS. Figures arrive in thousands, as Nasdaq reports them.
+   ===================================================================== */
+function fmtMoney(thousands){
+  if(thousands == null) return '—';
+  const v = thousands * 1000;
+  const a = Math.abs(v);
+  if(a >= 1e12) return (v/1e12).toFixed(2) + 'T';
+  if(a >= 1e9)  return (v/1e9).toFixed(1) + 'B';
+  if(a >= 1e6)  return (v/1e6).toFixed(0) + 'M';
+  return v.toLocaleString();
+}
+function yoy(arr){
+  if(!arr || arr[0] == null || arr[1] == null || !arr[1]) return null;
+  return (arr[0] - arr[1]) / Math.abs(arr[1]) * 100;
+}
+function yoyHTML(arr){
+  const v = yoy(arr);
+  if(v == null) return '<span class="yoy" style="color:var(--text-muted)">—</span>';
+  const col = v >= 0 ? 'var(--up)' : 'var(--down)';
+  return `<span class="yoy" style="color:${col}">${v >= 0 ? '+' : ''}${v.toFixed(0)}%</span>`;
+}
+
+function renderFundamentals(tk){
+  const block = document.getElementById('fund-block');
+  const f = FUND[tk];
+  if(!f){ block.style.display = 'none'; return; }
+  block.style.display = '';
+
+  const px = (latestClose(tk) || {}).px;
+  const per = (f.eps_ttm && f.eps_ttm > 0 && px) ? px / f.eps_ttm : null;
+  const upside = (f.target && px) ? (f.target - px) / px * 100 : null;
+  document.getElementById('fund-period').textContent = f.periods && f.periods[0] ? `FY ${f.periods[0]}` : '';
+
+  const kpi = (l, v, sub) => `<div class="fund-kpi"><div class="l">${l}</div>
+      <div class="v">${v}</div>${sub ? `<div class="l" style="margin-top:2px">${sub}</div>` : ''}</div>`;
+  document.getElementById('fund-kpis').innerHTML =
+    kpi('PER (TTM)', per ? per.toFixed(1) : '—', f.eps_ttm ? `EPS ${f.eps_ttm}` : '적자 또는 데이터 없음') +
+    kpi('목표주가', f.target ? '$' + f.target : '—',
+        upside != null ? `<span style="color:${upside >= 0 ? 'var(--up)' : 'var(--down)'}">현재가 대비 ${upside >= 0 ? '+' : ''}${upside.toFixed(0)}%</span>` : '') +
+    kpi('52주 범위', f.range52 || '—', '') +
+    kpi('배당', f['yield'] && f['yield'] !== 'N/A' ? f['yield'] : '없음', f.div && f.div !== 'N/A' ? `연 ${f.div}` : '');
+
+  const netMargin = (f.revenue && f.net_income && f.revenue[0]) ? f.net_income[0] / f.revenue[0] * 100 : null;
+  const debtEq = (f.liabilities && f.equity && f.equity[0]) ? f.liabilities[0] / f.equity[0] : null;
+  const row = (lab, arr, extra) => `<div class="fin-row"><span class="lab">${lab}</span>
+      <span class="val">${fmtMoney(arr && arr[0])}${extra ? ` <span style="color:var(--text-muted);font-size:10.5px">${extra}</span>` : ''}</span>
+      ${yoyHTML(arr)}</div>`;
+  document.getElementById('fund-fin').innerHTML =
+    row('매출', f.revenue) +
+    row('영업이익', f.op_income) +
+    row('순이익', f.net_income, netMargin != null ? `순이익률 ${netMargin.toFixed(0)}%` : '') +
+    row('총부채', f.liabilities, debtEq != null ? `부채/자본 ${debtEq.toFixed(2)}` : '') +
+    row('현금성자산', f.cash);
+
+  const eps = f.eps || [];
+  const prev = eps.filter(e => e.t === 'P').slice(-4).reverse();
+  const next = eps.filter(e => e.t === 'U').slice(0, 3);
+  const beats = prev.filter(e => e.a != null && e.c != null && e.a > e.c).length;
+  document.getElementById('fund-eps-note').textContent = prev.length ? `최근 ${prev.length}분기 중 ${beats}회 상회` : '';
+  const epsRow = e => {
+    const sur = (e.a && e.c) ? (e.a - e.c) / Math.abs(e.c) * 100 : null;
+    const col = sur == null ? 'var(--text-muted)' : (sur >= 0 ? 'var(--up)' : 'var(--down)');
+    return `<div class="eps-row"><span class="per">${e.p}</span>
+      <span class="num" style="color:var(--text-muted)">예상 ${e.c ?? '—'}</span>
+      <span class="num">실제 ${e.a ? e.a : '—'}</span>
+      <span class="sur" style="color:${col}">${sur == null ? '' : (sur >= 0 ? '+' : '') + sur.toFixed(1) + '%'}</span></div>`;
+  };
+  const fcRow = e => `<div class="eps-row"><span class="per">${e.p}</span>
+      <span class="num" style="color:var(--accent)">컨센서스 ${e.c ?? '—'}</span>
+      <span class="num" style="color:var(--text-muted)">발표 예정</span><span class="sur"></span></div>`;
+  document.getElementById('fund-eps').innerHTML =
+    (prev.length ? prev.map(epsRow).join('') : '<div class="empty">실적 데이터 없음</div>') +
+    (next.length ? `<div class="lead-split" style="margin:7px 0 2px">추정</div>` + next.map(fcRow).join('') : '');
+
+  document.getElementById('fund-src').textContent =
+    `연간 재무제표 ${f.periods ? f.periods.filter(Boolean).join(' / ') : ''} · 출처 Nasdaq (${f.fetched} 수집)`;
+}
+
 function openDrawer(d, peers){
   const g = GROUPS.find(x=>x.id===d.group), s = d.stats;
   document.getElementById('d-tk').textContent = d.id;
@@ -1072,6 +1210,7 @@ function openDrawer(d, peers){
   });
 
   selectedTk = d.id;
+  renderFundamentals(d.id);
   renderFavorites();
   clearCompare();
   drawPriceChart(d.id, null);
@@ -1082,31 +1221,90 @@ function openDrawer(d, peers){
 /* =====================================================================
    CASCADE — 상관계수 부호/크기를 따라 전파
    ===================================================================== */
-let mode = null, simTimers = [];
-document.getElementById('mode-up').addEventListener('click', ()=>setMode('up'));
-document.getElementById('mode-down').addEventListener('click', ()=>setMode('down'));
-document.getElementById('mode-reset').addEventListener('click', clearAll);
-document.getElementById('mode-random').addEventListener('click', ()=>{
-  const dir = Math.random() > 0.5 ? 'up' : 'down';
-  setMode(dir);
-  const pool = nodes.filter(n=>n.tier!=='C');
-  runCascade(pool[Math.floor(Math.random()*pool.length)], dir);
-});
-function setMode(m){
-  mode = (mode===m) ? null : m;
-  document.getElementById('mode-up').classList.toggle('active', mode==='up');
-  document.getElementById('mode-down').classList.toggle('active', mode==='down');
+function onNodeClick(d){ focusNode(d); }
+
+/* =====================================================================
+   DAILY LEADERS — who moved the index on the most recent session.
+   "등락률" is the plain move; "지수 기여도" weights it by market-cap share,
+   which is what actually pushed the index.
+   ===================================================================== */
+const LEAD = META.leaders || {};
+let leadMode = 'chg', leadOnly = false;
+
+function leadSets(){
+  const up = leadMode === 'chg' ? (LEAD.up || []) : (LEAD.by_contrib_up || []);
+  const dn = leadMode === 'chg' ? (LEAD.down || []) : (LEAD.by_contrib_down || []);
+  return { up, dn };
 }
-function onNodeClick(d){ mode ? runCascade(d, mode) : focusNode(d); }
+function leadTickers(){
+  const { up, dn } = leadSets();
+  return new Set([...up, ...dn].map(r => r.t));
+}
+
+function leadRowHTML(r, i, kind){
+  const n = nodeIndex.get(r.t);
+  if(!n) return '';
+  const val = leadMode === 'chg' ? r.chg : r.contrib;
+  const col = val >= 0 ? 'var(--up)' : 'var(--down)';
+  const { up, dn } = leadSets();
+  const scale = Math.max(...[...up, ...dn].map(x => Math.abs(leadMode === 'chg' ? x.chg : x.contrib)), 0.01);
+  const w = Math.min(100, Math.abs(val) / scale * 100);
+  const text = leadMode === 'chg'
+    ? `${val >= 0 ? '+' : ''}${val.toFixed(2)}%`
+    : `${val >= 0 ? '+' : ''}${val.toFixed(2)}%p`;
+  return `<div class="lead-row" data-tk="${r.t}">
+      <span class="rk">${i + 1}</span>
+      <span class="dot" style="width:6px;height:6px;background:${n.color};box-shadow:none"></span>
+      <span class="tk4">${r.t}</span>
+      <span class="barwrap"><span style="width:${w}%;background:${col}"></span></span>
+      <span class="pct" style="color:${col}">${text}</span>
+    </div>`;
+}
+
+function renderLeaders(){
+  if(!LEAD.date){ document.getElementById('lead-panel').style.display = 'none'; return; }
+  const { up, dn } = leadSets();
+  document.getElementById('lead-date').textContent = LEAD.date;
+  document.getElementById('lead-list').innerHTML =
+    `<div class="lead-split" style="color:var(--up)">▲ 상위 주도주</div>` +
+    up.map((r, i) => leadRowHTML(r, i, 'up')).join('') +
+    `<div class="lead-split" style="color:var(--down)">▼ 하위 주도주</div>` +
+    dn.map((r, i) => leadRowHTML(r, i, 'down')).join('');
+  const ic = LEAD.index_chg ?? 0;
+  document.getElementById('lead-breadth').innerHTML =
+    `시총가중 지수 <b style="color:${ic >= 0 ? 'var(--up)' : 'var(--down)'}">${ic >= 0 ? '+' : ''}${ic}%</b>` +
+    ` · 상승 <b style="color:var(--up)">${LEAD.advancers}</b> / 하락 <b style="color:var(--down)">${LEAD.decliners}</b>` +
+    `<br>기여도 = 등락률 × 시총 비중 (지수를 실제로 움직인 크기)`;
+  document.getElementById('lead-list').querySelectorAll('.lead-row').forEach(row => {
+    row.addEventListener('click', () => { const n = nodeIndex.get(row.dataset.tk); if(n) focusNode(n); });
+  });
+}
+
+document.querySelectorAll('#lead-mode button').forEach(b => {
+  b.addEventListener('click', () => {
+    leadMode = b.dataset.mode;
+    document.querySelectorAll('#lead-mode button').forEach(x => x.classList.toggle('on', x === b));
+    renderLeaders();
+    if(leadOnly) resetOpacities();
+  });
+});
+document.getElementById('lead-only').addEventListener('click', () => {
+  leadOnly = !leadOnly;
+  document.getElementById('lead-only').classList.toggle('on', leadOnly);
+  clearFocus(); resetOpacities();
+});
 
 function clearAll(){
-  simTimers.forEach(clearTimeout); simTimers = [];
   clearFocus(); resetOpacities();
   drawer.classList.remove('show');
-  mode = null;
-  document.getElementById('mode-up').classList.remove('active');
-  document.getElementById('mode-down').classList.remove('active');
+  if(typeof leadOnly !== 'undefined' && leadOnly){
+    leadOnly = false;
+    document.getElementById('lead-only').classList.remove('on');
+    renderLeaders();
+  }
 }
+document.getElementById('mode-reset').addEventListener('click', clearAll);
+
 
 /* =====================================================================
    WATCHLIST — saved to the artifact store when this view can run `db`,
@@ -1562,70 +1760,7 @@ function renderCycle(){
 }
 window.addEventListener('resize', ()=>{ if(document.body.classList.contains('view-cycle')) renderCycle(); });
 
+renderLeaders();
 initFavSync();   // last: every section's state exists by now
 
-function runCascade(start, direction){
-  simTimers.forEach(clearTimeout); simTimers = [];
-  clearFocus(); drawer.classList.remove('show');
-  nodeSel.attr('opacity',0.2).attr('stroke','rgba(255,255,255,0.35)').attr('stroke-width',1).attr('r',d=>d.r);
-  labelSel.attr('opacity',0.14).attr('fill','var(--text-primary)');
-  linkSel.attr('opacity',0.04);
-
-  const HOP = 480, MIN = 0.10, MAX_HOPS = 5;
-  const dir0 = direction === 'up' ? 1 : -1;
-  const visited = new Map([[start.id, {i:1, dir:dir0}]]);
-  let frontier = [{ id:start.id, i:1, dir:dir0 }];
-
-  const flash = (tk, intensity, dir, hop) => {
-    const col = dir > 0 ? 'var(--up)' : 'var(--down)';
-    const node = nodeIndex.get(tk);
-    simTimers.push(setTimeout(()=>{
-      nodeSel.filter(d=>d.id===tk).attr('opacity',1).attr('filter',`url(#pulse-${dir>0?'up':'down'})`)
-        .transition().duration(240).attr('stroke',col).attr('stroke-width',2+intensity*2.5)
-          .attr('r', node.r*(1+0.5*intensity))
-        .transition().delay(520).duration(700).attr('r', node.r);
-      labelSel.filter(d=>d.id===tk).attr('opacity',1).attr('fill',col);
-    }, hop*HOP));
-  };
-  const flashLink = (a,b,dir,hop) => {
-    const col = dir > 0 ? 'var(--up)' : 'var(--down)';
-    simTimers.push(setTimeout(()=>{
-      linkSel.filter(l => { const s=l.source.id, t=l.target.id; return (s===a&&t===b)||(s===b&&t===a); })
-        .attr('opacity',0.95).attr('stroke',col).attr('stroke-width',2.4).attr('stroke-opacity',1);
-    }, hop*HOP));
-  };
-
-  flash(start.id, 1, dir0, 0);
-
-  for(let hop=1; hop<=MAX_HOPS && frontier.length; hop++){
-    const next = [];
-    frontier.forEach(cur => {
-      links.forEach(l => {
-        const s = l.source.id||l.source, t = l.target.id||l.target;
-        if(s !== cur.id && t !== cur.id) return;
-        const other = s === cur.id ? t : s;
-        if(visited.has(other)) return;
-        const inten = cur.i * Math.abs(l.r);
-        if(inten < MIN) return;
-        const dir = cur.dir * (l.r >= 0 ? 1 : -1);
-        visited.set(other, {i:inten, dir});
-        flashLink(cur.id, other, dir, hop);
-        flash(other, inten, dir, hop);
-        next.push({ id:other, i:inten, dir });
-      });
-    });
-    frontier = next;
-  }
-
-  const ups = [...visited.values()].filter(v=>v.dir>0).length;
-  const downs = [...visited.values()].filter(v=>v.dir<0).length;
-  simTimers.push(setTimeout(()=>{
-    document.getElementById('infobar').innerHTML =
-      `<b style="color:${dir0>0?'var(--up)':'var(--down)'}">${start.id}</b> ${dir0>0?'상승':'하락'} 시나리오 →
-       <b style="color:var(--up)">동반 상승 ${ups-(dir0>0?1:0)}개</b> ·
-       <b style="color:var(--down)">반대로 하락 ${downs-(dir0>0?0:1)}개</b>
-       (|r| ≥ ${threshold.toFixed(2)} 연결을 따라 강도 감쇠 전파)
-       <span class="src">${CORR.meta.method} · 과거 상관관계이며 미래 수익률을 보장하지 않습니다.</span>`;
-  }, (MAX_HOPS+1)*HOP));
-}
 </script>
