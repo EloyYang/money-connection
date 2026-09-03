@@ -1892,6 +1892,7 @@ function onNodeClick(d){ focusNode(d); }
    September cannot be "return since Jan 1".
    ===================================================================== */
 const SEASON_COLORS = ['#e0457b', '#2dd4bf', '#f5a524', '#3ddc84', '#3987e5', '#9085e9'];
+const AVG_KEY = '__avg__', AVG_COLOR = '#e8eaed';
 let seasonHidden = new Set(), seasonAvg = false;
 
 function doyOf(iso){
@@ -1944,7 +1945,7 @@ function drawSeasonality(tk){
   // drag the tail of the mean toward zero and invent a false seasonal dip
   const done = series.filter(sr => !sr.partial);
   let avgPts = [];
-  if(seasonAvg && done.length){
+  if(done.length){
     for(let doy = 1; doy <= 366; doy += 2){
       const vals = done.map(sr => {
         let best = null;
@@ -1954,12 +1955,15 @@ function drawSeasonality(tk){
       if(vals.length === done.length) avgPts.push({ doy, v: vals.reduce((a,b)=>a+b,0)/vals.length });
     }
   }
+  const avgVisible = avgPts.length && !seasonHidden.has(AVG_KEY);
 
   const W = 298, H = 176, m = { t: 12, r: 40, b: 22, l: 6 };
   const innerW = W - m.l - m.r, innerH = H - m.t - m.b;
-  const drawn = seasonAvg && avgPts.length ? [{ pts: avgPts }] : visible;
+  const drawn = seasonAvg && avgPts.length
+    ? [{ pts: avgPts }]
+    : visible.concat(avgVisible ? [{ pts: avgPts }] : []);
   const vals = drawn.flatMap(sr => sr.pts.map(p => p.v));
-  if(!vals.length){ host.innerHTML = '<div class="cap">표시할 연도가 없습니다.</div>'; renderSeasonLegend(series, tk); return; }
+  if(!vals.length){ host.innerHTML = '<div class="cap">표시할 연도가 없습니다.</div>'; renderSeasonLegend(series, tk, avgPts, done.length); return; }
   const hi = Math.max(0, ...vals), lo = Math.min(0, ...vals), pad = (hi - lo) * 0.08 || 1;
   const X = doy => m.l + (doy - 1) / 365 * innerW;
   const Y = v => m.t + innerH - ((v - (lo - pad)) / ((hi + pad) - (lo - pad))) * innerH;
@@ -2003,6 +2007,12 @@ function drawSeasonality(tk){
         svg.append('circle').attr('cx', X(last.doy)).attr('cy', Y(last.v)).attr('r', 3).attr('fill', sr.color);
       }
     });
+    // past-year average overlaid as the reference each year is measured against
+    if(avgVisible){
+      svg.append('path').datum(avgPts).attr('d', line).attr('fill', 'none')
+        .attr('stroke', AVG_COLOR).attr('stroke-width', 1.8).attr('stroke-dasharray', '5,3')
+        .attr('opacity', 0.95);
+    }
   }
 
   // crosshair: read every visible year at the same calendar day
@@ -2023,7 +2033,14 @@ function drawSeasonality(tk){
         return `<div class="tr"><span class="sw" style="background:${sr.color}"></span>${sr.year}
           <span class="tv" style="color:${best.v >= 0 ? 'var(--up)' : 'var(--down)'}">${best.v >= 0 ? '+' : ''}${best.v.toFixed(1)}%</span></div>`;
       }).join('');
-      tip.innerHTML = `<div class="tp">${d.getUTCMonth()+1}월 ${d.getUTCDate()}일</div>${rows}`;
+      let avgRow = '';
+      if(avgVisible){
+        let best = null;
+        for(const p of avgPts){ if(p.doy <= doy) best = p; else break; }
+        if(best) avgRow = `<div class="tr"><span class="sw" style="background:${AVG_COLOR}"></span>${done.length}년 평균
+          <span class="tv" style="color:${best.v >= 0 ? 'var(--up)' : 'var(--down)'}">${best.v >= 0 ? '+' : ''}${best.v.toFixed(1)}%</span></div>`;
+      }
+      tip.innerHTML = `<div class="tp">${d.getUTCMonth()+1}월 ${d.getUTCDate()}일</div>${rows}${avgRow}`;
       tip.hidden = false;
       const [px, py] = d3.pointer(ev, host);
       const w = tip.offsetWidth || 120;
@@ -2031,24 +2048,33 @@ function drawSeasonality(tk){
       tip.style.top = Math.max(2, py - tip.offsetHeight - 12) + 'px';
     });
 
-  renderSeasonLegend(series, tk);
+  renderSeasonLegend(series, tk, avgPts, done.length);
 }
 
-function renderSeasonLegend(series, tk){
+function renderSeasonLegend(series, tk, avgPts, doneCount){
   const host = document.getElementById('season-chart');
   const legend = document.createElement('div');
   legend.className = 'season-legend';
-  legend.innerHTML = series.slice().sort((a,b) => b.last - a.last).map(sr =>
+  let html = series.slice().sort((a,b) => b.last - a.last).map(sr =>
     `<button data-y="${sr.year}" class="${seasonHidden.has(sr.year) ? 'off' : ''}">
        <span class="sw" style="background:${sr.color}"></span>${sr.year}
        <span style="color:${sr.last >= 0 ? 'var(--up)' : 'var(--down)'}">${sr.last >= 0 ? '+' : ''}${sr.last.toFixed(1)}%</span>
      </button>`).join('');
+  if(!seasonAvg && avgPts && avgPts.length){
+    const fin = avgPts[avgPts.length-1].v;
+    html += `<button data-y="${AVG_KEY}" class="${seasonHidden.has(AVG_KEY) ? 'off' : ''}">
+       <span class="sw" style="background:${AVG_COLOR}"></span>${doneCount}년 평균
+       <span style="color:${fin >= 0 ? 'var(--up)' : 'var(--down)'}">${fin >= 0 ? '+' : ''}${fin.toFixed(1)}%</span>
+     </button>`;
+  }
+  legend.innerHTML = html;
   host.appendChild(legend);
   legend.querySelectorAll('button').forEach(b => {
     b.addEventListener('click', () => {
       const y = b.dataset.y;
       seasonHidden.has(y) ? seasonHidden.delete(y) : seasonHidden.add(y);
-      if(seasonHidden.size >= series.length) seasonHidden.delete(y);   // never blank the chart
+      const hiddenYears = series.filter(sr => seasonHidden.has(sr.year)).length;
+      if(hiddenYears >= series.length && y !== AVG_KEY) seasonHidden.delete(y);   // never blank the chart
       drawSeasonality(tk);
     });
   });
@@ -2056,7 +2082,7 @@ function renderSeasonLegend(series, tk){
   cap.className = 'cap';
   cap.textContent = seasonAvg
     ? '완료된 연도만 평균 냅니다 — 진행 중인 해를 섞으면 연말 구간이 0 쪽으로 끌려 없던 계절성이 생깁니다.'
-    : '각 연도의 1월 1일 종가를 0%로 놓고 누적 수익률을 겹쳐 그립니다. 연도를 눌러 숨기거나 켤 수 있습니다.';
+    : '각 연도의 1월 1일 종가를 0%로 놓고 누적 수익률을 겹쳐 그립니다. 흰 점선은 완료된 연도들의 평균 경로 — 올해가 예년 대비 앞서는지 뒤처지는지 비교하는 기준선입니다.';
   host.appendChild(cap);
 }
 
