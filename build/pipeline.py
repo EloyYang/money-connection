@@ -527,13 +527,38 @@ def render(corr, px, oh, cycle, members, themes, index_date, problems, out_dir):
         "themes": {g: cfg["themes"][g]["label"] for g in cfg["themes"]},
     }
     blob = lambda o: json.dumps(o, separators=(",", ":"), ensure_ascii=False)
-    html = (tpl.replace("/*__CANDLE_ENGINE__*/", engine, 1)
+    body = (tpl.replace("/*__CANDLE_ENGINE__*/", engine, 1)
                .replace("/*__CORR__*/", blob(corr))
                .replace("/*__PX__*/", blob(px))
                .replace("/*__CY__*/", blob(cycle))
                .replace("/*__OH__*/", blob(oh))
                .replace("/*__NODES__*/", blob(nodes))
                .replace("/*__META__*/", blob(meta)))
+
+    # The template is written for the Artifact wrapper, which supplies the
+    # document head. A standalone site has to bring its own — without the
+    # viewport meta, phones lay the page out at 980px and zoom out.
+    icon = ("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>"
+            "<circle cx='16' cy='16' r='14' fill='%230a0c10'/>"
+            "<circle cx='11' cy='12' r='3.4' fill='%233987e5'/>"
+            "<circle cx='21' cy='19' r='3.4' fill='%23d95926'/>"
+            "<path d='M11 12 L21 19' stroke='%233ddc84' stroke-width='1.6'/></svg>")
+    html = f"""<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="나스닥 100 종목의 수익률 상관관계 네트워크와 5년 테마 로테이션 분석. 매일 자동 갱신.">
+<meta property="og:title" content="나스닥 100 상관관계 그래프">
+<meta property="og:description" content="상관계수 네트워크 · 테마 로테이션 · 봉차트. 구성종목과 시세가 매일 자동 갱신됩니다.">
+<link rel="icon" href="{icon}">
+</head>
+<body>
+{body}
+</body>
+</html>
+"""
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, "index.html")
     open(path, "w").write(html)

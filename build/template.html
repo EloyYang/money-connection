@@ -25,7 +25,7 @@
     margin:0; background:var(--bg-vignette); background-color:var(--bg);
     color:var(--text-primary);
     font-family:'Inter', system-ui, -apple-system, "Segoe UI", sans-serif;
-    height:100vh; overflow:hidden; display:flex; flex-direction:column;
+    min-height:100vh; display:flex; flex-direction:column;
   }
   .mono{ font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
 
@@ -65,7 +65,7 @@
   .btn.down.active{ background:rgba(255,92,114,0.14); border-color:var(--down); }
   .btn.ghost{ background:transparent; }
 
-  .main{ position:relative; flex:1 1 auto; min-height:0; }
+  .main{ position:relative; flex:1 1 auto; min-height:340px; }
   #canvas-wrap{ position:absolute; inset:0; }
   svg{ width:100%; height:100%; display:block; cursor:grab; }
   svg:active{ cursor:grabbing; }
@@ -268,6 +268,17 @@
   .fav-sync{ margin-top:9px; padding-top:8px; border-top:1px solid var(--border);
              font-size:10px; color:var(--text-muted); line-height:1.45; }
   ::-webkit-scrollbar{ width:6px; } ::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.14); border-radius:3px; }
+  @media (max-width: 760px), (max-height: 560px){
+    header{ padding:9px 13px; gap:8px 12px; }
+    .brand .title{ font-size:15px; }
+    .brand .sub, .stat, .freshness{ display:none; }
+    #search{ width:140px; }
+    .btn{ padding:6px 9px; font-size:11.5px; }
+    .tab{ padding:6px 10px; font-size:11.5px; }
+    .left-stack{ width:min(240px, 62vw); bottom:auto; max-height:54%; }
+    .drawer{ width:min(320px, 88vw); }
+    .hint, .infobar{ display:none; }   /* reference text: keep the plot instead */
+  }
   @media (prefers-reduced-motion: reduce){ *{ animation-duration:.001ms !important; transition-duration:.001ms !important; } }
 </style>
 
