@@ -103,13 +103,17 @@
   .left-stack > *{ pointer-events:auto; }
   .legend{ position:relative; padding:14px; flex:0 0 auto; }
   .legend:not(.relation-panel) #legend-rows{ max-height:210px; overflow-y:auto; }
-  .ctl-label{ font-size:9.5px; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted);
+  .ctl-label{ display:flex; align-items:center; flex-wrap:wrap; font-size:9.5px; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted);
               font-weight:600; margin:2px 0 4px; }
   .seg-wrap{ display:flex; flex-wrap:wrap; margin-bottom:8px; }
   .seg-wrap button{ flex:1 1 auto; white-space:nowrap; }   /* CJK는 단어 중간에서 줄바꿈된다 */
   .ctl-note{ font-size:10px; color:var(--text-muted); line-height:1.5; margin:-2px 0 8px; }
   .legend-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
   .legend-head h3{ margin:0 !important; flex:1 1 auto; white-space:nowrap; }
+  .legend-tools{ display:flex; gap:4px; margin:0 0 7px; }
+  .mini-btn{ flex:1 1 auto; border:1px solid var(--border-strong); background:none; color:var(--text-secondary);
+    font-family:inherit; font-size:10px; padding:3px 0; border-radius:6px; cursor:pointer; white-space:nowrap; }
+  .mini-btn:hover{ color:var(--text-primary); background:rgba(255,255,255,0.06); }
   #group-mode{ margin:0; flex:0 0 auto; }
   #group-mode button{ padding:3px 9px; }
   .legend h3{ margin:0 0 9px; font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); font-weight:600; }
@@ -443,10 +447,14 @@
   .fav-row .drop{ border:none; background:none; color:var(--text-muted); cursor:pointer; font-size:13px;
                   padding:0 2px; line-height:1; }
   .fav-row .drop:hover{ color:var(--fav); }
+  .fav-group{ border-radius:7px; padding:0 2px 2px; }
+  .fav-group.drop-target{ background:rgba(245,196,81,0.10); outline:1px dashed var(--fav); }
+  .fav-row.dragging{ opacity:0.4; }
+  .fav-row[draggable="true"]{ cursor:grab; }
   .fav-sec{ display:flex; align-items:center; gap:6px; margin:9px 0 2px; padding-top:7px;
     border-top:1px solid var(--border); font-size:9.5px; text-transform:uppercase;
     letter-spacing:0.07em; color:var(--text-muted); }
-  .fav-sec:first-child{ margin-top:2px; padding-top:0; border-top:none; }
+  .fav-group:first-child .fav-sec{ margin-top:2px; padding-top:0; border-top:none; }
   .fav-sec .nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .fav-sec .cnt{ font-family:'JetBrains Mono',monospace; color:var(--fav); margin-right:auto; }
   .sec-btn{ background:none; border:none; color:var(--text-muted); cursor:pointer;
@@ -567,6 +575,11 @@
       </span>
     </div>
     <div class="ctl-note" id="legend-note"></div>
+    <div class="legend-tools">
+      <button class="mini-btn" id="legend-all">전체 선택</button>
+      <button class="mini-btn" id="legend-none">전체 해제</button>
+      <button class="mini-btn" id="legend-invert">반전</button>
+    </div>
     <div id="legend-rows"></div>
   </div>
 
@@ -595,11 +608,12 @@
     <span class="seg-mini seg-wrap" id="lead-period">
       <button data-d="1" class="on">1일</button><button data-d="5">1주</button><button data-d="21">1개월</button><button data-d="63">3개월</button><button data-d="252">1년</button>
     </span>
-    <div class="ctl-label">시세 기준</div>
+    <div class="ctl-label">기준 (여러 개 선택 시 종합 순위) <button class="mini-btn" id="lead-reset" style="flex:0 0 auto;padding:1px 6px;margin-left:4px">초기화</button></div>
+    <div class="ctl-label" style="margin-top:2px">시세</div>
     <span class="seg-mini seg-wrap" id="lead-mode">
       <button data-mode="chg" class="on">등락률</button><button data-mode="contrib">지수 기여도</button><button data-mode="turnover">거래대금</button><button data-mode="volspike">거래량 급증</button>
     </span>
-    <div class="ctl-label">펀더멘털 기준</div>
+    <div class="ctl-label">펀더멘털</div>
     <span class="seg-mini seg-wrap" id="lead-fund">
       <button data-mode="rev_yoy">매출성장</button><button data-mode="ni_yoy">순이익성장</button><button data-mode="op_margin">영업이익률</button><button data-mode="per">PER</button><button data-mode="de">부채/자본</button>
     </span>
@@ -708,6 +722,14 @@
     <div id="fund-block">
       <div class="sec-title"><span>펀더멘털</span><span class="mono" id="fund-period"></span></div>
       <div class="fund-grid" id="fund-kpis"></div>
+      <div id="peer-block">
+        <div class="perf-head" style="margin-top:13px">
+          <span class="ttl">동종 비교</span>
+          <span class="mono" id="peer-note"></span>
+        </div>
+        <div class="cmp-scroll"><table class="cmp-table" id="peer-table"></table></div>
+        <div class="cap" id="peer-cap"></div>
+      </div>
       <div class="perf-head">
         <span class="ttl">성과</span>
         <span class="perf-seg" id="perf-period">
@@ -1256,6 +1278,23 @@ function applyGroupMode(mode){
 renderLegend();
 document.querySelectorAll('#group-mode button').forEach(b => {
   b.addEventListener('click', ()=> applyGroupMode(b.dataset.mode));
+});
+
+/* bulk selection, applied to whichever grouping is active */
+function setAllGroups(fn){
+  const all = currentGroups().map(g => g.id);
+  const next = all.filter(fn);
+  activeGroups.clear();
+  next.forEach(id => activeGroups.add(id));
+  renderLegend();
+  clearFocus();
+  resetOpacities();
+}
+document.getElementById('legend-all').addEventListener('click', () => setAllGroups(() => true));
+document.getElementById('legend-none').addEventListener('click', () => setAllGroups(() => false));
+document.getElementById('legend-invert').addEventListener('click', () => {
+  const before = new Set(activeGroups);
+  setAllGroups(id => !before.has(id));
 });
 
 const thrInput = document.getElementById('thr');
@@ -2367,6 +2406,90 @@ function drawFundCmpChart(list){
   host.appendChild(cap);
 }
 
+/* =====================================================================
+   PEER COMPARISON — the same ratios, against the stock's own theme and its
+   own market. Only scale-free measures appear: "매출 4,161억" says nothing
+   next to a peer group, "순이익률 27%" says everything.
+
+   The benchmark is the MEDIAN, not the mean. One 440x PER (AXON) drags a
+   theme's mean PER up by double digits and every other member then looks
+   cheap; the median is unmoved by it.
+   ===================================================================== */
+const PEER_METRICS = [
+  { lab: '1년 수익률', fmt: v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%', signed: true,
+    get: t => nodeIndex.get(t)?.stats?.ret_1y },
+  { lab: '연변동성', fmt: v => v.toFixed(0) + '%',
+    get: t => nodeIndex.get(t)?.stats?.vol },
+  { lab: 'PER (TTM)', fmt: v => v.toFixed(1), get: t => perOf(t) },
+  { lab: '매출 YoY', fmt: v => (v >= 0 ? '+' : '') + v.toFixed(0) + '%', signed: true,
+    get: t => yoy((FUND[t] || {}).revenue) },
+  { lab: '순이익 YoY', fmt: v => (v >= 0 ? '+' : '') + v.toFixed(0) + '%', signed: true,
+    get: t => yoy((FUND[t] || {}).net_income) },
+  { lab: '영업이익률', fmt: v => v.toFixed(0) + '%', get: t => {
+      const f = FUND[t]; return (f && f.op_income && f.revenue && f.revenue[0])
+        ? f.op_income[0] / f.revenue[0] * 100 : null; } },
+  { lab: '순이익률', fmt: v => v.toFixed(0) + '%', get: t => {
+      const f = FUND[t]; return (f && f.net_income && f.revenue && f.revenue[0])
+        ? f.net_income[0] / f.revenue[0] * 100 : null; } },
+  { lab: '부채/자본', fmt: v => v.toFixed(2), get: t => {
+      const f = FUND[t]; return (f && f.liabilities && f.equity && f.equity[0])
+        ? f.liabilities[0] / f.equity[0] : null; } },
+  { lab: '배당수익률', fmt: v => v.toFixed(2) + '%', get: t => yieldOf.get(t) },
+];
+const MIN_PEERS = 4;
+function median(a){
+  if(!a.length) return null;
+  const v = a.slice().sort((x, y) => x - y), m = v.length >> 1;
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+
+function renderPeers(tk){
+  const block = document.getElementById('peer-block');
+  const n = nodeIndex.get(tk);
+  if(!n){ block.style.display = 'none'; return; }
+  const theme = GROUPS.find(g => g.id === n.themeId);
+  const market = MARKETS.find(g => g.id === n.marketId);
+  const themeIds = (theme?.tickers || []).map(([t]) => t).filter(t => t !== tk);
+  const marketIds = (market?.tickers || []).map(([t]) => t).filter(t => t !== tk);
+
+  const rows = PEER_METRICS.map(m => {
+    const mine = m.get(tk);
+    const vals = ids => ids.map(m.get).filter(v => v != null && isFinite(v));
+    const tv = vals(themeIds), mv = vals(marketIds);
+    if(mine == null || !isFinite(mine)) return null;
+    if(tv.length < MIN_PEERS && mv.length < MIN_PEERS) return null;
+    // rank inside the theme, highest first — the same order every metric list uses
+    let rank = null;
+    if(tv.length >= MIN_PEERS){
+      const all = [...tv, mine].sort((a, b) => b - a);
+      rank = `${all.indexOf(mine) + 1}/${all.length}위`;
+    }
+    const cell = (v, group) => {
+      if(v == null) return '<td class="na">—</td>';
+      const gap = mine - v;
+      const tone = Math.abs(gap) < 1e-9 ? '' :
+        ` title="이 종목이 ${gap > 0 ? '높음' : '낮음'} (${gap > 0 ? '+' : ''}${m.fmt(gap)})"`;
+      return `<td${tone}>${m.fmt(v)}</td>`;
+    };
+    return `<tr><td>${m.lab}</td>
+      <td class="best"${m.signed ? ` style="color:${mine >= 0 ? 'var(--up)' : 'var(--down)'}"` : ''}>${m.fmt(mine)}</td>
+      ${cell(tv.length >= MIN_PEERS ? median(tv) : null)}
+      ${cell(mv.length >= MIN_PEERS ? median(mv) : null)}
+      <td class="na">${rank || '—'}</td></tr>`;
+  }).filter(Boolean);
+
+  if(!rows.length){ block.style.display = 'none'; return; }
+  block.style.display = '';
+  document.getElementById('peer-note').textContent =
+    `테마 ${themeIds.length}종목 · 시장 ${marketIds.length}종목`;
+  document.getElementById('peer-table').innerHTML =
+    `<thead><tr><th>지표</th><th>${tk}</th><th title="${theme?.label || ''}">${(theme?.label || '테마').split(' · ')[0]}</th>` +
+    `<th>${market?.label || '시장'}</th><th>테마 순위</th></tr></thead><tbody>${rows.join('')}</tbody>`;
+  document.getElementById('peer-cap').textContent =
+    '동종 그룹의 중앙값과 비교합니다. 평균은 PER 400배짜리 한 종목에 끌려가 나머지가 모두 싸 보이게 되므로 중앙값을 씁니다. ' +
+    `각 지표에 값이 있는 종목만 세며, ${MIN_PEERS}개 미만이면 빈칸으로 둡니다. 순위는 높은 값이 1위입니다.`;
+}
+
 function renderFundamentals(tk){
   if(Array.isArray(tk)){
     if(tk.length > 1){
@@ -2469,6 +2592,7 @@ function renderFundamentals(tk){
   });
   drawEpsChart(epsHost, f);
 
+  renderPeers(tk);
   document.getElementById('fund-src').textContent =
     `연간 재무제표 ${f.periods ? f.periods.filter(Boolean).join(' / ') : ''} · 출처 Nasdaq (${f.fetched} 수집)`;
 }
@@ -3061,7 +3185,7 @@ document.querySelectorAll('#season-avg button').forEach(b => {
    "등락률" is the plain move; "지수 기여도" weights it by market-cap share,
    which is what actually pushed the index.
    ===================================================================== */
-let leadMode = 'chg', leadOnly = false;
+let leadOnly = false;              // 선택된 기준은 leadModes (주도주 블록)
 
 /* =====================================================================
    LEADERS — who moved, over a chosen window, by a chosen yardstick.
@@ -3184,33 +3308,67 @@ const LEAD_METRICS = {
 };
 const LEAD_TOP = 6;
 let leadDays = 1;
+let leadModes = ['chg'];          // 중복 선택 가능 — 둘 이상이면 종합 순위로 바뀐다
 let _leadCache = null;
 
+/* Percentile of each value within its own metric, 0..1, highest = 1.
+   Combining raw numbers would be meaningless (a +3% move and a 45x PER do not
+   add up); combining ranks asks the only question that survives mixing units:
+   "how far up this list is it". */
+function percentiles(map){
+  const vals = [...map.values()].sort((a, b) => a - b);
+  const n = vals.length;
+  const out = new Map();
+  if(n < 2){ map.forEach((v, t) => out.set(t, 1)); return out; }
+  // ties share a rank: the count of values strictly below, over n-1
+  const below = new Map();
+  vals.forEach((v, i) => { if(!below.has(v)) below.set(v, i); });
+  map.forEach((v, t) => out.set(t, below.get(v) / (n - 1)));
+  return out;
+}
+
 function leadData(){
-  const key = leadMode + '|' + leadDays;
+  const key = leadModes.join('+') + '|' + leadDays;
   if(_leadCache && _leadCache.key === key) return _leadCache;
-  const m = LEAD_METRICS[leadMode] || LEAD_METRICS.chg;
-  const universe = m.scope === 'nasdaq' ? NASDAQ_SCOPE() : nodes.map(n => n.id);
+  const metrics = leadModes.map(k => LEAD_METRICS[k]).filter(Boolean);
+  if(!metrics.length) metrics.push(LEAD_METRICS.chg);
+  const multi = metrics.length > 1;
+  const m = metrics[0];
+  // a metric scoped to Nasdaq narrows the whole ranking — 지수 기여도 has no
+  // meaning outside the index it contributes to
+  const universe = metrics.some(x => x.scope === 'nasdaq') ? NASDAQ_SCOPE() : nodes.map(n => n.id);
   const capTotal = universe.reduce((a, t) => a + (capOf.get(t) || 0), 0) || 1;
   const ctx = { weight: t => (capOf.get(t) || 0) / capTotal };
-  const days = m.period ? leadDays : 0;
 
+  const raw = metrics.map(x => {
+    const days = x.period ? leadDays : 0;
+    const vals = new Map();
+    for(const t of universe){
+      const v = x.get(t, days, ctx);
+      if(v != null && isFinite(v)) vals.set(t, v);
+    }
+    return { metric: x, vals, pct: percentiles(vals) };
+  });
+
+  // a composite is only honest where every selected metric has a value
   const rows = [];
   for(const t of universe){
-    const v = m.get(t, days, ctx);
-    if(v == null || !isFinite(v)) continue;
-    rows.push({ t, v });
+    if(!raw.every(r => r.vals.has(t))) continue;
+    const parts = raw.map(r => ({ m: r.metric, v: r.vals.get(t), p: r.pct.get(t) }));
+    const v = multi ? parts.reduce((a, x) => a + x.p, 0) / parts.length * 100 : parts[0].v;
+    rows.push({ t, v, parts });
   }
   rows.sort((a, b) => b.v - a.v);
 
   // breadth belongs to a directional price move, not to a turnover ranking
   let breadth = null;
-  if(m.period){
+  const anyPeriod = metrics.some(x => x.period);
+  if(anyPeriod){
     const scope = NASDAQ_SCOPE();
     const capN = scope.reduce((a, t) => a + (capOf.get(t) || 0), 0) || 1;
     let idx = 0, adv = 0, dec = 0, counted = 0;
     for(const t of scope){
-      const c = periodChange(t, days);
+      const c = periodChange(t, leadDays);
       if(c == null) continue;
       idx += c * ((capOf.get(t) || 0) / capN);
       if(c > 0) adv++; else if(c < 0) dec++;
@@ -3222,10 +3380,10 @@ function leadData(){
   const ss = anchor ? sessionsOf(anchor) : [];
   const range = ss.length
     ? { to: OH.dates[ss[ss.length - 1]],
-        from: OH.dates[ss[Math.max(0, ss.length - 1 - Math.max(1, days))]] }
+        from: OH.dates[ss[Math.max(0, ss.length - 1 - Math.max(1, leadDays))]] }
     : null;
 
-  _leadCache = { key, metric: m, up: rows.slice(0, LEAD_TOP),
+  _leadCache = { key, metric: m, metrics, multi, up: rows.slice(0, LEAD_TOP),
                  dn: rows.slice(-LEAD_TOP).reverse(), breadth, range, count: rows.length };
   return _leadCache;
 }
@@ -3240,38 +3398,47 @@ function leadRowHTML(r, i, kind, d){
   const n = nodeIndex.get(r.t);
   if(!n) return '';
   const m = d.metric;
-  const col = m.signed ? (r.v >= 0 ? 'var(--up)' : 'var(--down)')
+  const col = d.multi ? (kind === 'up' ? 'var(--accent)' : 'var(--text-muted)')
+            : m.signed ? (r.v >= 0 ? 'var(--up)' : 'var(--down)')
                        : (kind === 'up' ? 'var(--accent)' : 'var(--text-muted)');
-  const scale = Math.max(...[...d.up, ...d.dn].map(x => Math.abs(x.v)), 1e-9);
+  const scale = d.multi ? 100 : Math.max(...[...d.up, ...d.dn].map(x => Math.abs(x.v)), 1e-9);
   const w = Math.min(100, Math.abs(r.v) / scale * 100);
-  return `<div class="lead-row" data-tk="${r.t}">
+  const text = d.multi ? Math.round(r.v) : m.fmt(r.v);
+  const tip = `${n.name}\n` + r.parts
+    .map(p => `${p.m.label} ${p.m.fmt(p.v)} (상위 ${Math.max(1, Math.round((1 - p.p) * 100))}%)`).join('\n');
+  return `<div class="lead-row" data-tk="${r.t}" title="${tip.replace(/"/g, '&quot;')}">
       <span class="rk">${i + 1}</span>
       <span class="dot" style="width:6px;height:6px;background:${n.color};box-shadow:none"></span>
-      <span class="tk4" title="${n.name}">${n.assetClass === 'kr_stock' ? n.name : r.t}</span>
+      <span class="tk4">${n.assetClass === 'kr_stock' ? n.name : r.t}</span>
       <span class="barwrap"><span style="width:${w}%;background:${col}"></span></span>
-      <span class="pct" style="color:${col}">${m.fmt(r.v)}</span>
+      <span class="pct" style="color:${col}">${text}</span>
     </div>`;
 }
 
 function renderLeaders(){
   const d = leadData(), m = d.metric;
+  const anyPeriod = d.metrics.some(x => x.period);
   document.getElementById('lead-panel').style.display = '';
   document.getElementById('lead-period-label').textContent =
-    m.period ? '기간' : '기간 (시세 기준에만 적용)';
-  document.getElementById('lead-period').style.opacity = m.period ? 1 : 0.4;
+    anyPeriod ? '기간' : '기간 (시세 기준에만 적용)';
+  document.getElementById('lead-period').style.opacity = anyPeriod ? 1 : 0.4;
   document.getElementById('lead-date').textContent =
-    m.period ? (d.range ? d.range.to : '—') : `${d.count}개 종목`;
+    anyPeriod ? (d.range ? d.range.to : '—') : `${d.count}개 종목`;
 
   if(!d.up.length){
     document.getElementById('lead-list').innerHTML =
-      '<div class="empty">이 기준으로 순위를 낼 데이터가 없습니다.</div>';
+      '<div class="empty">선택한 기준을 모두 갖춘 종목이 없습니다. 기준을 줄여 보세요.</div>';
     document.getElementById('lead-breadth').innerHTML = '';
     return;
   }
+  const upLab = d.multi ? '▲ 종합 상위' : m.up;
+  const dnLab = d.multi ? '▼ 종합 하위' : m.dn;
+  const upCol = d.multi ? 'var(--accent)' : (m.signed ? 'var(--up)' : 'var(--accent)');
+  const dnCol = d.multi ? 'var(--text-muted)' : (m.signed ? 'var(--down)' : 'var(--text-muted)');
   document.getElementById('lead-list').innerHTML =
-    `<div class="lead-split" style="color:${m.signed ? 'var(--up)' : 'var(--accent)'}">${m.up}</div>` +
+    `<div class="lead-split" style="color:${upCol}">${upLab}</div>` +
     d.up.map((r, i) => leadRowHTML(r, i, 'up', d)).join('') +
-    `<div class="lead-split" style="color:${m.signed ? 'var(--down)' : 'var(--text-muted)'}">${m.dn}</div>` +
+    `<div class="lead-split" style="color:${dnCol}">${dnLab}</div>` +
     d.dn.map((r, i) => leadRowHTML(r, i, 'down', d)).join('');
 
   const bits = [];
@@ -3280,9 +3447,15 @@ function renderLeaders(){
     bits.push(`나스닥 100 시총가중 <b style="color:${b.idx >= 0 ? 'var(--up)' : 'var(--down)'}">${b.idx >= 0 ? '+' : ''}${b.idx.toFixed(2)}%</b>` +
       ` · 상승 <b style="color:var(--up)">${b.adv}</b> / 하락 <b style="color:var(--down)">${b.dec}</b>`);
   }
-  if(m.period && d.range) bits.push(`${d.range.from} ~ ${d.range.to} · ${d.count}개 종목`);
-  else if(!m.period) bits.push('최근 회계연도 기준 · 펀더멘털 데이터가 있는 종목만');
-  if(m.note) bits.push(m.note);
+  if(anyPeriod && d.range) bits.push(`${d.range.from} ~ ${d.range.to} · ${d.count}개 종목`);
+  else bits.push(`최근 회계연도 기준 · ${d.count}개 종목`);
+  if(d.multi){
+    bits.push(`<b>${d.metrics.map(x => x.label).join(' + ')}</b> 순위를 평균낸 종합 점수(0~100)입니다. ` +
+      '단위가 다른 값은 더할 수 없으므로 각 기준 안에서의 순위를 백분율로 바꿔 평균냈고, ' +
+      '선택한 기준을 모두 갖춘 종목만 순위에 넣습니다. 행에 마우스를 올리면 기준별 값이 보입니다.' +
+      (d.metrics.some(x => x.period) && d.metrics.some(x => !x.period)
+        ? ' 시세 기준은 위 기간을, 펀더멘털 기준은 최근 회계연도를 씁니다.' : ''));
+  } else if(m.note) bits.push(m.note);
   document.getElementById('lead-breadth').innerHTML = bits.join('<br>');
 
   document.getElementById('lead-list').querySelectorAll('.lead-row').forEach(row => {
@@ -3290,27 +3463,45 @@ function renderLeaders(){
   });
 }
 
-function setLeadMode(mode){
-  leadMode = mode;
+function syncLeadButtons(){
   document.querySelectorAll('#lead-mode button, #lead-fund button')
-    .forEach(x => x.classList.toggle('on', x.dataset.mode === mode));
+    .forEach(x => x.classList.toggle('on', leadModes.includes(x.dataset.mode)));
+}
+function setLeadModes(list){
+  leadModes = list.length ? list : ['chg'];
+  syncLeadButtons();
   _leadCache = null;
   renderLeaders();
   if(leadOnly) resetOpacities();
 }
+/* Criteria are toggles: pick 등락률 + 지수 기여도 + 매출성장 together and the
+   panel ranks by the average of the three, instead of by one at a time. */
 document.querySelectorAll('#lead-mode button, #lead-fund button').forEach(b => {
-  b.addEventListener('click', () => setLeadMode(b.dataset.mode));
+  b.addEventListener('click', ev => {
+    const mode = b.dataset.mode;
+    const on = leadModes.includes(mode);
+    if(ev.altKey || ev.shiftKey || ev.metaKey || ev.ctrlKey){
+      setLeadModes(on ? leadModes.filter(x => x !== mode) : [...leadModes, mode]);
+      return;
+    }
+    // a plain click on an already-selected criterion removes it (unless it is
+    // the last one); on an unselected one it adds it
+    if(on && leadModes.length > 1) setLeadModes(leadModes.filter(x => x !== mode));
+    else if(!on) setLeadModes([...leadModes, mode]);
+  });
+  b.addEventListener('dblclick', () => setLeadModes([b.dataset.mode]));   // 하나만 보기
 });
 document.querySelectorAll('#lead-period button').forEach(b => {
   b.addEventListener('click', () => {
     leadDays = +b.dataset.d;
     document.querySelectorAll('#lead-period button').forEach(x => x.classList.toggle('on', x === b));
     _leadCache = null;
-    // choosing a window means you want a price ranking; fundamentals ignore it
-    if(!LEAD_METRICS[leadMode].period) setLeadMode('chg');
+    // choosing a window means you want a price ranking in the mix
+    if(!leadModes.some(k => LEAD_METRICS[k].period)) setLeadModes([...leadModes, 'chg']);
     else renderLeaders();
   });
 });
+document.getElementById('lead-reset').addEventListener('click', () => setLeadModes(['chg']));
 
 document.getElementById('lead-only').addEventListener('click', () => {
   leadOnly = !leadOnly;
@@ -3465,15 +3656,17 @@ function renderFavorites(){
 
     list.innerHTML = favSections.map(sec => {
       const rows = bySec.get(sec.id) || [];
-      // an empty custom section still shows, so it can be renamed or removed
+      // an empty custom section still shows: it is a drop target and can be renamed
       if(!rows.length && sec.id === DEFAULT_SEC) return '';
-      return `<div class="fav-sec" data-sec="${sec.id}">
+      return `<div class="fav-group" data-sec="${sec.id}">
+        <div class="fav-sec">
           <span class="nm">${esc(sec.name)}</span><span class="cnt">${rows.length}</span>
           ${sec.id === DEFAULT_SEC ? '' :
             `<button class="sec-btn" data-ren="${sec.id}" title="이름 변경">✎</button>
              <button class="sec-btn" data-del="${sec.id}" title="섹션 삭제">✕</button>`}
         </div>` + (rows.length ? rows.map(favRowHTML(opts)).join('')
-                               : '<div class="fav-empty" style="padding:3px 4px">비어 있음 — 아래 종목의 ⌄ 로 옮기세요.</div>');
+                               : '<div class="fav-empty" style="padding:4px">여기로 끌어다 놓으세요</div>')
+        + `</div>`;
     }).join('');
   }
 
@@ -3499,6 +3692,7 @@ function renderFavorites(){
   list.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', ev => {
     ev.stopPropagation(); deleteFavSection(b.dataset.del);
   }));
+  wireFavDrag(list);
 
   // stars in the two detail panels
   const dStar = document.getElementById('fav-toggle');
@@ -3517,7 +3711,7 @@ function renderFavorites(){
 const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const favRowHTML = opts => n => {
   const r = n.stats.ret_1y ?? 0;
-  return `<div class="fav-row" data-tk="${n.id}">
+  return `<div class="fav-row" data-tk="${n.id}" draggable="true">
       <span class="dot" style="width:7px;height:7px;background:${n.color};box-shadow:none"></span>
       <span class="tk3" title="${esc(n.name)}">${n.assetClass === 'kr_stock' ? esc(n.name) : n.id}</span>
       <span class="ret" style="color:${r>=0?'var(--up)':'var(--down)'}">${r>=0?'+':''}${r}%</span>
@@ -3525,6 +3719,44 @@ const favRowHTML = opts => n => {
       <button class="drop" data-drop="${n.id}" title="즐겨찾기 해제">★</button>
     </div>`;
 };
+
+/* Drag a row onto a section block to move it. The ⌄ menu on each row stays —
+   HTML5 drag does not fire from a touchscreen, and it is the only route there. */
+let favDragTk = null;
+function wireFavDrag(list){
+  list.querySelectorAll('.fav-row').forEach(row => {
+    row.addEventListener('dragstart', ev => {
+      favDragTk = row.dataset.tk;
+      row.classList.add('dragging');
+      ev.dataTransfer.effectAllowed = 'move';
+      try { ev.dataTransfer.setData('text/plain', favDragTk); } catch(e){}
+    });
+    row.addEventListener('dragend', () => {
+      favDragTk = null;
+      list.querySelectorAll('.dragging, .drop-target')
+          .forEach(el => el.classList.remove('dragging', 'drop-target'));
+    });
+  });
+  list.querySelectorAll('.fav-group').forEach(g => {
+    const sid = g.dataset.sec;
+    g.addEventListener('dragover', ev => {
+      if(!favDragTk) return;
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = 'move';
+      // no feedback on the section it already sits in
+      if((favAssign[favDragTk] || DEFAULT_SEC) !== sid) g.classList.add('drop-target');
+    });
+    g.addEventListener('dragleave', ev => {
+      if(!g.contains(ev.relatedTarget)) g.classList.remove('drop-target');
+    });
+    g.addEventListener('drop', ev => {
+      ev.preventDefault();
+      const tk = favDragTk || (() => { try { return ev.dataTransfer.getData('text/plain'); } catch(e){ return null; } })();
+      g.classList.remove('drop-target');
+      if(tk && favorites.has(tk)) moveFavTo(tk, sid);
+    });
+  });
+}
 
 /* ---------- sections ---------- */
 function newSectionId(){ return 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
