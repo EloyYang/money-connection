@@ -411,13 +411,16 @@
     border-bottom:1px solid var(--border); }
   .cmp-table th:first-child, .cmp-table td:first-child{ text-align:left; font-weight:400;
     color:var(--text-secondary); }
-  .cmp-table thead th{ font-family:'JetBrains Mono',monospace; font-size:11px;
-    border-bottom:1px solid var(--border-strong); }
-  .cmp-table tbody td{ font-family:'JetBrains Mono',monospace; color:var(--text-primary); }
+  .cmp-table thead th{ font-size:11px; border-bottom:1px solid var(--border-strong); }
+  .cmp-table thead th.mono, .cmp-table tbody td{ font-family:'JetBrains Mono',monospace; }
+  .cmp-table tbody td{ color:var(--text-primary); }
+  .cmp-table tbody td:first-child{ font-family:inherit; }
   .cmp-table tr.grp td{ padding:9px 0 3px; border-bottom:none; font-size:10px; letter-spacing:0.06em;
     text-transform:uppercase; color:var(--text-muted); }
   .cmp-table td.na{ color:var(--text-muted); }
   .cmp-table td.best{ font-weight:700; background:rgba(255,255,255,0.07); }
+  /* five columns in a 330px drawer — the peer table needs the tighter gutter */
+  #peer-table th, #peer-table td{ padding:4px 3px; }
   .cmp-table td.best::after{ content:''; }
   .cmp-legend{ display:flex; flex-wrap:wrap; gap:11px; margin-top:5px; font-size:10.5px; color:var(--text-secondary); }
   .cmp-legend i{ display:inline-block; width:13px; height:2px; border-radius:1px; vertical-align:middle; margin-right:4px; }
@@ -547,6 +550,8 @@
     <div id="search-results" hidden></div>
   </div>
   <div class="freshness" id="freshness" title="구성종목·시세 자동 갱신 상태">—</div>
+  <button class="help" data-h="usage" style="margin-left:6px">?</button>
+  <button class="help" data-h="method" style="margin-left:2px">i</button>
 </header>
 
 <div class="main">
@@ -658,12 +663,6 @@
     <div class="fav-sync" id="fav-sync">이 브라우저에 저장됩니다.</div>
   </div>
 
-  <div class="panel infobar" id="infobar">
-    종목을 클릭하면 <b>주가 차트 · 펀더멘털 · 상관계수 순위</b>가 열립니다. 목록의 연관 종목을 클릭하면
-    두 종목 주가를 겹쳐 보고 <b>선행·후행 분석</b>까지 확인할 수 있습니다.
-    좌측 <b>주도주</b> 패널은 직전 거래일에 지수를 움직인 종목을 보여줍니다.
-    <span class="src" id="method-note"></span>
-  </div>
   </div>
 
   <div class="panel hint graph-only">스크롤 확대/축소 · 드래그 이동 · 노드 드래그 재배치 · 빈 곳 클릭 시 해제</div>
@@ -1094,6 +1093,14 @@ const HELP = {
   groupMode: { t: '분류 기준', dir: null, d:
     '같은 그래프를 세 가지 방식으로 색칠합니다. 테마는 사업 성격, 시장은 나스닥·코스피·ETF·암호화폐·원자재, ' +
     '성격은 최근 3년 주가 움직임의 유형입니다. 노드의 위치는 어느 기준에서도 바뀌지 않습니다 — 위치는 오직 상관계수가 정합니다.' },
+  usage: { t: '사용법', dir: null, d:
+    '종목을 클릭하면 주가 차트 · 펀더멘털 · 상관계수 순위가 열립니다. ⌘/Ctrl/Shift+클릭으로 최대 5종목까지 겹쳐 비교할 수 있고, ' +
+    '상세 아래 연관 종목을 클릭해도 비교에 추가됩니다. 두 종목만 고르면 선행·후행 분석이 함께 나옵니다.\n\n' +
+    '왼쪽 테마 패널에서 켜 둔 그룹이 전체 범위가 되어, 그래프·연결선·주도주 순위가 모두 그 범위 안에서 계산됩니다. ' +
+    '각 패널의 제목이나 꺾쇠를 누르면 접을 수 있습니다.\n\n' +
+    '그래프는 스크롤로 확대·축소, 드래그로 이동, 노드를 끌어 재배치할 수 있고 빈 곳을 클릭하면 선택이 풀립니다.\n\n' +
+    '노드의 위치는 전적으로 상관계수가 정합니다 — 테마별로 뭉치게 만드는 힘은 넣지 않았습니다. ' +
+    '같은 테마가 모여 보인다면 그것은 배치가 아니라 실제로 같이 움직였다는 뜻입니다.' },
   relation: { t: '연결 기준 (선의 의미)', dir: null, d:
     '두 종목을 잇는 선이 무엇을 뜻하는지 고릅니다.\n\n' +
     '· 주가 상관 — 선택한 기간의 일별 수익률이 같이 움직인 정도(피어슨 상관계수)\n' +
@@ -1113,7 +1120,9 @@ const HELP = {
     '상관은 인과가 아닙니다 — 같이 움직였다는 사실만 말해 줍니다.' },
   leadlag: { t: '선행 · 후행 분석', dir: null, d:
     '두 종목의 수익률을 −5일 ~ +5일까지 밀어 가며 상관을 다시 계산합니다. 0일이 아닌 지점에서 상관이 가장 높으면 한쪽이 먼저 움직였다는 뜻입니다. ' +
-    '점선 띠는 ±2/√n 잡음 한계로, 그 안에 머무는 값은 우연과 구분되지 않습니다. 실제로는 대부분 0일에서 가장 높습니다.' },
+    '막대는 시차별 상관계수, 회색 띠는 ±2/√n 잡음 한계로 그 안에 머무는 값은 우연과 구분되지 않습니다.\n\n' +
+    '이 데이터셋 전체를 훑어보면 1,632쌍 중 시차 상관이 동시(0일)를 이기는 경우는 6쌍뿐이었습니다. ' +
+    '일봉 기준으로 "먼저 오른 종목을 보고 따라 사는" 신호는 사실상 관측되지 않습니다.' },
 
   /* ---- 주도주 ---- */
   leadCriteria: { t: '주도주 기준', dir: null, d:
@@ -1470,8 +1479,8 @@ function graphSubtitle(){
            : `${CORR.meta.range_from} ~ ${CORR.meta.range_to} · 일별 수익률 상관계수 네트워크`;
 }
 document.getElementById('brand-sub').textContent = graphSubtitle();
-document.getElementById('method-note').textContent =
-  `${CORR.meta.method} · 출처: ${CORR.meta.sources}. 상관관계는 인과관계가 아니며 과거 데이터 기준입니다.`;
+HELP.method = { t: '계산 방법과 출처', dir: null,
+  d: `${CORR.meta.method}\n\n출처: ${CORR.meta.sources}\n\n상관관계는 인과관계가 아니며, 모두 과거 데이터 기준입니다.` };
 
 /* =====================================================================
    TOOLTIP
@@ -1530,8 +1539,8 @@ function applyGroupMode(mode){
   document.getElementById('legend-title').textContent =
     mode === 'theme' ? '테마' : mode === 'market' ? '시장 · 자산군' : '종목 성격';
   document.getElementById('legend-note').textContent = mode === 'profile'
-    ? `최근 3년 기준. 줄을 클릭하면 강조/숨김. 연변동성 중앙값 ${PF_CUT.volMid}% 이하를 '낮음', 상위 25%(${PF_CUT.volHigh}%) 이상을 '높음'으로 봅니다.`
-    : '줄을 클릭하면 강조/숨김';
+    ? `최근 3년 · 변동성 기준선 ${PF_CUT.volMid}% / ${PF_CUT.volHigh}%`
+    : '';
   document.querySelectorAll('#group-mode button')
     .forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
   applyScope();                               // rebuilds legend, edges, leaders
@@ -1584,9 +1593,9 @@ function syncSelectionHighlight(){
 
 function updateScopeNote(){
   const n = scopeTickers().length;
-  document.getElementById('scope-note').innerHTML = scopeIsAll()
-    ? `범위 <b>전체 ${n}종목</b> — 그래프 · 주도주 · 연결선이 모두 이 범위에서 계산됩니다.`
-    : `범위 <b style="color:var(--accent)">${n}종목</b> / 전체 ${nodes.length} — 주도주 순위와 연결선도 이 범위 안에서만 계산됩니다.`;
+  document.getElementById('scope-note').innerHTML = (scopeIsAll()
+    ? `범위 <b>전체 ${n}종목</b>`
+    : `범위 <b style="color:var(--accent)">${n}종목</b> / 전체 ${nodes.length}`) + helpBadge('scope');
 }
 document.getElementById('legend-all').addEventListener('click', () => setAllGroups(() => true));
 document.getElementById('legend-none').addEventListener('click', () => setAllGroups(() => false));
@@ -1610,13 +1619,9 @@ document.getElementById('mode-fit').addEventListener('click', ()=>fitToView(400)
 
 /* ---------- relation basis + look-back period ---------- */
 const RELATION_INFO = {
-  price: { thr: '상관계수 임계값 |r|',
-           note: () => `선택한 기간의 일별 수익률 상관계수. 같이 오르내릴수록 가깝게 붙습니다.` },
-  macro: { thr: '유사도 임계값',
-           note: () => `금리·달러·유가·변동성·신용·시장·금 ${MACRO.factors.length}개 팩터에 대한 민감도(베타)가 얼마나 닮았는지. ` +
-                       `가까울수록 같은 매크로 충격에 같은 방향으로 반응합니다 — 분산이 안 된 구간을 찾는 용도.` },
-  fund:  { thr: '유사도 임계값',
-           note: () => `PER·매출성장률·순이익률·부채비율 프로필의 유사도. 재무제표가 있는 나스닥100 ${fundVec.size}종목만 연결됩니다.` },
+  price: { thr: '상관계수 임계값 |r|', note: () => '' },
+  macro: { thr: '유사도 임계값', note: () => `${MACRO.factors.length}개 매크로 팩터 기준` },
+  fund:  { thr: '유사도 임계값', note: () => `재무제표가 있는 ${fundVec.size}종목만 연결` },
 };
 
 /* The two panels measure different things — a correlation needs months of
@@ -2095,9 +2100,7 @@ function renderLeadLag(x, y){
 
   drawLagChart(prof, band);
   document.getElementById('ll-note').innerHTML =
-    `막대는 시차별 수익률 상관계수, 회색 띠는 노이즈 한계(±2/√${nObs}). ` +
-    `이 데이터셋 전체에서도 1,632쌍 중 시차 상관이 동시(lag 0)를 이기는 경우는 6쌍뿐 — ` +
-    `일봉 기준 후행 매수 신호는 사실상 관측되지 않습니다.`;
+    `공통 거래일 ${nObs}일 · 노이즈 한계 ±${(2 / Math.sqrt(nObs)).toFixed(2)}`;
   document.getElementById('ll-go').textContent = `${y} 종목으로 이동 →`;
   panel.classList.add('show');
 }
@@ -2627,7 +2630,7 @@ function renderFundCompare(list){
   document.getElementById('fundcmp-period').textContent =
     list.filter(t => FUND[t]).length + '/' + list.length + '개 종목 데이터';
   const head = `<tr><th></th>${list.map((t, k) =>
-    `<th style="color:${CMP_COLORS[k]}">${t}</th>`).join('')}</tr>`;
+    `<th class="mono" style="color:${CMP_COLORS[k]}">${t}</th>`).join('')}</tr>`;
   const body = fundCmpRows(list).map(r => {
     if(r.grp) return `<tr class="grp"><td colspan="${list.length + 1}">${r.grp}</td></tr>`;
     const win = bestIndex(r.nums, r.best);
@@ -2639,8 +2642,7 @@ function renderFundCompare(list){
     return `<tr><td>${r.lab}${helpBadge(FUNDCMP_HELP[r.lab])}</td>${tds}</tr>`;
   }).join('');
   document.getElementById('fundcmp-table').innerHTML = `<thead>${head}</thead><tbody>${body}</tbody>`;
-  document.getElementById('fundcmp-note').textContent =
-    '굵게 강조된 값이 그 줄에서 가장 유리한 값입니다.';
+  document.getElementById('fundcmp-note').textContent = '';
 
   document.querySelectorAll('#fundcmp-metric button').forEach(b => {
     b.classList.toggle('on', b.dataset.k === fundCmpMetric);
@@ -2738,10 +2740,6 @@ function drawFundCmpChart(list){
     return `<span><i style="background:${r.color}"></i>${r.tk} ${last ? Math.round(last.v) : '—'}</span>`;
   }).join('');
   host.appendChild(legend);
-  const cap = document.createElement('div');
-  cap.className = 'cap';
-  cap.textContent = `각 종목의 가장 오래된 보고연도 ${label}을 100으로 맞춘 성장 경로입니다.`;
-  host.appendChild(cap);
 }
 
 /* =====================================================================
@@ -2800,7 +2798,7 @@ function renderPeers(tk){
     let rank = null;
     if(tv.length >= MIN_PEERS){
       const all = [...tv, mine].sort((a, b) => b - a);
-      rank = `${all.indexOf(mine) + 1}/${all.length}위`;
+      rank = `${all.indexOf(mine) + 1}/${all.length}`;   // 헤더가 '순위'라 단위는 생략
     }
     const cell = (v, group) => {
       if(v == null) return '<td class="na">—</td>';
@@ -2819,12 +2817,12 @@ function renderPeers(tk){
   if(!rows.length){ block.style.display = 'none'; return; }
   block.style.display = '';
   document.getElementById('peer-note').textContent =
-    `테마 ${themeIds.length}종목 · 시장 ${marketIds.length}종목`;
+    `${(theme?.label || '테마').split(' · ')[0]} ${themeIds.length} · ${market?.label || '시장'} ${marketIds.length}`;
   document.getElementById('peer-table').innerHTML =
-    `<thead><tr><th>지표</th><th>${tk}</th><th title="${theme?.label || ''}">${(theme?.label || '테마').split(' · ')[0]}</th>` +
-    `<th>${market?.label || '시장'}</th><th>테마 순위</th></tr></thead><tbody>${rows.join('')}</tbody>`;
-  document.getElementById('peer-cap').textContent =
-    `동종 그룹의 중앙값입니다. 값이 있는 종목이 ${MIN_PEERS}개 미만이면 빈칸으로 둡니다.`;
+    `<thead><tr><th>지표</th><th class="mono" style="color:var(--sel)">${tk}</th>` +
+    `<th title="${theme?.label || ''} 중앙값">테마</th><th title="${market?.label || ''} 중앙값">시장</th>` +
+    `<th>순위</th></tr></thead><tbody>${rows.join('')}</tbody>`;
+  document.getElementById('peer-cap').textContent = '';
 }
 
 function renderFundamentals(tk){
@@ -3008,7 +3006,7 @@ function renderMacroCompare(list){
   document.getElementById('macro-note').textContent = MACRO.window || '';
 
   const head = `<tr><th>팩터</th>${list.map((t,k) =>
-    `<th style="color:${CMP_COLORS[k]}">${t}</th>`).join('')}</tr>`;
+    `<th class="mono" style="color:${CMP_COLORS[k]}">${t}</th>`).join('')}</tr>`;
   const cell = (v, weak) => v == null
     ? '<td class="na">—</td>'
     : `<td style="color:${weak ? 'var(--text-muted)' : (v >= 0 ? 'var(--up)' : 'var(--down)')}">${v >= 0 ? '+' : ''}${v.toFixed(2)}</td>`;
@@ -3020,28 +3018,28 @@ function renderMacroCompare(list){
       return cell(d.b, d.t == null || Math.abs(d.t) < 2);
     });
     if(cells.every(c => c.includes('na'))) return '';
-    return `<tr title="${f.label} 프록시: ${f.proxy} — ${f.note}"><td>${f.label}</td>${cells.join('')}</tr>`;
+    return `<tr title="프록시: ${f.proxy}"><td>${f.label}${helpBadge('factor_' + f.key)}</td>${cells.join('')}</tr>`;
   }).join('');
 
   document.getElementById('macro-bars').innerHTML =
-    `<div class="cmp-scroll"><table class="cmp-table"><thead>${head}</thead><tbody>${betaRows}</tbody></table></div>` +
-    `<div class="cap">해당 팩터가 1 오를 때 각 종목의 하루 수익률 변화(베타). 회색 값은 t값이 2 미만이라 노이즈와 구분되지 않습니다. 부호가 갈리는 줄이 두 종목을 실제로 나누는 지점입니다.</div>`;
+    `<div class="cmp-scroll"><table class="cmp-table"><thead>${head}</thead><tbody>${betaRows}</tbody></table></div>`;
 
   const keys = [...new Set(list.flatMap(t => Object.keys((MACRO.monthly||{})[t] || {})))];
   const mhost = document.getElementById('macro-monthly');
   if(keys.length){
     const labels = Object.fromEntries((MACRO.indicators ? Object.entries(MACRO.indicators) : [])
       .map(([k, v]) => [k, v.label]));
+    let months = 0;
     const rows = keys.map(k => {
       const cells = list.map(t => {
         const d = ((MACRO.monthly||{})[t] || {})[k];
+        if(d) months = Math.max(months, d.n);
         return d ? cell(d.r, Math.abs(d.r) < 2/Math.sqrt(d.n)) : cell(null);
       });
-      return `<tr><td>${labels[k] || k}</td>${cells.join('')}</tr>`;
+      return `<tr><td>${labels[k] || k}${helpBadge('ind_' + k)}</td>${cells.join('')}</tr>`;
     }).join('');
-    mhost.innerHTML = `<div class="lead-split" style="margin:9px 0 3px">월별 지표 (BLS)</div>` +
-      `<div class="cmp-scroll"><table class="cmp-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>` +
-      `<div class="cap">지표 발표는 전월치를 담으므로 한 달 뒤 수익률과 맞췄습니다. 표본이 수십 개월뿐이라 회색 값은 우연 범위입니다.</div>`;
+    mhost.innerHTML = `<div class="lead-split" style="margin:9px 0 3px">월별 지표 (BLS · n=${months}개월)${helpBadge('macroMonthly')}</div>` +
+      `<div class="cmp-scroll"><table class="cmp-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
   } else mhost.innerHTML = '';
 }
 
@@ -3072,6 +3070,7 @@ function renderProfile(tks){
   const dcapWord = p.dcap == null ? '표본 부족'
     : p.dcap <= 0 ? '하락장에 오히려 상승' : p.dcap <= 0.5 ? '시장보다 훨씬 덜 하락'
     : p.dcap <= 0.9 ? '시장보다 덜 하락' : p.dcap <= 1.1 ? '시장과 비슷' : '시장보다 더 하락';
+  const dcapSub = p.dcap == null ? dcapWord : `${dcapWord} · SPY 하락 ${p.dweeks || 0}주 기준`;
 
   document.getElementById('profile-grid').innerHTML =
     cell('연평균 성장률', p.cagr == null ? '—' : sgn(p.cagr) + '%',
@@ -3080,12 +3079,11 @@ function renderProfile(tks){
     cell('연변동성', p.vol == null ? '—' : p.vol + '%',
          p.vol == null ? '' : (p.vol >= PF_CUT.volHigh ? '상위 25% (높음)' : p.vol <= PF_CUT.volMid ? '중앙값 이하 (낮음)' : '보통'), null, 'vol') +
     cell('최대 낙폭', p.mdd + '%', '3년 내 고점 대비', 'var(--down)', 'mdd') +
-    cell('하락장 방어력', p.dcap == null ? '—' : p.dcap.toFixed(2), dcapWord,
+    cell('하락장 방어력', p.dcap == null ? '—' : p.dcap.toFixed(2), dcapSub,
          p.dcap == null ? null : p.dcap <= 0.9 ? 'var(--up)' : p.dcap >= 1.1 ? 'var(--down)' : null, 'dcap') +
     cell('배당수익률', y == null ? '—' : y + '%', y == null ? '데이터 없음' : y >= 2 ? '인컴 기여 있음' : '낮음', null, 'divYield');
 
-  document.getElementById('profile-cap').innerHTML =
-    `하락장 방어력은 SPY가 하락한 ${p.dweeks || 0}개 주를 기준으로 계산했습니다. 각 수치의 뜻은 ? 를 누르면 볼 수 있습니다.`;
+  document.getElementById('profile-cap').innerHTML = '';
 }
 
 function renderProfileCompare(list){
@@ -3094,7 +3092,7 @@ function renderProfileCompare(list){
   block.style.display = '';
   document.getElementById('profile-tags').innerHTML = '';
   const head = `<tr><th>지표</th>${list.map((t, k) =>
-    `<th style="color:${CMP_COLORS[k]}">${t}</th>`).join('')}</tr>`;
+    `<th class="mono" style="color:${CMP_COLORS[k]}">${t}</th>`).join('')}</tr>`;
   const rows = [
     ['성격', t => { const d = PROFILE_DEFS.find(x => x.id === profileIdOf(t));
                     return PF[t] ? `<span style="color:${d.color}">${d.label}</span>` : null; }, null],
@@ -3123,8 +3121,7 @@ function renderProfileCompare(list){
   }).join('');
   document.getElementById('profile-grid').innerHTML =
     `<div class="cmp-scroll" style="grid-column:1/-1"><table class="cmp-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
-  document.getElementById('profile-cap').innerHTML =
-    '굵게 표시된 값이 그 줄에서 가장 유리한 값입니다.' + helpBadge('cmpBest');
+  document.getElementById('profile-cap').innerHTML = '';
 }
 
 function renderMacro(tk){
@@ -3156,8 +3153,7 @@ function renderMacro(tk){
           <span class="mb-track"><span class="zero"></span>${bar}</span>
           <span class="val" style="color:${weak ? 'var(--text-muted)' : col}">${d.b >= 0 ? '+' : ''}${d.b.toFixed(2)}</span>
         </div>`;
-    }).join('') +
-    `<div class="cap">흐린 줄은 t값이 2 미만이라 노이즈와 구분되지 않습니다.</div>`;
+    }).join('');
   } else host.innerHTML = '';
 
   const mhost = document.getElementById('macro-monthly');
@@ -3177,8 +3173,7 @@ function renderMacro(tk){
         </div>`;
     }).join('');
     const n = Object.values(mon)[0]?.n || 0;
-    mhost.innerHTML = `<div class="lead-split" style="margin:9px 0 3px">월별 지표 (BLS · n=${n}개월)</div>${rows}`
-      + `<div class="cap">표본 ${n}개월 · 흐린 줄은 우연 범위입니다.${helpBadge('macroMonthly')}</div>`;
+    mhost.innerHTML = `<div class="lead-split" style="margin:9px 0 3px">월별 지표 (BLS · n=${n}개월)${helpBadge('macroMonthly')}</div>${rows}`;
   } else mhost.innerHTML = '';
 }
 
@@ -3353,10 +3348,6 @@ function renderSeasonCmpLegend(all){
     drawSeasonalityCompare(compareSet);
   });
   host.appendChild(legend);
-  const cap = document.createElement('div');
-  cap.className = 'cap';
-  cap.textContent = '각 종목의 완결 연도 평균 경로입니다. 종목마다 평균에 쓰인 연도 수가 다를 수 있습니다.';
-  host.appendChild(cap);
 }
 
 function drawSeasonality(tk){
@@ -3502,12 +3493,6 @@ function renderSeasonLegend(series, tk, avgPts, doneCount){
       drawSeasonality(tk);
     });
   });
-  const cap = document.createElement('div');
-  cap.className = 'cap';
-  cap.textContent = seasonAvg
-    ? '완료된 연도만 평균 냅니다.'
-    : '흰 점선은 완료된 연도들의 평균 경로 — 올해가 예년 대비 앞서는지 비교하는 기준선입니다.';
-  host.appendChild(cap);
 }
 
 document.querySelectorAll('#season-avg button').forEach(b => {
@@ -3791,13 +3776,7 @@ function renderLeaders(){
   }
   if(anyPeriod && d.range) bits.push(`${d.range.from} ~ ${d.range.to} · ${d.count}개 종목`);
   else bits.push(`최근 회계연도 기준 · ${d.count}개 종목`);
-  if(d.multi){
-    bits.push(`<b>${d.metrics.map(x => x.label).join(' + ')}</b> 순위를 평균낸 종합 점수(0~100)입니다. ` +
-      '단위가 다른 값은 더할 수 없으므로 각 기준 안에서의 순위를 백분율로 바꿔 평균냈고, ' +
-      '선택한 기준을 모두 갖춘 종목만 순위에 넣습니다. 행에 마우스를 올리면 기준별 값이 보입니다.' +
-      (d.metrics.some(x => x.period) && d.metrics.some(x => !x.period)
-        ? ' 시세 기준은 위 기간을, 펀더멘털 기준은 최근 회계연도를 씁니다.' : ''));
-  } else if(m.note) bits.push(m.note);
+  if(d.multi) bits.push(`종합 = <b>${d.metrics.map(x => x.label).join(' + ')}</b>`);
   document.getElementById('lead-breadth').innerHTML = bits.join('<br>');
 
   document.getElementById('lead-list').querySelectorAll('.lead-row').forEach(row => {
