@@ -15,6 +15,7 @@
     --up:#3ddc84;
     --down:#ff5c72;
     --fav:#f5c451;
+    --sel:#c77dff;              /* 선택 종목 표시 — 테마 색과 겹치지 않는 밝은 보라 */
     --g9:#8a8f98;
     --g1:#3987e5; --g2:#d95926; --g3:#199e70; --g4:#c98500;
     --g5:#d55181; --g6:#3fae3f; --g7:#9085e9; --g8:#e66767;
@@ -23,6 +24,7 @@
     color-scheme: dark;
   }
   *{box-sizing:border-box;}
+  [hidden]{ display:none !important; }
   body{
     margin:0; background:var(--bg-vignette); background-color:var(--bg);
     color:var(--text-primary);
@@ -357,6 +359,33 @@
   .eps-row .per{ color:var(--text-secondary); }
   .eps-row .num{ font-family:'JetBrains Mono',monospace; }
   .eps-row .sur{ font-family:'JetBrains Mono',monospace; min-width:44px; text-align:right; }
+  /* ---- 비교 모드 (최대 3종목) ---- */
+  .cmp-bar{ display:flex; flex-wrap:wrap; align-items:center; gap:5px; margin:9px 0 2px; }
+  .cmp-chip{ display:inline-flex; align-items:center; gap:5px; padding:3px 5px 3px 8px; border-radius:999px;
+    border:1px solid var(--border-strong); background:rgba(255,255,255,0.045);
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-primary); }
+  .cmp-chip .sw{ width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
+  .cmp-chip button{ background:none; border:none; color:var(--text-muted); font-family:inherit;
+    font-size:12px; line-height:1; padding:0 2px; cursor:pointer; }
+  .cmp-chip button:hover{ color:var(--down); }
+  .cmp-hint{ font-size:10px; color:var(--text-muted); line-height:1.4; }
+  .cmp-hint.warn{ color:var(--fav); }
+  .cmp-hint kbd{ font-family:'JetBrains Mono',monospace; font-size:9.5px; border:1px solid var(--border-strong);
+    border-radius:3px; padding:0 3px; color:var(--text-secondary); }
+  .cmp-scroll{ overflow-x:auto; }
+  .cmp-table{ width:100%; border-collapse:collapse; font-size:11.5px; }
+  .cmp-table th, .cmp-table td{ padding:4px 6px; text-align:right; white-space:nowrap;
+    border-bottom:1px solid var(--border); }
+  .cmp-table th:first-child, .cmp-table td:first-child{ text-align:left; font-weight:400;
+    color:var(--text-secondary); }
+  .cmp-table thead th{ font-family:'JetBrains Mono',monospace; font-size:11px;
+    border-bottom:1px solid var(--border-strong); }
+  .cmp-table tbody td{ font-family:'JetBrains Mono',monospace; color:var(--text-primary); }
+  .cmp-table tr.grp td{ padding:9px 0 3px; border-bottom:none; font-size:10px; letter-spacing:0.06em;
+    text-transform:uppercase; color:var(--text-muted); }
+  .cmp-table td.na{ color:var(--text-muted); }
+  .cmp-legend{ display:flex; flex-wrap:wrap; gap:11px; margin-top:5px; font-size:10.5px; color:var(--text-secondary); }
+  .cmp-legend i{ display:inline-block; width:13px; height:2px; border-radius:1px; vertical-align:middle; margin-right:4px; }
   .fund-note{ font-size:10px; color:var(--text-muted); line-height:1.45; margin-top:6px; }
 
   /* ---- watchlist ---- */
@@ -547,7 +576,8 @@
     </div>
     <div class="nm" id="d-nm">—</div>
     <div class="badge" id="d-badge"><span class="dot" style="width:8px;height:8px"></span><span id="d-group">—</span></div>
-    <div class="metrics">
+    <div class="cmp-bar" id="cmp-bar"></div>
+    <div class="metrics" id="d-metrics">
       <div class="metric"><div class="l">최근 종가</div><div class="v" id="d-close">–</div></div>
       <div class="metric"><div class="l">1년 수익률</div><div class="v" id="d-ret">–</div></div>
       <div class="metric"><div class="l">연변동성</div><div class="v" id="d-vol">–</div></div>
@@ -587,6 +617,18 @@
       <svg id="lagchart" viewBox="0 0 298 92" width="100%" height="92"></svg>
       <div class="ll-note" id="ll-note"></div>
       <button class="linkbtn go" id="ll-go">이 종목으로 이동 →</button>
+    </div>
+
+    <div id="fundcmp-block" hidden>
+      <div class="sec-title"><span>펀더멘털 비교</span><span class="mono" id="fundcmp-period"></span></div>
+      <div class="cmp-scroll"><table class="cmp-table" id="fundcmp-table"></table></div>
+      <div class="perf-head" style="margin-top:14px">
+        <span class="ttl">실적 성장 (지수화)</span>
+        <span class="perf-seg" id="fundcmp-metric">
+          <button data-k="revenue" class="on">매출</button><button data-k="op_income">영업이익</button><button data-k="net_income">순이익</button>
+        </span>
+      </div>
+      <div class="fin-chart" id="fundcmp-chart"></div>
     </div>
 
     <div id="fund-block">
@@ -866,6 +908,9 @@ GROUPS.forEach(g => {
   f.append('feGaussianBlur').attr('stdDeviation',3.2).attr('result','b');
   const m = f.append('feMerge'); m.append('feMergeNode').attr('in','b'); m.append('feMergeNode').attr('in','SourceGraphic');
 });
+{ const f = defs.append('filter').attr('id','glow-sel').attr('x','-160%').attr('y','-160%').attr('width','420%').attr('height','420%');
+  f.append('feGaussianBlur').attr('stdDeviation',5).attr('result','b');
+  const m = f.append('feMerge'); m.append('feMergeNode').attr('in','b'); m.append('feMergeNode').attr('in','SourceGraphic'); }
 ['up','down'].forEach(k => {
   const f = defs.append('filter').attr('id','pulse-'+k).attr('x','-160%').attr('y','-160%').attr('width','420%').attr('height','420%');
   f.append('feGaussianBlur').attr('stdDeviation',5.5).attr('result','b');
@@ -899,6 +944,8 @@ function fitToView(duration = 0, subset = null){
 const linkLayer  = zoomLayer.append('g');
 const focusLayer = zoomLayer.append('g');   // temporary "선택 종목 → 상관 종목" rays
 const favLayer   = zoomLayer.append('g');   // gold rings on watchlisted nodes
+const selLayer   = zoomLayer.append('g');   // violet halo on the selected node
+let selHalo = null;                         // declared here: ticked() runs before the focus section
 let favRingSel = null;                      // declared here: ticked() runs before the watchlist block
 let focusSel = null;                        // declared here: ticked() runs before the focus section
 const nodeLayer  = zoomLayer.append('g');
@@ -942,7 +989,7 @@ const nodeSel = nodeLayer.selectAll('circle').data(nodes).join('circle')
   .on('mouseenter', (ev,d)=>{ showTooltip(ev, tooltipHTML(d)); })
   .on('mousemove', moveTooltip)
   .on('mouseleave', hideTooltip)
-  .on('click', (ev,d)=>{ ev.stopPropagation(); onNodeClick(d); });
+  .on('click', (ev,d)=>{ ev.stopPropagation(); onNodeClick(d, ev); });
 
 const labelSel = labelLayer.selectAll('text').data(nodes.filter(d=>d.tier!=='C')).join('text')
   .text(d=>d.id).attr('class','mono').attr('font-size', d=>d.tier==='A'?11:9.5)
@@ -974,6 +1021,7 @@ function ticked(){
   nodeSel.attr('cx',d=>d.x).attr('cy',d=>d.y);
   labelSel.attr('x',d=>d.x).attr('y',d=>d.y);
   if(favRingSel) favRingSel.attr('cx',d=>d.x).attr('cy',d=>d.y);
+  if(selHalo) selHalo.attr('cx',d=>d.x).attr('cy',d=>d.y);
 }
 // settle the layout before first paint, then frame it
 sim.stop(); for(let i=0;i<400;i++) sim.tick(); ticked(); fitToView(); sim.alpha(0.06).restart();
@@ -1081,7 +1129,7 @@ function applyGroupMode(mode){
   // an open drawer keeps stale colours/labels otherwise — re-focus rebuilds both
   if(selectedTk && drawer.classList.contains('show')){
     const n = nodeIndex.get(selectedTk);
-    if(n) focusNode(n);
+    if(n) focusNode(n, true);
   }
 }
 renderLegend();
@@ -1141,7 +1189,7 @@ function applyRelation(){
   clearFocus(); resetOpacities();
   if(selectedTk && drawer.classList.contains('show')){
     const n = nodeIndex.get(selectedTk);
-    if(n) focusNode(n);
+    if(n) focusNode(n, true);
   }
   clearTimeout(refitTimer);
   refitTimer = setTimeout(()=>fitToView(500), 900);
@@ -1160,8 +1208,10 @@ function visibleNode(d){
   return activeGroups.has(d.group);
 }
 function resetOpacities(){
+  clearSelHalo();                                   // the halo pairs with the ring below
   nodeSel.attr('opacity', d=> visibleNode(d) ? 1 : 0.12).attr('r', d=>d.r)
-    .attr('stroke','rgba(255,255,255,0.35)').attr('stroke-width',1);
+    .attr('stroke','rgba(255,255,255,0.35)').attr('stroke-width',1)
+    .attr('filter', d=>`url(#glow-${d.group})`);
   labelSel.attr('opacity', d=> visibleNode(d) ? 1 : 0.08).attr('fill','var(--text-primary)');
   linkSel.attr('opacity', l => {
     const s = l.source.id||l.source, t = l.target.id||l.target;
@@ -1249,17 +1299,71 @@ document.addEventListener('click', ev => {
    FOCUS: 선택 종목의 상관 종목 펼치기
    ===================================================================== */
 const REVEAL = 0.2;   // 선택 시 보여줄 최소 |r|
-function clearFocus(){ focusLayer.selectAll('*').remove(); focusSel = null; }
+function clearFocus(){ focusLayer.selectAll('*').remove(); focusSel = null; clearSelHalo(); }
+function clearSelHalo(){ selLayer.selectAll('*').remove(); selHalo = null; }
 
-function focusNode(d){
+/* ---- 비교 선택 (최대 3종목) ----
+   compareSet[0] 이 기준 종목이다. 한 종목만 있으면 기존 단일 상세 화면,
+   둘 이상이면 주가·계절성·매크로·펀더멘털이 모두 비교 형태로 바뀐다. */
+const CMP_MAX = 3;
+const CMP_COLORS = ['#5fd0ff', '#ffb703', '#f072b6'];
+const MOD_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl';
+let compareSet = [], cmpWarn = '';
+const cmpColor = tk => CMP_COLORS[Math.max(0, compareSet.indexOf(tk))];
+
+function toggleCompare(tk){
+  if(!nodeIndex.has(tk)) return;
+  const i = compareSet.indexOf(tk);
+  if(i >= 0){
+    if(compareSet.length === 1) return;            // 기준 종목은 남겨 둔다
+    compareSet.splice(i, 1);
+  } else if(compareSet.length >= CMP_MAX){
+    cmpWarn = `비교는 최대 ${CMP_MAX}개입니다. 하나를 빼고 추가하세요.`;
+    renderCmpChips();
+    return;
+  } else compareSet.push(tk);
+  cmpWarn = '';
+  const primary = nodeIndex.get(compareSet[0]);
+  if(primary) focusNode(primary, true);
+}
+
+function renderCmpChips(){
+  const bar = document.getElementById('cmp-bar');
+  const chips = compareSet.map((tk, k) =>
+    `<span class="cmp-chip"><span class="sw" style="background:${CMP_COLORS[k]}"></span>${tk}` +
+    (compareSet.length > 1 ? `<button data-tk="${tk}" title="비교에서 제외">✕</button>` : '') +
+    `</span>`).join('');
+  const hint = cmpWarn
+    ? `<span class="cmp-hint warn">${cmpWarn}</span>`
+    : (compareSet.length < CMP_MAX
+        ? `<span class="cmp-hint"><kbd>${MOD_KEY}</kbd>+클릭 또는 아래 연관 종목 클릭으로 최대 ${CMP_MAX}개 비교</span>`
+        : `<span class="cmp-hint">${CMP_MAX}개 비교 중</span>`);
+  bar.innerHTML = chips + hint;
+  bar.querySelectorAll('button[data-tk]').forEach(b => b.onclick = () => toggleCompare(b.dataset.tk));
+}
+
+function focusNode(d, keepCompare){
+  if(!keepCompare || !compareSet.includes(d.id)) compareSet = [d.id];
   clearFocus();
+  const selNodes = compareSet.map(t => nodeIndex.get(t)).filter(Boolean);
+  const selIds = new Set(compareSet);
+  const multi = compareSet.length > 1;
+  // in compare mode each pick wears its own series colour, so a node in the
+  // graph and its line in the charts are the same colour
+  const ringOf = id => multi ? cmpColor(id) : 'var(--sel)';
   const peers = corrList(d.id).filter(c => Math.abs(c.r) >= Math.max(REVEAL, threshold - 0.15));
   const peerMap = new Map(peers.map(p=>[p.id, p.r]));
 
-  nodeSel.attr('opacity', n => n.id===d.id ? 1 : (peerMap.has(n.id) ? 0.35 + Math.abs(peerMap.get(n.id))*0.65 : 0.07))
-    .attr('stroke', n => n.id===d.id ? 'var(--accent)' : (peerMap.has(n.id) ? (peerMap.get(n.id)>=0?'var(--up)':'var(--down)') : 'rgba(255,255,255,0.35)'))
-    .attr('stroke-width', n => n.id===d.id ? 3 : (peerMap.has(n.id) ? 1.5 + Math.abs(peerMap.get(n.id))*2 : 1));
-  labelSel.attr('opacity', n => n.id===d.id || peerMap.has(n.id) ? 1 : 0.05);
+  nodeSel.attr('opacity', n => selIds.has(n.id) ? 1 : (peerMap.has(n.id) ? 0.35 + Math.abs(peerMap.get(n.id))*0.65 : 0.07))
+    .attr('stroke', n => selIds.has(n.id) ? ringOf(n.id) : (peerMap.has(n.id) ? (peerMap.get(n.id)>=0?'var(--up)':'var(--down)') : 'rgba(255,255,255,0.35)'))
+    .attr('stroke-width', n => selIds.has(n.id) ? 3.5 : (peerMap.has(n.id) ? 1.5 + Math.abs(peerMap.get(n.id))*2 : 1))
+    .attr('filter', n => selIds.has(n.id) ? 'url(#glow-sel)' : `url(#glow-${n.group})`);
+  // a surrounding ring, so the pick is findable even where nodes overlap
+  selHalo = selLayer.selectAll('circle').data(selNodes, x=>x.id).join('circle')
+    .attr('r', x => x.r + 9).attr('cx', x=>x.x).attr('cy', x=>x.y)
+    .attr('fill','none').attr('pointer-events','none')
+    .attr('stroke', x => ringOf(x.id)).attr('stroke-width',1.6).attr('opacity',0.5);
+  labelSel.attr('opacity', n => selIds.has(n.id) || peerMap.has(n.id) ? 1 : 0.05);
   linkSel.attr('opacity', 0.04);
 
   const rays = peers.map(p => ({ sx: d, tx: nodeIndex.get(p.id), r: p.r }));
@@ -1269,16 +1373,16 @@ function focusNode(d){
     .attr('stroke-dasharray', r=> r.r<0 ? '4,4' : null)
     .attr('x1',r=>r.sx.x).attr('y1',r=>r.sx.y).attr('x2',r=>r.tx.x).attr('y2',r=>r.tx.y);
 
-  openDrawer(d, peers);
+  openDrawer(d, peers, keepCompare);
   // bring the selected node and its correlated peers into view together
-  fitToView(600, [d, ...peers.map(p=>nodeIndex.get(p.id)).filter(Boolean)]);
+  fitToView(600, [...selNodes, ...peers.map(p=>nodeIndex.get(p.id)).filter(Boolean)]);
 }
 
 /* =====================================================================
    DRAWER
    ===================================================================== */
 const drawer = document.getElementById('drawer');
-document.getElementById('drawer-close').addEventListener('click', ()=>{ drawer.classList.remove('show'); clearFocus(); resetOpacities(); });
+document.getElementById('drawer-close').addEventListener('click', ()=>{ drawer.classList.remove('show'); compareSet = []; cmpWarn = ''; clearFocus(); resetOpacities(); });
 
 let selectedTk = null, comparePeer = null;
 
@@ -1286,40 +1390,41 @@ let selectedTk = null, comparePeer = null;
 const CH = { w:298, h:116, l:38, r:8, t:10, b:16 };
 const chartSvg = d3.select('#pricechart');
 
-function drawPriceChart(main, peer){
+function drawPriceChart(tks){
   chartSvg.selectAll('*').remove();
+  const list = (Array.isArray(tks) ? tks : [tks]).filter(t => PX.prices[t]);
+  if(!list.length) return;
   const dates = PX.dates, n = dates.length;
-  const a = PX.prices[main] || [];
-  const b = peer ? (PX.prices[peer] || []) : null;
+  const multi = list.length > 1;
+  const raw = list.map(t => PX.prices[t]);
   const innerW = CH.w - CH.l - CH.r, innerH = CH.h - CH.t - CH.b;
   const X = i => CH.l + (n < 2 ? 0 : (i/(n-1))*innerW);
 
-  let sa, sb = null, fmtY;
-  if(peer){
-    let s = -1;
-    for(let i=0;i<n;i++){ if(a[i]!=null && b[i]!=null){ s=i; break; } }
-    if(s < 0){ drawPriceChart(main, null); return; }
-    const a0 = a[s], b0 = b[s];
-    sa = a.map((v,i)=> (v==null || i<s) ? null : (v/a0)*100);
-    sb = b.map((v,i)=> (v==null || i<s) ? null : (v/b0)*100);
+  let series, fmtY;
+  if(multi){
+    // every line is indexed to 100 on the first day all of them trade — the
+    // only way a $700 and a $30 stock can share one axis
+    let s0 = -1;
+    for(let i=0;i<n;i++){ if(raw.every(a => a[i] != null)){ s0 = i; break; } }
+    if(s0 < 0){ drawPriceChart([list[0]]); return; }   // no shared history
+    const base = raw.map(a => a[s0]);
+    series = raw.map((a, k) => a.map((v, i) => (v == null || i < s0) ? null : (v/base[k])*100));
     fmtY = v => Math.round(v);
   } else {
-    sa = a.slice();
-    const cur = nodeIndex.get(main)?.currency || 'USD';
+    series = [raw[0].slice()];
+    const cur = nodeIndex.get(list[0])?.currency || 'USD';
     fmtY = v => fmtPx(v, cur);
   }
-  const vals = sa.filter(v=>v!=null).concat(sb ? sb.filter(v=>v!=null) : []);
+  const cols = list.map((t, k) => multi ? CMP_COLORS[k] : nodeIndex.get(t).color);
+
+  const vals = series.flat().filter(v => v != null);
   if(!vals.length) return;
   const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi-lo)*0.10 || 1;
   const Y = v => CH.t + innerH - ((v-(lo-pad))/((hi+pad)-(lo-pad)))*innerH;
 
   const line = d3.line().defined(d=>d.v!=null).x(d=>X(d.i)).y(d=>Y(d.v));
   const area = d3.area().defined(d=>d.v!=null).x(d=>X(d.i)).y0(CH.t+innerH).y1(d=>Y(d.v));
-  const pa = sa.map((v,i)=>({i,v})), pb = sb ? sb.map((v,i)=>({i,v})) : null;
-  const colA = nodeIndex.get(main).color;
-  // the peer gets a neutral line, not its theme color: most comparisons are
-  // within one theme, where two theme-colored lines are indistinguishable
-  const colB = peer ? '#e8eaed' : null;
+  const pts = series.map(sa => sa.map((v,i)=>({i,v})));
 
   // baseline + y ticks (only the values the chart actually reaches)
   [lo, hi].forEach(v => {
@@ -1329,25 +1434,30 @@ function drawPriceChart(main, peer){
       .attr('font-size',8.5).attr('fill','#6b7380').attr('font-family',"'JetBrains Mono',monospace")
       .text(fmtY(v));
   });
-  if(peer){  // index-100 reference line
+  if(multi && lo - pad < 100 && 100 < hi + pad){   // index-100 reference line
     chartSvg.append('line').attr('x1',CH.l).attr('x2',CH.w-CH.r).attr('y1',Y(100)).attr('y2',Y(100))
       .attr('stroke','rgba(255,255,255,0.16)').attr('stroke-width',1).attr('stroke-dasharray','2,3');
   }
 
-  if(!peer){
-    chartSvg.append('path').datum(pa).attr('d', area).attr('fill', colA).attr('opacity',0.14);
+  if(!multi){
+    chartSvg.append('path').datum(pts[0]).attr('d', area).attr('fill', cols[0]).attr('opacity',0.14);
   }
-  chartSvg.append('path').datum(pa).attr('d', line).attr('fill','none').attr('stroke',colA).attr('stroke-width',1.6);
-  if(pb){
-    chartSvg.append('path').datum(pb).attr('d', line).attr('fill','none').attr('stroke',colB)
-      .attr('stroke-width',1.6).attr('stroke-dasharray','4,3');
-  }
-  // endpoint dot
-  for(let i=n-1;i>=0;i--){ if(sa[i]!=null){ chartSvg.append('circle').attr('cx',X(i)).attr('cy',Y(sa[i])).attr('r',2.6).attr('fill',colA); break; } }
+  pts.forEach((pp, k) => {
+    chartSvg.append('path').datum(pp).attr('d', line).attr('fill','none')
+      .attr('stroke', cols[k]).attr('stroke-width', 1.6);
+    // endpoint dot
+    for(let i=n-1;i>=0;i--){
+      if(series[k][i]!=null){
+        chartSvg.append('circle').attr('cx',X(i)).attr('cy',Y(series[k][i])).attr('r',2.6).attr('fill',cols[k]);
+        break;
+      }
+    }
+  });
 
   // x labels span the plotted data, not the index — recent listings start late
-  const firstI = sa.findIndex(v=>v!=null);
-  let lastI = n-1; while(lastI > 0 && sa[lastI]==null) lastI--;
+  const sa0 = series[0];
+  const firstI = sa0.findIndex(v=>v!=null);
+  let lastI = n-1; while(lastI > 0 && sa0[lastI]==null) lastI--;
   [[firstI,'start'],[lastI,'end']].forEach(([i,anchor])=>{
     chartSvg.append('text').attr('x',X(i)).attr('y',CH.h-4).attr('text-anchor',anchor)
       .attr('font-size',8.5).attr('fill','#6b7380').text(dates[i].slice(0,7));
@@ -1357,14 +1467,20 @@ function drawPriceChart(main, peer){
   const cross = chartSvg.append('g').style('display','none');
   const cline = cross.append('line').attr('y1',CH.t).attr('y2',CH.t+innerH)
     .attr('stroke','rgba(255,255,255,0.35)').attr('stroke-width',1);
-  const dotA = cross.append('circle').attr('r',3).attr('fill',colA);
-  const dotB = pb ? cross.append('circle').attr('r',3).attr('fill',colB) : null;
+  const dots = cols.map(c => cross.append('circle').attr('r',3).attr('fill',c));
   const readout = document.getElementById('chart-readout');
   const defaultReadout = () => {
-    const last = [...sa].reverse().find(v=>v!=null);
-    readout.innerHTML = peer
-      ? `<b style="color:${colA}">${main}</b> vs <b style="color:${colB}">${peer}</b> · 시작일=100 지수화`
-      : `${dates[firstI]} ~ ${dates[lastI]} · 최근 <b>${fmtY(last)}</b>`;
+    if(multi){
+      // since the shared start date: the number that makes the lines comparable
+      readout.innerHTML = list.map((t,k) => {
+        const last = [...series[k]].reverse().find(v=>v!=null);
+        const chg = last == null ? null : last - 100;
+        return `<b style="color:${cols[k]}">${t}</b> ${chg==null?'—':(chg>=0?'+':'')+chg.toFixed(1)+'%'}`;
+      }).join(' · ') + ` <span style="color:var(--text-muted)">시작일=100</span>`;
+    } else {
+      const last = [...sa0].reverse().find(v=>v!=null);
+      readout.innerHTML = `${dates[firstI]} ~ ${dates[lastI]} · 최근 <b>${fmtY(last)}</b>`;
+    }
   };
   defaultReadout();
   chartSvg.append('rect').attr('x',CH.l).attr('y',CH.t).attr('width',innerW).attr('height',innerH)
@@ -1374,17 +1490,21 @@ function drawPriceChart(main, peer){
       const mx = d3.pointer(ev, this)[0] + CH.l;
       let i = Math.round(((mx-CH.l)/innerW)*(n-1));
       i = Math.max(0, Math.min(n-1, i));
-      let j = i; while(j>0 && sa[j]==null) j--;
-      if(sa[j]==null) return;
+      let j = i; while(j>0 && sa0[j]==null) j--;
+      if(sa0[j]==null) return;
       cross.style('display',null);
       cline.attr('x1',X(j)).attr('x2',X(j));
-      dotA.attr('cx',X(j)).attr('cy',Y(sa[j]));
-      if(dotB && sb[j]!=null) dotB.attr('cx',X(j)).attr('cy',Y(sb[j])).style('display',null);
-      else if(dotB) dotB.style('display','none');
-      const pxa = PX.prices[main][j], pxb = peer ? PX.prices[peer][j] : null;
-      const curA = nodeIndex.get(main)?.currency || 'USD', curB = peer ? (nodeIndex.get(peer)?.currency || 'USD') : null;
-      readout.innerHTML = `${dates[j]} · <b style="color:${colA}">${main} ${fmtPx(pxa, curA)}</b>` +
-        (peer && pxb!=null ? ` · <b style="color:${colB}">${peer} ${fmtPx(pxb, curB)}</b>` : '');
+      dots.forEach((dot,k) => {
+        if(series[k][j]!=null) dot.attr('cx',X(j)).attr('cy',Y(series[k][j])).style('display',null);
+        else dot.style('display','none');
+      });
+      readout.innerHTML = `${dates[j]} · ` + list.map((t,k) => {
+        const px = PX.prices[t][j];
+        if(px == null) return `<b style="color:${cols[k]};opacity:.5">${t} —</b>`;
+        const cur = nodeIndex.get(t)?.currency || 'USD';
+        const idx = multi && series[k][j]!=null ? ` <span style="color:var(--text-muted)">${Math.round(series[k][j])}</span>` : '';
+        return `<b style="color:${cols[k]}">${t} ${fmtPx(px, cur)}</b>${idx}`;
+      }).join(' · ');
     });
 }
 
@@ -1492,25 +1612,19 @@ function renderLeadLag(x, y){
 
 function setComparePeer(tk){
   if(!selectedTk || tk === selectedTk) return;
-  comparePeer = tk;
-  document.getElementById('chart-title').textContent = '주가 비교 (지수화)';
-  document.getElementById('chart-scale').textContent = '시작일 = 100';
-  drawPriceChart(selectedTk, comparePeer);
-  renderLeadLag(selectedTk, comparePeer);
-  drawer.querySelectorAll('.corr-row').forEach(r => r.classList.toggle('peer', r.dataset.tk === tk));
+  toggleCompare(tk);
 }
 function clearCompare(){
-  comparePeer = null;
-  document.getElementById('leadlag').classList.remove('show');
-  document.getElementById('chart-title').textContent = '1년 주가 추이';
-  document.getElementById('chart-scale').textContent = '';
-  drawer.querySelectorAll('.corr-row').forEach(r => r.classList.remove('peer'));
-  if(selectedTk) drawPriceChart(selectedTk, null);
+  // back to the base ticket only
+  if(compareSet.length <= 1) return;
+  compareSet = compareSet.slice(0, 1);
+  const primary = nodeIndex.get(compareSet[0]);
+  if(primary) focusNode(primary, true);
 }
 document.getElementById('ll-clear').addEventListener('click', clearCompare);
 document.getElementById('ll-go').addEventListener('click', ()=>{
   const n = comparePeer && nodeIndex.get(comparePeer);
-  if(n) focusNode(n);
+  if(n) focusNode(n);          // a fresh single selection, not an addition
 });
 
 function corrRowHTML(p){
@@ -1935,7 +2049,187 @@ function toggleFinChart(rowEl, hostEl, drawFn){
   if(open) drawFn(hostEl);
 }
 
+/* =====================================================================
+   FUNDAMENTALS — comparison table + indexed growth
+   Absolute revenue means nothing across a $400B and a $4B company, so the
+   growth chart rebases each company's oldest reported year to 100 and the
+   table keeps ratios (마진, 부채/자본, PER) next to the raw figures.
+   ===================================================================== */
+let fundCmpMetric = 'revenue';
+
+function fundCmpRows(list){
+  const F = list.map(t => FUND[t] || {});
+  const N = list.map(t => nodeIndex.get(t) || {});
+  const px = list.map(t => (latestClose(t) || {}).px);
+  const num = (v, dp = 1, suf = '') => v == null || !isFinite(v) ? null : v.toFixed(dp) + suf;
+  const signed = v => v == null || !isFinite(v) ? null : (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+
+  const val = (get) => list.map((t, k) => get(F[k], N[k], px[k], t, k));
+  const pct = (get) => list.map((t, k) => { const v = get(F[k], N[k], px[k]); return v == null ? null : { txt: signed(v), col: v >= 0 ? 'var(--up)' : 'var(--down)' }; });
+
+  return [
+    { grp: '시세' },
+    { lab: '최근 종가', cells: val((f, nd, p, t) => p == null ? null : fmtPx(p, nd.currency)) },
+    { lab: '1년 수익률', cells: pct((f, nd) => nd.stats ? nd.stats.ret_1y : null) },
+    { lab: '연변동성', cells: val((f, nd) => nd.stats ? nd.stats.vol + '%' : null) },
+    { grp: '밸류에이션' },
+    { lab: 'PER (TTM)', cells: val((f, nd, p) => (f.eps_ttm && f.eps_ttm > 0 && p) ? num(p / f.eps_ttm) : null) },
+    { lab: 'EPS (TTM)', cells: val(f => f.eps_ttm == null ? null : String(f.eps_ttm)) },
+    { lab: '목표주가', cells: val(f => f.target ? '$' + f.target : null) },
+    { lab: '상승여력', cells: pct((f, nd, p) => (f.target && p) ? (f.target - p) / p * 100 : null) },
+    { lab: '배당수익률', cells: val(f => (f['yield'] && f['yield'] !== 'N/A') ? f['yield'] : null) },
+    { grp: '실적 (최근 회계연도)' },
+    { lab: '회계연도', cells: val(f => f.periods && f.periods[0] ? fyLabel(f.periods[0]) : null) },
+    { lab: '매출', cells: val(f => f.revenue ? fmtMoney(f.revenue[0]) : null) },
+    { lab: '매출 YoY', cells: pct(f => yoy(f.revenue)) },
+    { lab: '영업이익', cells: val(f => f.op_income ? fmtMoney(f.op_income[0]) : null) },
+    { lab: '영업이익률', cells: val(f => (f.op_income && f.revenue && f.revenue[0]) ? num(f.op_income[0] / f.revenue[0] * 100, 0, '%') : null) },
+    { lab: '순이익', cells: val(f => f.net_income ? fmtMoney(f.net_income[0]) : null) },
+    { lab: '순이익률', cells: val(f => (f.net_income && f.revenue && f.revenue[0]) ? num(f.net_income[0] / f.revenue[0] * 100, 0, '%') : null) },
+    { lab: '순이익 YoY', cells: pct(f => yoy(f.net_income)) },
+    { grp: '재무구조' },
+    { lab: '현금성자산', cells: val(f => f.cash ? fmtMoney(f.cash[0]) : null) },
+    { lab: '총부채', cells: val(f => f.liabilities ? fmtMoney(f.liabilities[0]) : null) },
+    { lab: '부채/자본', cells: val(f => (f.liabilities && f.equity && f.equity[0]) ? num(f.liabilities[0] / f.equity[0], 2) : null) },
+    { grp: '어닝' },
+    { lab: '최근 4분기 상회', cells: val(f => {
+        const prev = (f.eps || []).filter(e => e.t === 'P').slice(-4);
+        if(!prev.length) return null;
+        return `${prev.filter(e => e.a != null && e.c != null && e.a > e.c).length}/${prev.length}회`;
+      }) },
+    { lab: '다음 발표', cells: val(f => ((f.fc_qtr || [])[0] || {}).p || null) },
+  ];
+}
+
+function renderFundCompare(list){
+  document.getElementById('fundcmp-period').textContent =
+    list.filter(t => FUND[t]).length + '/' + list.length + '개 종목 데이터';
+  const head = `<tr><th></th>${list.map((t, k) =>
+    `<th style="color:${CMP_COLORS[k]}">${t}</th>`).join('')}</tr>`;
+  const body = fundCmpRows(list).map(r => {
+    if(r.grp) return `<tr class="grp"><td colspan="${list.length + 1}">${r.grp}</td></tr>`;
+    const tds = r.cells.map(c => {
+      if(c == null) return '<td class="na">—</td>';
+      if(typeof c === 'object') return `<td style="color:${c.col}">${c.txt}</td>`;
+      return `<td>${c}</td>`;
+    }).join('');
+    return `<tr><td>${r.lab}</td>${tds}</tr>`;
+  }).join('');
+  document.getElementById('fundcmp-table').innerHTML = `<thead>${head}</thead><tbody>${body}</tbody>`;
+
+  document.querySelectorAll('#fundcmp-metric button').forEach(b => {
+    b.classList.toggle('on', b.dataset.k === fundCmpMetric);
+    b.onclick = () => {
+      fundCmpMetric = b.dataset.k;
+      document.querySelectorAll('#fundcmp-metric button')
+        .forEach(x => x.classList.toggle('on', x.dataset.k === fundCmpMetric));
+      drawFundCmpChart(list);
+    };
+  });
+  drawFundCmpChart(list);
+}
+
+function drawFundCmpChart(list){
+  const host = document.getElementById('fundcmp-chart');
+  host.innerHTML = '';
+  const label = { revenue: '매출', op_income: '영업이익', net_income: '순이익' }[fundCmpMetric];
+  // oldest reported year = 100 for each company, so a 4x revenue and a 4x
+  // revenue read the same however far apart the two companies are in size
+  const rows = list.map((tk, k) => {
+    const f = FUND[tk] || {};
+    const raw = (f[fundCmpMetric] || []).slice().reverse();
+    const per = (f.periods || []).slice().reverse();
+    const base = raw.find(v => v != null && v > 0);
+    if(base == null || raw.filter(v => v != null).length < 2) return null;
+    return { tk, color: CMP_COLORS[k],
+             pts: raw.map((v, i) => ({ i, v: v == null ? null : v / base * 100, raw: v, p: per[i] })) };
+  }).filter(Boolean);
+  if(rows.length < 2){
+    host.innerHTML = `<div class="cap">비교 가능한 ${label} 이력이 부족합니다. (적자 기업은 지수화할 기준값이 없습니다.)</div>`;
+    return;
+  }
+
+  const steps = Math.max(...rows.map(r => r.pts.length));
+  const W = 298, H = 150, m = { t: 12, r: 38, b: 20, l: 6 };
+  const innerW = W - m.l - m.r, innerH = H - m.t - m.b;
+  const vals = rows.flatMap(r => r.pts.map(p => p.v)).filter(v => v != null);
+  const hi = Math.max(100, ...vals), lo = Math.min(100, ...vals), pad = (hi - lo) * 0.10 || 1;
+  const X = i => m.l + (steps < 2 ? 0 : i / (steps - 1) * innerW);
+  const Y = v => m.t + innerH - ((v - (lo - pad)) / ((hi + pad) - (lo - pad))) * innerH;
+
+  host.style.position = 'relative';
+  const svg = d3.select(host).append('svg')
+    .attr('viewBox', `0 0 ${W} ${H}`).attr('width', '100%').attr('height', H);
+  const tip = document.createElement('div');
+  tip.className = 'chart-tip'; tip.hidden = true;
+  host.appendChild(tip);
+
+  d3.ticks(lo, hi, 4).forEach(t => {
+    svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', Y(t)).attr('y2', Y(t))
+      .attr('stroke', Math.round(t) === 100 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.06)');
+    svg.append('text').attr('x', W - m.r + 5).attr('y', Y(t) + 3).attr('font-size', 8.5)
+      .attr('fill', '#7d8590').attr('font-family', "'JetBrains Mono',monospace").text(Math.round(t));
+  });
+  const xlab = i => i === steps - 1 ? '최근' : `${steps - 1 - i}년 전`;
+  [0, steps - 1].forEach(i => {
+    svg.append('text').attr('x', X(i)).attr('y', H - 6).attr('font-size', 8.5).attr('fill', '#7d8590')
+      .attr('text-anchor', i === 0 ? 'start' : 'end').text(xlab(i));
+  });
+
+  const line = d3.line().defined(d => d.v != null).x(d => X(d.i)).y(d => Y(d.v));
+  rows.forEach(r => {
+    svg.append('path').datum(r.pts).attr('d', line).attr('fill', 'none')
+      .attr('stroke', r.color).attr('stroke-width', 1.8);
+    r.pts.filter(p => p.v != null).forEach(p =>
+      svg.append('circle').attr('cx', X(p.i)).attr('cy', Y(p.v)).attr('r', 2.4).attr('fill', r.color));
+  });
+
+  const cross = svg.append('line').attr('y1', m.t).attr('y2', m.t + innerH)
+    .attr('stroke', 'rgba(255,255,255,0.3)').attr('stroke-dasharray', '3,3').style('display', 'none');
+  svg.append('rect').attr('x', m.l).attr('y', m.t).attr('width', innerW).attr('height', innerH)
+    .attr('fill', 'transparent').style('cursor', 'crosshair')
+    .on('mouseleave', () => { cross.style('display', 'none'); tip.hidden = true; })
+    .on('mousemove', function(ev){
+      const [mx] = d3.pointer(ev, this);
+      const i = Math.max(0, Math.min(steps - 1, Math.round((mx - m.l) / innerW * (steps - 1))));
+      cross.attr('x1', X(i)).attr('x2', X(i)).style('display', null);
+      tip.innerHTML = `<div class="tp">${xlab(i)}</div>` + rows.map(r => {
+        const p = r.pts[i];
+        if(!p || p.v == null) return '';
+        return `<div class="tr"><span class="sw" style="background:${r.color}"></span>${r.tk}
+          <span class="tv">${fmtMoney(p.raw)} · ${Math.round(p.v)}</span></div>`;
+      }).join('');
+      tip.hidden = false;
+      const [pxx, pyy] = d3.pointer(ev, host);
+      const w = tip.offsetWidth || 120;
+      tip.style.left = Math.max(2, Math.min(host.clientWidth - w - 2, pxx - w / 2)) + 'px';
+      tip.style.top = Math.max(2, pyy - tip.offsetHeight - 12) + 'px';
+    });
+
+  const legend = document.createElement('div');
+  legend.className = 'cmp-legend';
+  legend.innerHTML = rows.map(r => {
+    const last = [...r.pts].reverse().find(p => p.v != null);
+    return `<span><i style="background:${r.color}"></i>${r.tk} ${last ? Math.round(last.v) : '—'}</span>`;
+  }).join('');
+  host.appendChild(legend);
+  const cap = document.createElement('div');
+  cap.className = 'cap';
+  cap.textContent = `각 종목의 가장 오래된 보고연도 ${label}을 100으로 맞춘 성장 경로입니다. 회계연도 종료월이 회사마다 달라 같은 x축이 같은 달력 시점을 뜻하지는 않습니다.`;
+  host.appendChild(cap);
+}
+
 function renderFundamentals(tk){
+  if(Array.isArray(tk)){
+    if(tk.length > 1){
+      document.getElementById('fund-block').style.display = 'none';
+      document.getElementById('fundcmp-block').hidden = false;
+      renderFundCompare(tk);
+      return;
+    }
+    tk = tk[0];
+  }
+  document.getElementById('fundcmp-block').hidden = true;
   const block = document.getElementById('fund-block');
   const f = FUND[tk];
   if(!f){ block.style.display = 'none'; return; }
@@ -2031,7 +2325,7 @@ function renderFundamentals(tk){
     `연간 재무제표 ${f.periods ? f.periods.filter(Boolean).join(' / ') : ''} · 출처 Nasdaq (${f.fetched} 수집)`;
 }
 
-function openDrawer(d, peers){
+function openDrawer(d, peers, keepScroll){
   const g = currentGroups().find(x=>x.id===d.group), s = d.stats;
   document.getElementById('d-tk').textContent = d.id;
   document.getElementById('d-tk').style.color = d.color;
@@ -2053,25 +2347,38 @@ function openDrawer(d, peers){
   document.getElementById('d-pos').innerHTML = pos.length ? pos.map(corrRowHTML).join('') : '<div class="empty">임계값 이상 없음</div>';
   document.getElementById('d-neg').innerHTML = neg.length ? neg.map(corrRowHTML).join('') : '<div class="empty">임계값 이상 없음</div>';
   drawer.querySelectorAll('.corr-row').forEach(row => {
-    row.addEventListener('click', ()=> setComparePeer(row.dataset.tk));
+    row.addEventListener('click', ()=> toggleCompare(row.dataset.tk));
   });
 
   selectedTk = d.id;
-  seasonHidden = new Set();
-  drawSeasonality(d.id);
-  renderMacro(d.id);
-  renderFundamentals(d.id);
+  const multi = compareSet.length > 1;
+  comparePeer = compareSet.length === 2 ? compareSet[1] : null;
+  if(!keepScroll){ seasonHidden = new Set(); cmpSeasonHidden = new Set(); }
+  renderCmpChips();
+  document.getElementById('d-metrics').hidden = multi;   // the compare table carries these
+  document.getElementById('chart-title').textContent = multi ? '주가 비교 (지수화)' : '1년 주가 추이';
+  document.getElementById('chart-scale').textContent = multi ? '시작일 = 100' : '';
+  drawPriceChart(compareSet);
+  drawSeasonality(compareSet);
+  renderMacro(compareSet);
+  renderFundamentals(compareSet);
   renderFavorites();
-  clearCompare();
-  drawPriceChart(d.id, null);
+  // lead/lag is a pairwise statistic — only meaningful with exactly two
+  if(comparePeer) renderLeadLag(compareSet[0], comparePeer);
+  else document.getElementById('leadlag').classList.remove('show');
+  drawer.querySelectorAll('.corr-row')
+    .forEach(r => r.classList.toggle('peer', compareSet.includes(r.dataset.tk)));
   drawer.classList.add('show');
-  drawer.scrollTop = 0;
+  if(!keepScroll) drawer.scrollTop = 0;
 }
 
 /* =====================================================================
    CASCADE — 상관계수 부호/크기를 따라 전파
    ===================================================================== */
-function onNodeClick(d){ focusNode(d); }
+function onNodeClick(d, ev){
+  if(ev && (ev.metaKey || ev.ctrlKey || ev.shiftKey)){ toggleCompare(d.id); return; }
+  focusNode(d);
+}
 
 /* =====================================================================
    MACRO SENSITIVITY — how one asset reacts to each macro factor.
@@ -2079,7 +2386,59 @@ function onNodeClick(d){ focusNode(d); }
    |t| < 2 is drawn faded because at that point the slope is not separable
    from noise and should not be read as a real exposure.
    ===================================================================== */
+/* Compare mode: betas as a table rather than bars. Three bar rows per factor
+   would be 21 rows; a factor x ticker grid is the same information in a
+   quarter of the height, and the sign is what you actually read across. */
+function renderMacroCompare(list){
+  const block = document.getElementById('macro-block');
+  const have = list.filter(t => (MACRO.betas||{})[t] || (MACRO.monthly||{})[t]);
+  if(!have.length){ block.style.display = 'none'; return; }
+  block.style.display = '';
+  document.getElementById('macro-note').textContent = MACRO.window || '';
+
+  const head = `<tr><th>팩터</th>${list.map((t,k) =>
+    `<th style="color:${CMP_COLORS[k]}">${t}</th>`).join('')}</tr>`;
+  const cell = (v, weak) => v == null
+    ? '<td class="na">—</td>'
+    : `<td style="color:${weak ? 'var(--text-muted)' : (v >= 0 ? 'var(--up)' : 'var(--down)')}">${v >= 0 ? '+' : ''}${v.toFixed(2)}</td>`;
+
+  const betaRows = MACRO.factors.map(f => {
+    const cells = list.map(t => {
+      const d = ((MACRO.betas||{})[t] || {})[f.key];
+      if(!d) return cell(null);
+      return cell(d.b, d.t == null || Math.abs(d.t) < 2);
+    });
+    if(cells.every(c => c.includes('na'))) return '';
+    return `<tr title="${f.label} 프록시: ${f.proxy} — ${f.note}"><td>${f.label}</td>${cells.join('')}</tr>`;
+  }).join('');
+
+  document.getElementById('macro-bars').innerHTML =
+    `<div class="cmp-scroll"><table class="cmp-table"><thead>${head}</thead><tbody>${betaRows}</tbody></table></div>` +
+    `<div class="cap">해당 팩터가 1 오를 때 각 종목의 하루 수익률 변화(베타). 회색 값은 t값이 2 미만이라 노이즈와 구분되지 않습니다. 부호가 갈리는 줄이 두 종목을 실제로 나누는 지점입니다.</div>`;
+
+  const keys = [...new Set(list.flatMap(t => Object.keys((MACRO.monthly||{})[t] || {})))];
+  const mhost = document.getElementById('macro-monthly');
+  if(keys.length){
+    const labels = Object.fromEntries((MACRO.indicators ? Object.entries(MACRO.indicators) : [])
+      .map(([k, v]) => [k, v.label]));
+    const rows = keys.map(k => {
+      const cells = list.map(t => {
+        const d = ((MACRO.monthly||{})[t] || {})[k];
+        return d ? cell(d.r, Math.abs(d.r) < 2/Math.sqrt(d.n)) : cell(null);
+      });
+      return `<tr><td>${labels[k] || k}</td>${cells.join('')}</tr>`;
+    }).join('');
+    mhost.innerHTML = `<div class="lead-split" style="margin:9px 0 3px">월별 지표 (BLS)</div>` +
+      `<div class="cmp-scroll"><table class="cmp-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>` +
+      `<div class="cap">지표 발표는 전월치를 담으므로 한 달 뒤 수익률과 맞췄습니다. 표본이 수십 개월뿐이라 회색 값은 우연 범위입니다.</div>`;
+  } else mhost.innerHTML = '';
+}
+
 function renderMacro(tk){
+  if(Array.isArray(tk)){
+    if(tk.length > 1) return renderMacroCompare(tk);
+    tk = tk[0];
+  }
   const block = document.getElementById('macro-block');
   const row = (MACRO.betas || {})[tk];
   const mon = (MACRO.monthly || {})[tk];
@@ -2139,6 +2498,7 @@ function renderMacro(tk){
 const SEASON_COLORS = ['#e0457b', '#2dd4bf', '#f5a524', '#3ddc84', '#3987e5', '#9085e9'];
 const AVG_KEY = '__avg__', AVG_COLOR = '#e8eaed';
 let seasonHidden = new Set(), seasonAvg = false;
+let cmpSeasonHidden = new Set();   // 비교 모드에서 숨긴 종목
 
 function doyOf(iso){
   const d = new Date(iso + 'T00:00:00Z');
@@ -2172,7 +2532,146 @@ function seasonSeries(tk){
   return out;
 }
 
+/* average path across COMPLETED years only — a partial current year would
+   drag the tail of the mean toward zero and invent a false seasonal dip */
+function avgPathOf(series){
+  const done = series.filter(sr => !sr.partial);
+  const pts = [];
+  if(done.length){
+    for(let doy = 1; doy <= 366; doy += 2){
+      const vals = done.map(sr => {
+        let best = null;
+        for(const p of sr.pts){ if(p.doy <= doy) best = p.v; else break; }
+        return best;
+      }).filter(v => v != null);
+      if(vals.length === done.length) pts.push({ doy, v: vals.reduce((a,b)=>a+b,0)/vals.length });
+    }
+  }
+  return { pts, n: done.length };
+}
+
+/* Compare mode: one line per ticker, each its own multi-year average path.
+   Individual years are dropped here — 3 tickers x 5 years is unreadable, and
+   the question being asked is "whose seasonal shape differs from whose". */
+function drawSeasonalityCompare(list){
+  const host = document.getElementById('season-chart');
+  const block = document.getElementById('season-block');
+  host.innerHTML = '';
+  document.getElementById('season-avg').hidden = true;
+  const rows = list.map((tk, k) => {
+    const a = avgPathOf(seasonSeries(tk));
+    return { tk, color: CMP_COLORS[k], pts: a.pts, n: a.n };
+  }).filter(r => r.pts.length && !cmpSeasonHidden.has(r.tk));
+  const all = list.map((tk, k) => {
+    const a = avgPathOf(seasonSeries(tk));
+    return { tk, color: CMP_COLORS[k], pts: a.pts, n: a.n };
+  });
+  if(all.filter(r => r.pts.length).length < 2){ block.style.display = 'none'; return; }
+  block.style.display = '';
+  const yrs = all.filter(r=>r.pts.length).map(r=>r.n);
+  const yLo = Math.min(...yrs), yHi = Math.max(...yrs);
+  document.getElementById('season-note').textContent =
+    `완결 연도 평균 (${yLo === yHi ? yLo : yLo + '~' + yHi}년)`;
+
+  const W = 298, H = 176, m = { t: 12, r: 40, b: 22, l: 6 };
+  const innerW = W - m.l - m.r, innerH = H - m.t - m.b;
+  const vals = rows.flatMap(r => r.pts.map(p => p.v));
+  if(!vals.length){
+    host.innerHTML = '<div class="cap">표시할 종목이 없습니다.</div>';
+    renderSeasonCmpLegend(all); return;
+  }
+  const hi = Math.max(0, ...vals), lo = Math.min(0, ...vals), pad = (hi - lo) * 0.08 || 1;
+  const X = doy => m.l + (doy - 1) / 365 * innerW;
+  const Y = v => m.t + innerH - ((v - (lo - pad)) / ((hi + pad) - (lo - pad))) * innerH;
+
+  host.style.position = 'relative';
+  const svg = d3.select(host).append('svg')
+    .attr('viewBox', `0 0 ${W} ${H}`).attr('width', '100%').attr('height', H);
+  const tip = document.createElement('div');
+  tip.className = 'chart-tip'; tip.hidden = true;
+  host.appendChild(tip);
+
+  d3.ticks(lo, hi, 4).forEach(t => {
+    svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', Y(t)).attr('y2', Y(t))
+      .attr('stroke', t === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.06)');
+    svg.append('text').attr('x', W - m.r + 5).attr('y', Y(t) + 3).attr('font-size', 8.5)
+      .attr('fill', '#7d8590').attr('font-family', "'JetBrains Mono',monospace")
+      .text((t > 0 ? '+' : '') + Math.round(t) + '%');
+  });
+  [[1,'1월'],[92,'4월'],[183,'7월'],[275,'10월']].forEach(([doy, lab]) => {
+    svg.append('line').attr('x1', X(doy)).attr('x2', X(doy)).attr('y1', m.t).attr('y2', m.t + innerH)
+      .attr('stroke', 'rgba(255,255,255,0.05)');
+    svg.append('text').attr('x', X(doy)).attr('y', H - 7).attr('font-size', 8.5)
+      .attr('fill', '#7d8590').attr('text-anchor', 'start').text(lab);
+  });
+
+  const line = d3.line().x(d => X(d.doy)).y(d => Y(d.v));
+  rows.forEach(r => {
+    svg.append('path').datum(r.pts).attr('d', line).attr('fill', 'none')
+      .attr('stroke', r.color).attr('stroke-width', 1.8);
+    const last = r.pts[r.pts.length-1];
+    svg.append('circle').attr('cx', X(last.doy)).attr('cy', Y(last.v)).attr('r', 2.8).attr('fill', r.color);
+  });
+
+  const cross = svg.append('line').attr('y1', m.t).attr('y2', m.t + innerH)
+    .attr('stroke', 'rgba(255,255,255,0.3)').attr('stroke-dasharray', '3,3').style('display', 'none');
+  svg.append('rect').attr('x', m.l).attr('y', m.t).attr('width', innerW).attr('height', innerH)
+    .attr('fill', 'transparent').style('cursor', 'crosshair')
+    .on('mouseleave', () => { cross.style('display', 'none'); tip.hidden = true; })
+    .on('mousemove', function(ev){
+      const [mx] = d3.pointer(ev, this);
+      const doy = Math.max(1, Math.min(366, Math.round((mx - m.l) / innerW * 365) + 1));
+      cross.attr('x1', X(doy)).attr('x2', X(doy)).style('display', null);
+      const d = new Date(Date.UTC(2024, 0, doy));
+      const body = rows.map(r => {
+        let best = null;
+        for(const pt of r.pts){ if(pt.doy <= doy) best = pt; else break; }
+        if(!best) return '';
+        return `<div class="tr"><span class="sw" style="background:${r.color}"></span>${r.tk}
+          <span class="tv" style="color:${best.v >= 0 ? 'var(--up)' : 'var(--down)'}">${best.v >= 0 ? '+' : ''}${best.v.toFixed(1)}%</span></div>`;
+      }).join('');
+      tip.innerHTML = `<div class="tp">${d.getUTCMonth()+1}월 ${d.getUTCDate()}일</div>${body}`;
+      tip.hidden = false;
+      const [px, py] = d3.pointer(ev, host);
+      const w = tip.offsetWidth || 120;
+      tip.style.left = Math.max(2, Math.min(host.clientWidth - w - 2, px - w / 2)) + 'px';
+      tip.style.top = Math.max(2, py - tip.offsetHeight - 12) + 'px';
+    });
+
+  renderSeasonCmpLegend(all);
+}
+
+function renderSeasonCmpLegend(all){
+  const host = document.getElementById('season-chart');
+  const legend = document.createElement('div');
+  legend.className = 'season-legend';
+  legend.innerHTML = all.map(r => {
+    const last = r.pts.length ? r.pts[r.pts.length-1].v : null;
+    const off = cmpSeasonHidden.has(r.tk) || !r.pts.length;
+    return `<button data-tk="${r.tk}" class="${off ? 'off' : ''}"${r.pts.length ? '' : ' disabled'}>
+      <span class="sw" style="background:${r.color}"></span>${r.tk}
+      <span style="color:${last == null ? 'var(--text-muted)' : (last >= 0 ? 'var(--up)' : 'var(--down)')}">${
+        last == null ? '데이터 없음' : (last >= 0 ? '+' : '') + last.toFixed(1) + '%'}</span></button>`;
+  }).join('');
+  legend.querySelectorAll('button[data-tk]').forEach(b => b.onclick = () => {
+    const tk = b.dataset.tk;
+    if(cmpSeasonHidden.has(tk)) cmpSeasonHidden.delete(tk);
+    else if(all.filter(r => r.pts.length && !cmpSeasonHidden.has(r.tk)).length > 1) cmpSeasonHidden.add(tk);
+    drawSeasonalityCompare(compareSet);
+  });
+  host.appendChild(legend);
+  const cap = document.createElement('div');
+  cap.className = 'cap';
+  cap.textContent = '각 종목의 완결 연도들을 1월 1일=0%로 맞춰 평균낸 경로입니다. 종목마다 상장 이후 연수가 달라 평균에 쓰인 연도 수가 다를 수 있습니다.';
+  host.appendChild(cap);
+}
+
 function drawSeasonality(tk){
+  if(Array.isArray(tk)){
+    if(tk.length > 1) return drawSeasonalityCompare(tk);
+    tk = tk[0];
+  }
+  document.getElementById('season-avg').hidden = false;
   const host = document.getElementById('season-chart');
   const block = document.getElementById('season-block');
   host.innerHTML = '';
@@ -2186,20 +2685,7 @@ function drawSeasonality(tk){
   document.getElementById('season-note').textContent =
     `${series[0].year}~${series[series.length-1].year}`;
 
-  // average path across COMPLETED years only — a partial current year would
-  // drag the tail of the mean toward zero and invent a false seasonal dip
-  const done = series.filter(sr => !sr.partial);
-  let avgPts = [];
-  if(done.length){
-    for(let doy = 1; doy <= 366; doy += 2){
-      const vals = done.map(sr => {
-        let best = null;
-        for(const p of sr.pts){ if(p.doy <= doy) best = p.v; else break; }
-        return best;
-      }).filter(v => v != null);
-      if(vals.length === done.length) avgPts.push({ doy, v: vals.reduce((a,b)=>a+b,0)/vals.length });
-    }
-  }
+  const avg = avgPathOf(series), avgPts = avg.pts, done = { length: avg.n };
   const avgVisible = avgPts.length && !seasonHidden.has(AVG_KEY);
 
   const W = 298, H = 176, m = { t: 12, r: 40, b: 22, l: 6 };
@@ -2336,7 +2822,7 @@ document.querySelectorAll('#season-avg button').forEach(b => {
     seasonAvg = b.dataset.avg === 'on';
     document.querySelectorAll('#season-avg button')
       .forEach(x => x.classList.toggle('on', x.dataset.avg === b.dataset.avg));
-    if(selectedTk) drawSeasonality(selectedTk);
+    if(compareSet.length) drawSeasonality(compareSet);
   });
 });
 
@@ -2413,6 +2899,7 @@ document.getElementById('lead-only').addEventListener('click', () => {
 
 function clearAll(){
   clearFocus(); resetOpacities();
+  compareSet = []; cmpWarn = '';
   drawer.classList.remove('show');
   if(typeof leadOnly !== 'undefined' && leadOnly){
     leadOnly = false;
