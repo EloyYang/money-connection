@@ -147,8 +147,6 @@
 
   .drawer{ right:16px; top:16px; width:330px; padding:16px; display:none; max-height:calc(100% - 32px); overflow-y:auto; }
   .drawer.show{ display:block; }
-  .drawer .wide-btn{ right:34px; font-size:13px; }
-  .drawer .wide-btn.on{ color:var(--accent); }
   /* Wide mode packs the sections into two columns. `columns` rather than a
      grid: the sections differ wildly in height, and a two-column grid would
      leave a ragged gap beside every short one. */
@@ -160,7 +158,12 @@
     .drawer.wide{ width:min(360px, 90vw); }
     .drawer.wide #drawer-body{ columns:1; }
   }
-  .drawer .close{ position:absolute; right:10px; top:10px; background:none; border:none; color:var(--text-muted); font-size:15px; cursor:pointer; padding:4px; line-height:1; }
+  .drawer .close{ position:absolute; right:10px; top:10px; background:none; border:none; color:var(--text-muted);
+    font-size:15px; cursor:pointer; padding:4px; line-height:1; border-radius:5px; }
+  .drawer .close:hover{ color:var(--text-primary); background:rgba(255,255,255,0.08); }
+  /* must come after .drawer .close — same specificity, later wins */
+  .drawer .wide-btn{ right:36px; font-size:13px; }
+  .drawer .wide-btn.on{ color:var(--accent); }
   .drawer .tk{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:21px; }
   .drawer .nm{ color:var(--text-secondary); font-size:12.5px; margin-top:2px; }
   .drawer .badge{ display:inline-flex; align-items:center; gap:6px; margin-top:9px; font-size:11.5px; padding:4px 9px; border-radius:999px; background:rgba(255,255,255,0.06); }
@@ -856,7 +859,7 @@
   <div id="tooltip" class="graph-only"></div>
 
   <div class="panel drawer graph-only" id="drawer">
-    <button class="close" id="drawer-close">✕</button>
+    <button class="close" id="drawer-close" title="닫기" aria-label="닫기">✕</button>
     <button class="close wide-btn" id="drawer-wide" title="넓게 보기">⤢</button>
     <div style="display:flex;align-items:center;gap:6px">
       <div class="tk" id="d-tk">—</div>
