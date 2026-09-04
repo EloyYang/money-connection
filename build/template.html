@@ -415,12 +415,10 @@
   .mini-buy{ border-color:var(--up); color:var(--up); }
   .mini-sell{ border-color:var(--down); color:var(--down); }
   .mini-btns .btn[disabled]{ opacity:0.4; cursor:not-allowed; }
-  /* the stock detail as an overlay, for the trading tab */
-  .drawer.overlay{ position:fixed; right:auto; left:50%; top:50%; transform:translate(-50%,-50%);
-    z-index:71; max-height:calc(100vh - 60px); box-shadow:0 30px 80px rgba(0,0,0,0.65); }
+  /* the stock detail over the trading tab: same place the network view puts it,
+     so the chart beside it stays visible and interactive */
+  .drawer.overlay{ z-index:71; box-shadow:0 24px 64px rgba(0,0,0,0.55); }
   body.view-trade .drawer.overlay, body.view-folio .drawer.overlay{ display:block !important; }
-  #detail-backdrop{ position:fixed; inset:0; z-index:70; background:rgba(6,8,11,0.72); backdrop-filter:blur(3px); }
-  #detail-backdrop[hidden]{ display:none; }
   #tk-side .buy.on{ color:var(--up); }
   #tk-side .sell.on{ color:var(--down); }
   .live-warn{ border:1px solid var(--down); background:rgba(255,92,114,0.10); color:var(--down);
@@ -855,7 +853,6 @@
 
   <div class="panel hint graph-only">스크롤 확대/축소 · 드래그 이동 · 노드 드래그 재배치 · 빈 곳 클릭 시 해제</div>
 
-  <div id="detail-backdrop" hidden></div>
   <div id="tooltip" class="graph-only"></div>
 
   <div class="panel drawer graph-only" id="drawer">
@@ -5124,16 +5121,9 @@ function openDetailOverlay(tk){
   if(!n) return;
   focusNode(n);
   drawer.classList.add('overlay');
-  document.getElementById('detail-backdrop').hidden = false;
+  drawer.scrollTop = 0;
 }
-function closeDetailOverlay(){
-  drawer.classList.remove('overlay');
-  document.getElementById('detail-backdrop').hidden = true;
-}
-document.getElementById('detail-backdrop').addEventListener('click', () => {
-  closeDetailOverlay();
-  drawer.classList.remove('show');
-});
+function closeDetailOverlay(){ drawer.classList.remove('overlay'); }
 document.addEventListener('keydown', ev => {
   if(ev.key === 'Escape' && drawer.classList.contains('overlay')){
     closeDetailOverlay();
