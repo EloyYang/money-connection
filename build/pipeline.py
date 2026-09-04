@@ -381,6 +381,101 @@ def fetch_fundamentals(tickers, cache_path, max_refresh, workers):
 
 
 # --------------------------------------------------------------------------
+# 2c. macro factors
+# --------------------------------------------------------------------------
+# Each factor is a tradeable daily proxy, signed so that a POSITIVE value always
+# means "this factor went up". FRED's CSV endpoint is unreachable from CI, so
+# rates are read off Treasury-ETF returns (inverted) rather than actual yields —
+# the sign and relative ordering are what the sensitivity read-out needs.
+MACRO_FACTORS = [
+    {"key": "rate",   "label": "금리",     "proxy": "IEF",  "sign": -1,
+     "note": "미 국채 7-10년 ETF 수익률의 반대 부호 (가격↓ = 금리↑)"},
+    {"key": "dollar", "label": "달러",     "proxy": "UUP",  "sign": +1, "note": "달러인덱스 ETF"},
+    {"key": "oil",    "label": "유가",     "proxy": "USO",  "sign": +1, "note": "WTI 원유 ETF"},
+    {"key": "vol",    "label": "변동성",   "proxy": "VIXY", "sign": +1, "note": "VIX 선물 ETF"},
+    {"key": "credit", "label": "신용선호", "proxy": "HYG",  "sign": +1, "note": "하이일드 회사채 ETF"},
+    {"key": "market", "label": "시장",     "proxy": "SPY",  "sign": +1, "note": "S&P500 ETF"},
+    {"key": "gold",   "label": "금",       "proxy": "GLD",  "sign": +1, "note": "금 ETF"},
+]
+
+# BLS public API v1 needs no key. Monthly, so it can only support monthly-return
+# comparisons — nowhere near daily-factor precision, and labelled as such.
+BLS_SERIES = [
+    {"id": "CUUR0000SA0",    "key": "cpi",      "label": "소비자물가(CPI)", "diff": "pct"},
+    {"id": "LNS14000000",    "key": "unemp",    "label": "실업률",          "diff": "abs"},
+    {"id": "CES0000000001",  "key": "payrolls", "label": "비농업 고용",     "diff": "pct"},
+]
+
+
+def fetch_macro_factors(frm, to):
+    """Daily factor returns keyed by factor key."""
+    out = {}
+    for f in MACRO_FACTORS:
+        try:
+            rows = fetch_history(f["proxy"], frm.isoformat(), to.isoformat(), assetclass="etf")
+        except Exception as e:                        # noqa: BLE001
+            log(f"  ! macro proxy {f['proxy']} failed: {e}")
+            continue
+        closes = {d: r[3] for d, r in rows.items()}
+        dates = sorted(closes)
+        rr, prev = {}, None
+        for d in dates:
+            if prev and prev > 0:
+                rr[d] = max(-CLIP, min(CLIP, (closes[d] - prev) / prev)) * f["sign"]
+            prev = closes[d]
+        out[f["key"]] = rr
+    log(f"macro factors: {len(out)}/{len(MACRO_FACTORS)} ({', '.join(out)})")
+    return out
+
+
+def fetch_bls_macro():
+    """Monthly CPI / unemployment / payrolls. Returns {key: {'YYYY-MM': value}}."""
+    import urllib.request
+    body = json.dumps({"seriesid": [b["id"] for b in BLS_SERIES],
+                       "startyear": str(datetime.date.today().year - 6),
+                       "endyear": str(datetime.date.today().year)}).encode()
+    try:
+        req = urllib.request.Request("https://api.bls.gov/publicAPI/v1/timeseries/data/",
+                                     data=body, headers={**HEADERS, "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            d = json.loads(r.read().decode())
+    except Exception as e:                            # noqa: BLE001
+        log(f"  ! BLS fetch failed: {e}")
+        return {}
+    by_id = {b["id"]: b for b in BLS_SERIES}
+    out = {}
+    for sr in (d.get("Results") or {}).get("series", []):
+        meta = by_id.get(sr.get("seriesID"))
+        if not meta: continue
+        vals = {}
+        for row in sr.get("data", []):
+            per = row.get("period", "")
+            if not per.startswith("M") or per == "M13": continue
+            try: vals[f"{row['year']}-{per[1:]}"] = float(row["value"])
+            except (ValueError, KeyError): continue
+        if vals: out[meta["key"]] = vals
+    log(f"BLS macro: {', '.join(f'{k}({len(v)}개월)' for k, v in out.items()) or '없음'}")
+    return out
+
+
+def ols_beta(xs, ys):
+    """Univariate beta with its t-statistic — the t is what says whether the
+    sensitivity is worth reading at all."""
+    n = len(xs)
+    if n < 40: return None, None
+    mx, my = sum(xs)/n, sum(ys)/n
+    sxx = sum((x-mx)**2 for x in xs)
+    if sxx <= 0: return None, None
+    beta = sum((xs[i]-mx)*(ys[i]-my) for i in range(n)) / sxx
+    a = my - beta*mx
+    resid = [ys[i] - (a + beta*xs[i]) for i in range(n)]
+    sse = sum(r*r for r in resid)
+    if n <= 2 or sse <= 0: return round(beta, 3), None
+    se = math.sqrt(sse/(n-2)/sxx)
+    return round(beta, 3), (round(beta/se, 2) if se > 0 else None)
+
+
+# --------------------------------------------------------------------------
 # 3. prices
 # --------------------------------------------------------------------------
 def parse_money(v):
@@ -551,7 +646,115 @@ def build_returns(dates, closes):
     return r
 
 
-def analyse(series, members, themes, index_date, nasdaq_tickers):
+PERIODS = [
+    {"key": "3m", "label": "3개월", "days": 92},
+    {"key": "6m", "label": "6개월", "days": 183},
+    {"key": "1y", "label": "1년",   "days": 365},
+    {"key": "3y", "label": "3년",   "days": 1096},
+    {"key": "5y", "label": "5년",   "days": 1827},
+]
+
+
+def corr_matrix(tickers, rets, dates, min_overlap=MIN_OVERLAP):
+    n = len(tickers)
+    m = [[None]*n for _ in range(n)]
+    for i in range(n):
+        m[i][i] = 1.0
+        ri = rets[tickers[i]]
+        for j in range(i+1, n):
+            rj = rets[tickers[j]]
+            xs, ys = [], []
+            for k in range(len(dates)):
+                if ri[k] is not None and rj[k] is not None:
+                    xs.append(ri[k]); ys.append(rj[k])
+            if len(xs) < min_overlap: continue
+            r = pearson(xs, ys)
+            if r is not None:
+                m[i][j] = m[j][i] = round(max(-1.0, min(1.0, r)), 3)
+    return m
+
+
+def compute_factor_betas(tickers, dates, rets, factors):
+    """Each ticker's sensitivity to every macro factor, over the most recent year."""
+    cutoff = dates[-1] - datetime.timedelta(days=365)
+    idx = [i for i, d in enumerate(dates) if d > cutoff]
+    out = {}
+    for t in tickers:
+        rt = rets[t]
+        row = {}
+        for f in MACRO_FACTORS:
+            fr = factors.get(f["key"])
+            if not fr: continue
+            xs, ys = [], []
+            for i in idx:
+                fv, sv = fr.get(dates[i]), rt[i]
+                if fv is None or sv is None: continue
+                xs.append(fv); ys.append(sv)
+            beta, tstat = ols_beta(xs, ys)
+            if beta is not None:
+                row[f["key"]] = {"b": beta, "t": tstat, "n": len(xs)}
+        if row: out[t] = row
+    return out
+
+
+def compute_macro_monthly(tickers, dates, closes, bls):
+    """Monthly-return sensitivity to the BLS releases.
+
+    A release describes the PREVIOUS month, so the macro change for month M is
+    matched against the stock's return in month M+1 — the window in which the
+    market actually learns it. Sample is ~60 months, so every result ships with
+    its n and the reader is told the noise band."""
+    if not bls: return {}, {}
+    months = []
+    seen = set()
+    for d in dates:
+        k = f"{d.year}-{d.month:02d}"
+        if k not in seen: seen.add(k); months.append(k)
+    # monthly stock returns
+    mret = {}
+    for t in tickers:
+        first, last = {}, {}
+        for i, d in enumerate(dates):
+            v = closes[t][i]
+            if v is None: continue
+            k = f"{d.year}-{d.month:02d}"
+            first.setdefault(k, v); last[k] = v
+        mret[t] = {k: (last[k]-first[k])/first[k]*100 for k in last if first.get(k)}
+    # macro month-over-month change, shifted one month forward (release timing)
+    mchg = {}
+    for b in BLS_SERIES:
+        vals = bls.get(b["key"])
+        if not vals: continue
+        ks = sorted(vals)
+        ch = {}
+        for i in range(1, len(ks)):
+            prev, cur = vals[ks[i-1]], vals[ks[i]]
+            if b["diff"] == "pct":
+                if prev: ch[ks[i]] = (cur-prev)/prev*100
+            else:
+                ch[ks[i]] = cur-prev
+        shifted = {}
+        for k, v in ch.items():
+            y, mo = map(int, k.split("-"))
+            y, mo = (y+1, 1) if mo == 12 else (y, mo+1)
+            shifted[f"{y}-{mo:02d}"] = v
+        mchg[b["key"]] = shifted
+
+    out = {}
+    for t in tickers:
+        row = {}
+        for key, ch in mchg.items():
+            common = sorted(set(mret[t]) & set(ch))
+            if len(common) < 24: continue
+            r = pearson([ch[k] for k in common], [mret[t][k] for k in common])
+            if r is not None: row[key] = {"r": round(r, 3), "n": len(common)}
+        if row: out[t] = row
+    series_out = {b["key"]: {"label": b["label"], "values": bls.get(b["key"], {})}
+                  for b in BLS_SERIES if bls.get(b["key"])}
+    return out, series_out
+
+
+def analyse(series, members, themes, index_date, nasdaq_tickers, factors=None, bls=None):
     dates = sorted({d for rows in series.values() for d in rows})
     di = {d: i for i, d in enumerate(dates)}
     tickers = sorted(series, key=lambda t: -members[t]["market_cap"])
@@ -591,25 +794,33 @@ def analyse(series, members, themes, index_date, nasdaq_tickers):
     tickers = [t for t in tickers if t in stats]
 
     n = len(tickers)
-    matrix = [[None] * n for _ in range(n)]
-    for i in range(n):
-        matrix[i][i] = 1.0
-        ri = w_rets[tickers[i]]
-        for j in range(i + 1, n):
-            rj = w_rets[tickers[j]]
-            xs, ys = [], []
-            for k in range(len(w_dates)):
-                if ri[k] is not None and rj[k] is not None:
-                    xs.append(ri[k]); ys.append(rj[k])
-            if len(xs) < MIN_OVERLAP: continue
-            r = pearson(xs, ys)
-            if r is not None:
-                matrix[i][j] = matrix[j][i] = round(max(-1.0, min(1.0, r)), 3)
+    matrix = corr_matrix(tickers, w_rets, w_dates)
+
+    # the same network at other look-backs, so the period control has data
+    period_matrices, period_meta = {}, []
+    for pd_ in PERIODS:
+        if pd_["days"] == CORR_WINDOW_DAYS:
+            period_matrices[pd_["key"]] = matrix
+            p_from, p_to = w_dates[0], w_dates[-1]
+        else:
+            cut = dates[-1] - datetime.timedelta(days=pd_["days"])
+            i0 = next((i for i, d in enumerate(dates) if d > cut), 0)
+            p_dates = dates[i0:]
+            p_rets = {t: rets5y[t][i0:] for t in tickers}
+            # a 3-month window has ~63 sessions: the 1y minimum would void it
+            min_ov = min(MIN_OVERLAP, max(20, int(len(p_dates) * 0.25)))
+            period_matrices[pd_["key"]] = corr_matrix(tickers, p_rets, p_dates, min_ov)
+            p_from, p_to = p_dates[0], p_dates[-1]
+        period_meta.append({"key": pd_["key"], "label": pd_["label"],
+                            "from": p_from.isoformat(), "to": p_to.isoformat()})
+    log(f"correlation matrices: {', '.join(p['label'] for p in period_meta)}")
 
     corr = {
         "tickers": tickers,
         "stats": stats,
         "matrix": matrix,
+        "periods": period_meta,
+        "period_matrix": period_matrices,
         "meta": {
             "range_from": stats[tickers[0]]["first_date"] if tickers else "",
             "range_to": max(s["last_date"] for s in stats.values()) if stats else "",
@@ -678,7 +889,19 @@ def analyse(series, members, themes, index_date, nasdaq_tickers):
     nd_scope = [t for t in tickers if t in nasdaq_tickers]
     leaders = latest_session_leaders(dates, ohlc, nd_scope, members)
     cycle = analyse_cycle(dates, rets5y, tickers, themes)
-    return corr, px, oh, cycle, leaders
+
+    betas = compute_factor_betas(tickers, dates, rets5y, factors or {})
+    macro_month, macro_series = compute_macro_monthly(tickers, dates, closes, bls or {})
+    macro = {
+        "factors": [{"key": f["key"], "label": f["label"], "proxy": f["proxy"], "note": f["note"]}
+                    for f in MACRO_FACTORS if (factors or {}).get(f["key"])],
+        "betas": betas,
+        "monthly": macro_month,
+        "indicators": macro_series,
+        "window": "최근 1년 일간 수익률 회귀",
+    }
+    log(f"macro: {len(betas)} tickers with factor betas, {len(macro_month)} with monthly macro")
+    return corr, px, oh, cycle, leaders, macro
 
 
 def latest_session_leaders(dates, ohlc, tickers, members, top=6):
@@ -862,7 +1085,7 @@ def analyse_cycle(dates, rets, tickers, themes):
 # --------------------------------------------------------------------------
 # 5. render
 # --------------------------------------------------------------------------
-def render(corr, px, oh, cycle, leaders, fund, members, themes, index_date, problems, out_dir):
+def render(corr, px, oh, cycle, leaders, fund, macro, members, themes, index_date, problems, out_dir):
     tpl = open(os.path.join(ROOT, "build", "template.html")).read()
     engine = open(os.path.join(ROOT, "build", "candle_engine.js")).read()
     cfg = load_theme_config()
@@ -889,6 +1112,7 @@ def render(corr, px, oh, cycle, leaders, fund, members, themes, index_date, prob
                .replace("/*__OH__*/", blob(oh))
                .replace("/*__NODES__*/", blob(nodes))
                .replace("/*__FUND__*/", blob(fund))
+               .replace("/*__MACRO__*/", blob(macro))
                .replace("/*__META__*/", blob(meta)))
 
     # The template is written for the Artifact wrapper, which supplies the
@@ -969,11 +1193,17 @@ def main():
 
     series, problems = fetch_all_prices(members, a.max_workers)
 
+    _to = datetime.date.today()
+    _frm = _to - datetime.timedelta(days=int(YEARS * 365.25) + 5)
+    factors = fetch_macro_factors(_frm, _to)
+    bls = fetch_bls_macro()
+
     if len(series) < 0.8 * len(members):
         log(f"ABORT: only {len(series)}/{len(members)} tickers fetched — refusing to publish a thin build")
         sys.exit(1)
 
-    corr, px, oh, cycle, leaders = analyse(series, members, themes, index_date, nasdaq_tickers)
+    corr, px, oh, cycle, leaders, macro = analyse(series, members, themes, index_date,
+                                                  nasdaq_tickers, factors, bls)
     log(f"analysed: {len(corr['tickers'])} tickers, {len(px['profiles'])} lag profiles, "
         f"{len(cycle['themes'])} themes, {len(cycle['months'])} months")
     log(f"latest session {leaders.get('date')}: 나스닥100 지수 {leaders.get('index_chg')}% "
@@ -984,7 +1214,7 @@ def main():
     fund_scope = [t for t in corr["tickers"] if t in nasdaq_tickers]
     fund = fetch_fundamentals(fund_scope, os.path.join(a.cache, "fundamentals.json"),
                               a.fundamentals_refresh, a.max_workers)
-    render(corr, px, oh, cycle, leaders, fund, members, themes, index_date, problems, a.out)
+    render(corr, px, oh, cycle, leaders, fund, macro, members, themes, index_date, problems, a.out)
 
 
 if __name__ == "__main__":

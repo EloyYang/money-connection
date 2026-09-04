@@ -98,6 +98,11 @@
   }
   .left-stack > *{ pointer-events:auto; }
   .legend{ position:relative; padding:14px; flex:0 1 auto; overflow-y:auto; }
+  .ctl-label{ font-size:9.5px; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted);
+              font-weight:600; margin:2px 0 4px; }
+  .seg-wrap{ display:flex; flex-wrap:wrap; margin-bottom:8px; }
+  .seg-wrap button{ flex:1 1 auto; }
+  .ctl-note{ font-size:10px; color:var(--text-muted); line-height:1.5; margin:-2px 0 8px; }
   .legend-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
   .legend-head h3{ margin:0 !important; flex:1 1 auto; }
   #group-mode{ margin:0; flex:0 0 auto; }
@@ -167,6 +172,14 @@
   .rate-grid .lab{ color:var(--text-secondary); }
   .rate-grid .val{ font-family:'JetBrains Mono',monospace; font-weight:600; text-align:right; }
   .rate-grid .base{ font-family:'JetBrains Mono',monospace; color:var(--text-muted); font-size:10.5px; text-align:right; }
+  .mb-row{ display:grid; grid-template-columns:52px 1fr 46px; gap:7px; align-items:center;
+           font-size:11.5px; padding:2.5px 0; }
+  .mb-row .lab{ color:var(--text-secondary); }
+  .mb-track{ position:relative; height:7px; background:rgba(255,255,255,0.06); border-radius:4px; }
+  .mb-track .zero{ position:absolute; left:50%; top:-2px; bottom:-2px; width:1px; background:rgba(255,255,255,0.22); }
+  .mb-track span{ position:absolute; top:0; height:7px; border-radius:4px; }
+  .mb-row .val{ font-family:'JetBrains Mono',monospace; font-size:11px; text-align:right; }
+  .mb-row.weak .lab, .mb-row.weak .val{ opacity:0.45; }
   .season-legend{ display:flex; flex-wrap:wrap; gap:4px 8px; padding:6px 4px 0; }
   .season-legend button{ display:flex; align-items:center; gap:5px; background:none; border:none;
                          color:var(--text-secondary); font-family:'JetBrains Mono',monospace;
@@ -472,7 +485,14 @@
     </div>
     <div id="legend-rows"></div>
     <div class="legend-sec">
-      <div class="slider-head"><span>상관계수 임계값 |r|</span><b class="mono" id="thr-val">0.35</b></div>
+      <div class="ctl-label">연결 기준</div>
+      <span class="seg-mini seg-wrap" id="relation-mode">
+        <button data-rel="price" class="on">주가 상관</button><button data-rel="macro">매크로 민감도</button><button data-rel="fund">펀더멘털</button>
+      </span>
+      <div class="ctl-label" id="period-label">기간</div>
+      <span class="seg-mini seg-wrap" id="period-sel"></span>
+      <div class="ctl-note" id="relation-note"></div>
+      <div class="slider-head"><span id="thr-label">상관계수 임계값 |r|</span><b class="mono" id="thr-val">0.35</b></div>
       <input type="range" id="thr" min="0.2" max="0.7" step="0.05" value="0.35" />
       <div class="edge-key"><span class="edge-line" style="border-color:var(--up)"></span>양(+)의 상관 · 같은 방향</div>
       <div class="edge-key"><span class="edge-line" style="border-color:var(--down); border-top-style:dashed;"></span>음(−)의 상관 · 반대 방향</div>
@@ -547,6 +567,15 @@
         </span>
       </div>
       <div class="fin-chart" id="season-chart"></div>
+    </div>
+
+    <div id="macro-block">
+      <div class="perf-head" style="margin-top:14px">
+        <span class="ttl">매크로 민감도</span>
+        <span class="mono" id="macro-note" style="font-size:10px;color:var(--text-muted)"></span>
+      </div>
+      <div id="macro-bars"></div>
+      <div id="macro-monthly"></div>
     </div>
 
     <div id="leadlag" class="leadlag">
@@ -639,6 +668,9 @@ const OH = /*__OH__*/;
 const NODES = /*__NODES__*/;
 const META  = /*__META__*/;
 const FUND  = /*__FUND__*/;   // PER/EPS, 연간 재무제표, 분기 실적·추정
+/* MACRO: 종목별 매크로 팩터 베타(금리·달러·유가·변동성·신용·시장·금),
+   월별 BLS 지표(CPI·실업률·고용) 민감도, 지표 시계열 */
+const MACRO = /*__MACRO__*/;
 
 const GROUPS = Object.entries(META.themes).map(([id, label]) => ({
   id: +id, label, color: `var(--g${id})`,
@@ -661,6 +693,11 @@ const MARKETS = MARKET_DEFS.map(m => ({
 const marketOf = new Map();
 MARKETS.forEach(m => m.tickers.forEach(([tk]) => marketOf.set(tk, m)));
 
+function latestCloseRaw(tk){
+  const a = (OH.data || {})[tk] || [];
+  for(let i = a.length-1; i >= 0; i--) if(a[i]) return { px: a[i][3], date: OH.dates[i] };
+  return null;
+}
 const capOf = new Map(NODES.map(n => [n.id, n.cap || 0]));
 const capValues = [...capOf.values()].filter(v => v > 0);
 const capScale = d3.scaleSqrt()
@@ -695,21 +732,100 @@ function fmtPx(v, currency){
   return '$' + (v >= 1000 ? Math.round(v).toLocaleString('en-US') : v.toFixed(v < 20 ? 2 : 1));
 }
 
+/* =====================================================================
+   RELATION BASIS — what a line between two assets means.
+     price : correlation of daily returns over the selected look-back
+     macro : similarity of macro-factor exposure (금리·달러·유가·…)
+     fund  : similarity of valuation / growth / profitability / leverage
+   Macro and fundamental similarity are cosine similarity over z-scored
+   vectors, computed here rather than shipped as matrices — the vectors are
+   a few numbers per asset, the matrices would be megabytes.
+   ===================================================================== */
+let relationMode = 'price';
+let periodKey = '1y';
+const activeMatrix = () => (CORR.period_matrix && CORR.period_matrix[periodKey]) || CORR.matrix;
+
+function zScoreVectors(raw){
+  // raw: {ticker: {key: value}} -> {ticker: [z...]} over the shared key order
+  const keys = [...new Set(Object.values(raw).flatMap(o => Object.keys(o)))].sort();
+  const stat = {};
+  keys.forEach(k => {
+    const vals = Object.values(raw).map(o => o[k]).filter(v => typeof v === 'number');
+    if(!vals.length) return;
+    const m = vals.reduce((a,b)=>a+b,0)/vals.length;
+    const sd = Math.sqrt(vals.reduce((a,b)=>a+(b-m)*(b-m),0)/Math.max(1,vals.length-1)) || 1;
+    stat[k] = { m, sd };
+  });
+  const out = new Map();
+  Object.entries(raw).forEach(([tk, o]) => {
+    const v = keys.map(k => (typeof o[k] === 'number' && stat[k]) ? (o[k]-stat[k].m)/stat[k].sd : null);
+    if(v.some(x => x === null)) return;              // partial profiles cannot be compared fairly
+    out.set(tk, v);
+  });
+  return out;
+}
+
+const macroVec = zScoreVectors(Object.fromEntries(
+  Object.entries(MACRO.betas || {}).map(([tk, row]) =>
+    [tk, Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v.b]))])));
+
+const fundVec = zScoreVectors(Object.fromEntries(
+  Object.entries(FUND || {}).map(([tk, f]) => {
+    const px = (latestCloseRaw(tk) || {}).px;
+    const per = (f.eps_ttm && f.eps_ttm > 0 && px) ? Math.log(px / f.eps_ttm) : null;
+    const rev = f.revenue || [], ni = f.net_income || [], li = f.liabilities || [], eq = f.equity || [];
+    const growth = (rev[0] != null && rev[1]) ? (rev[0]-rev[1])/Math.abs(rev[1])*100 : null;
+    const margin = (ni[0] != null && rev[0]) ? ni[0]/rev[0]*100 : null;
+    const lev = (li[0] != null && eq[0]) ? li[0]/eq[0] : null;
+    return [tk, { per, growth, margin, lev }];
+  }).filter(([, o]) => Object.values(o).every(v => typeof v === 'number'))));
+
+function cosine(a, b){
+  let dot = 0, na = 0, nb = 0;
+  for(let i = 0; i < a.length; i++){ dot += a[i]*b[i]; na += a[i]*a[i]; nb += b[i]*b[i]; }
+  if(!na || !nb) return null;
+  return Math.max(-1, Math.min(1, dot / Math.sqrt(na*nb)));
+}
+
 function corr(a, b){
+  if(relationMode === 'macro'){
+    const va = macroVec.get(a), vb = macroVec.get(b);
+    if(!va || !vb) return null;
+    const c = cosine(va, vb);
+    return c === null ? null : Math.round(c*1000)/1000;
+  }
+  if(relationMode === 'fund'){
+    const va = fundVec.get(a), vb = fundVec.get(b);
+    if(!va || !vb) return null;
+    const c = cosine(va, vb);
+    return c === null ? null : Math.round(c*1000)/1000;
+  }
   const i = idx.get(a), j = idx.get(b);
   if(i === undefined || j === undefined) return null;
-  return CORR.matrix[i][j];
+  return activeMatrix()[i][j];
 }
-// every correlation of one ticker, sorted by strength
+
+// every relation of one ticker, sorted by strength
 function corrList(tk){
-  const i = idx.get(tk);
   const out = [];
-  CORR.tickers.forEach((other, j) => {
-    if(j === i) return;
-    const v = CORR.matrix[i][j];
-    if(v === null || !nodeIndex.has(other)) return;
-    out.push({ id: other, r: v });
-  });
+  if(relationMode === 'price'){
+    const i = idx.get(tk), m = activeMatrix();
+    if(i === undefined) return out;
+    CORR.tickers.forEach((other, j) => {
+      if(j === i) return;
+      const v = m[i][j];
+      if(v === null || !nodeIndex.has(other)) return;
+      out.push({ id: other, r: v });
+    });
+  } else {
+    const src = relationMode === 'macro' ? macroVec : fundVec;
+    if(!src.has(tk)) return out;
+    src.forEach((_, other) => {
+      if(other === tk || !nodeIndex.has(other)) return;
+      const v = corr(tk, other);
+      if(v !== null) out.push({ id: other, r: v });
+    });
+  }
   return out.sort((x,y)=> Math.abs(y.r) - Math.abs(x.r));
 }
 
@@ -881,8 +997,14 @@ document.getElementById('stat-days').textContent = dayCounts[Math.floor(dayCount
     + `갱신 ${when}` + (problems ? ` · <span class="warn" title="${(META.problems||[]).map(p=>p.ticker+': '+p.note).join(' / ')}">보정 ${problems}건</span>` : '');
 })();
 
-const graphSubtitle = `${CORR.meta.range_from} ~ ${CORR.meta.range_to} 1년 · 일별 수익률 상관계수 네트워크`;
-document.getElementById('brand-sub').textContent = graphSubtitle;
+function graphSubtitle(){
+  if(relationMode === 'macro') return `매크로 팩터 민감도 유사도 · 최근 1년 일별 회귀`;
+  if(relationMode === 'fund')  return `펀더멘털 프로필 유사도 · 최신 연간 재무제표`;
+  const p = (CORR.periods || []).find(x => x.key === periodKey);
+  return p ? `${p.from} ~ ${p.to} ${p.label} · 일별 수익률 상관계수 네트워크`
+           : `${CORR.meta.range_from} ~ ${CORR.meta.range_to} · 일별 수익률 상관계수 네트워크`;
+}
+document.getElementById('brand-sub').textContent = graphSubtitle();
 document.getElementById('method-note').textContent =
   `${CORR.meta.method} · 출처: ${CORR.meta.sources}. 상관관계는 인과관계가 아니며 과거 데이터 기준입니다.`;
 
@@ -977,6 +1099,58 @@ thrInput.addEventListener('input', ()=>{
   refitTimer = setTimeout(()=>fitToView(500), 900);
 });
 document.getElementById('mode-fit').addEventListener('click', ()=>fitToView(400));
+
+/* ---------- relation basis + look-back period ---------- */
+const RELATION_INFO = {
+  price: { thr: '상관계수 임계값 |r|',
+           note: () => `선택한 기간의 일별 수익률 상관계수. 같이 오르내릴수록 가깝게 붙습니다.` },
+  macro: { thr: '유사도 임계값',
+           note: () => `금리·달러·유가·변동성·신용·시장·금 ${MACRO.factors.length}개 팩터에 대한 민감도(베타)가 얼마나 닮았는지. ` +
+                       `가까울수록 같은 매크로 충격에 같은 방향으로 반응합니다 — 분산이 안 된 구간을 찾는 용도.` },
+  fund:  { thr: '유사도 임계값',
+           note: () => `PER·매출성장률·순이익률·부채비율 프로필의 유사도. 재무제표가 있는 나스닥100 ${fundVec.size}종목만 연결됩니다.` },
+};
+
+function renderPeriodButtons(){
+  const host = document.getElementById('period-sel');
+  host.innerHTML = (CORR.periods || []).map(p =>
+    `<button data-p="${p.key}" class="${p.key === periodKey ? 'on' : ''}" title="${p.from} ~ ${p.to}">${p.label}</button>`).join('');
+  host.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', ()=>{ periodKey = b.dataset.p; applyRelation(); });
+  });
+}
+
+function applyRelation(){
+  document.querySelectorAll('#relation-mode button')
+    .forEach(b => b.classList.toggle('on', b.dataset.rel === relationMode));
+  renderPeriodButtons();
+  // the period control only changes a price correlation; the other two bases
+  // are computed on a fixed 1-year regression, so hide it rather than imply it works
+  const priceMode = relationMode === 'price';
+  document.getElementById('period-sel').style.display = priceMode ? '' : 'none';
+  document.getElementById('period-label').style.display = priceMode ? '' : 'none';
+  const info = RELATION_INFO[relationMode];
+  document.getElementById('thr-label').textContent = info.thr;
+  document.getElementById('relation-note').textContent = info.note();
+  document.getElementById('brand-sub').textContent = graphSubtitle();
+
+  buildLinks(); drawLinks();
+  sim.force('link', linkForce()); sim.alpha(0.5).restart();
+  clearFocus(); resetOpacities();
+  if(selectedTk && drawer.classList.contains('show')){
+    const n = nodeIndex.get(selectedTk);
+    if(n) focusNode(n);
+  }
+  clearTimeout(refitTimer);
+  refitTimer = setTimeout(()=>fitToView(500), 900);
+}
+
+document.querySelectorAll('#relation-mode button').forEach(b => {
+  b.addEventListener('click', ()=>{ relationMode = b.dataset.rel; applyRelation(); });
+});
+renderPeriodButtons();
+document.getElementById('thr-label').textContent = RELATION_INFO[relationMode].thr;
+document.getElementById('relation-note').textContent = RELATION_INFO[relationMode].note();
 
 function visibleNode(d){
   if(favOnly && !favorites.has(d.id)) return false;
@@ -1883,6 +2057,7 @@ function openDrawer(d, peers){
   selectedTk = d.id;
   seasonHidden = new Set();
   drawSeasonality(d.id);
+  renderMacro(d.id);
   renderFundamentals(d.id);
   renderFavorites();
   clearCompare();
@@ -1895,6 +2070,63 @@ function openDrawer(d, peers){
    CASCADE — 상관계수 부호/크기를 따라 전파
    ===================================================================== */
 function onNodeClick(d){ focusNode(d); }
+
+/* =====================================================================
+   MACRO SENSITIVITY — how one asset reacts to each macro factor.
+   Betas come from a 1-year daily regression against tradeable proxies;
+   |t| < 2 is drawn faded because at that point the slope is not separable
+   from noise and should not be read as a real exposure.
+   ===================================================================== */
+function renderMacro(tk){
+  const block = document.getElementById('macro-block');
+  const row = (MACRO.betas || {})[tk];
+  const mon = (MACRO.monthly || {})[tk];
+  if(!row && !mon){ block.style.display = 'none'; return; }
+  block.style.display = '';
+  document.getElementById('macro-note').textContent = MACRO.window || '';
+
+  const host = document.getElementById('macro-bars');
+  if(row){
+    const maxAbs = Math.max(0.5, ...MACRO.factors.map(f => Math.abs((row[f.key]||{}).b || 0)));
+    host.innerHTML = MACRO.factors.map(f => {
+      const d = row[f.key];
+      if(!d) return '';
+      const weak = d.t == null || Math.abs(d.t) < 2;
+      const w = Math.min(50, Math.abs(d.b) / maxAbs * 50);
+      const col = d.b >= 0 ? 'var(--up)' : 'var(--down)';
+      const bar = d.b >= 0
+        ? `<span style="left:50%;width:${w}%;background:${col};opacity:${weak?0.35:0.9}"></span>`
+        : `<span style="right:50%;width:${w}%;background:${col};opacity:${weak?0.35:0.9}"></span>`;
+      return `<div class="mb-row ${weak ? 'weak' : ''}" title="${f.label} 프록시: ${f.proxy} — ${f.note}${d.t!=null?` · t=${d.t}`:''}">
+          <span class="lab">${f.label}</span>
+          <span class="mb-track"><span class="zero"></span>${bar}</span>
+          <span class="val" style="color:${weak ? 'var(--text-muted)' : col}">${d.b >= 0 ? '+' : ''}${d.b.toFixed(2)}</span>
+        </div>`;
+    }).join('') +
+    `<div class="cap">막대는 해당 팩터가 1 오를 때 이 자산의 하루 수익률 변화(베타). 흐린 줄은 t값이 2 미만이라 노이즈와 구분되지 않는 값입니다.</div>`;
+  } else host.innerHTML = '';
+
+  const mhost = document.getElementById('macro-monthly');
+  if(mon){
+    const labels = Object.fromEntries((MACRO.indicators ? Object.entries(MACRO.indicators) : [])
+      .map(([k, v]) => [k, v.label]));
+    const rows = Object.entries(mon).map(([k, d]) => {
+      const band = 2 / Math.sqrt(d.n);
+      const weak = Math.abs(d.r) < band;
+      const col = d.r >= 0 ? 'var(--up)' : 'var(--down)';
+      return `<div class="mb-row ${weak ? 'weak' : ''}" title="발표 시점 기준으로 한 달 밀어 정렬 · 노이즈 한계 ±${band.toFixed(2)}">
+          <span class="lab">${labels[k] || k}</span>
+          <span class="mb-track"><span class="zero"></span>${
+            d.r >= 0 ? `<span style="left:50%;width:${Math.min(50,Math.abs(d.r)*50)}%;background:${col};opacity:${weak?0.35:0.9}"></span>`
+                     : `<span style="right:50%;width:${Math.min(50,Math.abs(d.r)*50)}%;background:${col};opacity:${weak?0.35:0.9}"></span>`}</span>
+          <span class="val" style="color:${weak ? 'var(--text-muted)' : col}">${d.r >= 0 ? '+' : ''}${d.r.toFixed(2)}</span>
+        </div>`;
+    }).join('');
+    const n = Object.values(mon)[0]?.n || 0;
+    mhost.innerHTML = `<div class="lead-split" style="margin:9px 0 3px">월별 지표 (BLS · n=${n}개월)</div>${rows}`
+      + `<div class="cap">지표 발표는 전월치를 담으므로 한 달 뒤 수익률과 맞췄습니다. 표본이 ${n}개월뿐이라 흐린 줄은 우연 범위입니다.</div>`;
+  } else mhost.innerHTML = '';
+}
 
 /* =====================================================================
    SEASONALITY — each year's cumulative return from Jan 1, overlaid on one
@@ -2417,7 +2649,7 @@ document.querySelectorAll('.tab').forEach(btn => {
       sub.textContent = `${CY.range[0]} ~ ${CY.range[1]} 5년 · ${THEME_IDS.length}개 테마 로테이션 분석`;
       renderCycle();
     } else {
-      sub.textContent = graphSubtitle;
+      sub.textContent = graphSubtitle();
       hideTooltip();
       setTimeout(()=>fitToView(300), 60);
     }
