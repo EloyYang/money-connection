@@ -225,15 +225,7 @@
   .tab:hover{ color:var(--text-primary); }
   .tab.active{ background:var(--panel-solid); color:var(--text-primary); box-shadow:0 1px 6px rgba(0,0,0,0.3); }
   .tab:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
-  body.view-cycle .graph-only{ display:none !important; }
-  body.view-graph #cycle-view{ display:none; }
 
-  /* cycle view */
-  #cycle-view{ position:absolute; inset:0; overflow-y:auto; padding:20px 24px 40px; }
-  .cyc-head{ max-width:1180px; margin:0 auto 16px; }
-  .cyc-head h2{ font-family:'Space Grotesk',system-ui,sans-serif; font-size:17px; margin:0 0 4px; font-weight:600; }
-  .cyc-head p{ margin:0; font-size:12px; color:var(--text-secondary); line-height:1.6; max-width:74ch; }
-  .cyc-wrap{ max-width:1180px; margin:0 auto; display:flex; flex-direction:column; gap:18px; }
   .findings{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; }
   .finding{ background:var(--panel-solid); border:1px solid var(--border); border-radius:12px; padding:13px 15px; }
   .finding .k{ font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); }
@@ -247,8 +239,6 @@
   .card{ background:var(--panel-solid); border:1px solid var(--border); border-radius:12px; padding:15px 16px; }
   .card h3{ margin:0 0 2px; font-size:13px; font-weight:600; }
   .card .sub{ margin:0 0 12px; font-size:11px; color:var(--text-muted); line-height:1.5; }
-  .cyc-cols{ display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:18px; align-items:start; }
-  @media (max-width:900px){ .cyc-cols{ grid-template-columns:minmax(0,1fr); } }
   .chart-box{ width:100%; overflow-x:auto; }
   .theme-legend{ display:flex; flex-wrap:wrap; gap:5px 14px; margin-top:10px; font-size:11px; }
   .theme-legend div{ display:flex; align-items:center; gap:6px; color:var(--text-secondary); cursor:pointer; }
@@ -331,6 +321,62 @@
   .legend-row.sel{ background:rgba(199,125,255,0.10); }
   .legend-row.sel .cnt{ color:var(--sel); }
   /* collapse: the header is the only thing that survives */
+  body.view-folio .graph-only{ display:none !important; }
+  /* ---- 포트폴리오 뷰 ---- */
+  #folio-view{ position:absolute; inset:0; overflow-y:auto; padding:20px 24px 44px; }
+  .folio-wrap{ max-width:1180px; margin:0 auto; display:flex; flex-direction:column; gap:16px; }
+  .folio-head{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .folio-head h2{ font-family:'Space Grotesk',system-ui,sans-serif; font-size:17px; margin:0; font-weight:600; }
+  .folio-head .seg-mini{ margin:0; }
+  .folio-head .seg-mini button{ white-space:nowrap; }
+  .broker-chip{ font-size:10.5px; padding:3px 9px; border-radius:999px; border:1px solid var(--border-strong);
+    color:var(--text-muted); white-space:nowrap; }
+  .broker-chip.on{ border-color:var(--up); color:var(--up); background:rgba(61,220,132,0.10); }
+  .folio-head .btn{ margin-left:auto; }
+  .folio-kpis{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  .folio-kpi{ background:var(--panel); border:1px solid var(--border); border-radius:11px; padding:11px 13px; }
+  .folio-kpi .l{ font-size:9.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); }
+  .folio-kpi .v{ font-family:'JetBrains Mono',monospace; font-size:18px; margin-top:3px; }
+  .folio-kpi .s{ font-size:10.5px; color:var(--text-secondary); margin-top:2px; }
+  .folio-cols{ display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); gap:16px; align-items:start; }
+  @media (max-width:900px){ .folio-cols{ grid-template-columns:minmax(0,1fr); } }
+  .folio-panel{ position:relative; padding:14px 16px; }
+  .folio-panel .sec-title{ margin-top:0; }
+  .folio-empty{ font-size:11.5px; color:var(--text-muted); padding:14px 2px; line-height:1.6; }
+  .alloc-row{ display:flex; align-items:center; gap:8px; font-size:11.5px; padding:3px 0; }
+  .alloc-row .nm{ flex:0 0 42%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .alloc-row .bar{ flex:1 1 auto; height:7px; border-radius:4px; background:rgba(255,255,255,0.06); overflow:hidden; }
+  .alloc-row .bar span{ display:block; height:100%; border-radius:4px; }
+  .alloc-row .pc{ flex:0 0 46px; text-align:right; font-family:'JetBrains Mono',monospace; font-size:11px; }
+  .set-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:9px; }
+  .set-grid label{ display:flex; flex-direction:column; gap:4px; font-size:10.5px; color:var(--text-muted); }
+  .set-grid input{ background:rgba(255,255,255,0.05); border:1px solid var(--border-strong); border-radius:7px;
+    padding:6px 8px; color:var(--text-primary); font-family:'JetBrains Mono',monospace; font-size:12px; }
+  .set-actions{ display:flex; gap:7px; margin-top:10px; flex-wrap:wrap; }
+  #folio-table td.tk, #folio-trades td.tk{ font-weight:600; }
+  .sell-btn{ background:none; border:1px solid var(--border-strong); color:var(--text-secondary);
+    border-radius:6px; font-family:inherit; font-size:10px; padding:2px 6px; cursor:pointer; }
+  .sell-btn:hover{ border-color:var(--down); color:var(--down); }
+
+  /* ---- 주문 티켓 ---- */
+  .ticket{ background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:10px; padding:10px; }
+  .tk-row{ display:flex; gap:7px; align-items:flex-end; margin-bottom:7px; }
+  .tk-row .seg-mini{ margin:0; flex:1 1 auto; }
+  .tk-f{ display:flex; flex-direction:column; gap:3px; font-size:9.5px; color:var(--text-muted);
+    text-transform:uppercase; letter-spacing:0.06em; flex:1 1 0; }
+  .tk-f input{ background:rgba(255,255,255,0.05); border:1px solid var(--border-strong); border-radius:7px;
+    padding:6px 8px; color:var(--text-primary); font-family:'JetBrains Mono',monospace; font-size:13px; width:100%; }
+  .tk-est{ font-size:11.5px; color:var(--text-secondary); margin:2px 0 8px; line-height:1.5; }
+  .tk-est b{ font-family:'JetBrains Mono',monospace; color:var(--text-primary); }
+  .btn.tk-go{ width:100%; justify-content:center; font-weight:600; }
+  .btn.tk-go.buy{ border-color:var(--up); color:var(--up); }
+  .btn.tk-go.sell{ border-color:var(--down); color:var(--down); }
+  .btn.tk-go[disabled]{ opacity:0.45; cursor:not-allowed; }
+  #tk-side .buy.on{ color:var(--up); }
+  #tk-side .sell.on{ color:var(--down); }
+  .live-warn{ border:1px solid var(--down); background:rgba(255,92,114,0.10); color:var(--down);
+    border-radius:8px; padding:7px 9px; font-size:11px; line-height:1.5; margin-bottom:8px; }
+  body:not(.view-folio) #folio-view{ display:none; }
   .panel.collapsed > *:not(.legend-head):not(.fav-head){ display:none !important; }
   .panel.collapsed .legend-head, .panel.collapsed .fav-head{ margin-bottom:0; }
   .collapse-btn{ flex:0 0 auto; margin-left:4px; background:none; border:none; cursor:pointer;
@@ -536,7 +582,7 @@
   </div>
   <div class="tabs">
     <button class="tab active" data-view="graph">종목 네트워크</button>
-    <button class="tab" data-view="cycle">테마 사이클</button>
+    <button class="tab" data-view="folio">포트폴리오</button>
   </div>
   <div class="stat graph-only"><div class="n mono" id="stat-nodes">–</div><div class="l">종목</div></div>
   <div class="stat graph-only"><div class="n mono" id="stat-links">–</div><div class="l">상관 연결</div></div>
@@ -557,43 +603,66 @@
 <div class="main">
   <div id="canvas-wrap" class="graph-only"></div>
 
-  <div id="cycle-view">
-    <div class="cyc-head">
-      <h2>테마 로테이션 — 한 테마의 상승이 끝나면 다음은 어디로?</h2>
-      <p id="cyc-intro">—</p>
-    </div>
-    <div class="cyc-wrap">
-      <div class="findings" id="findings"></div>
-
-      <div class="card">
-        <h3>테마 지수 5년 추이</h3>
-        <p class="sub">테마별 구성종목 동일가중 · 시작일 = 100 · 로그 축(배수 비교용). 범례를 클릭하면 강조됩니다.</p>
-        <div class="chart-box"><svg id="cyc-index" width="100%"></svg></div>
-        <div class="theme-legend" id="cyc-legend"></div>
+  <div id="folio-view">
+    <div class="folio-wrap">
+      <div class="folio-head">
+        <h2>포트폴리오</h2>
+        <span class="seg-mini" id="folio-mode">
+          <button data-m="paper" class="on">모의</button><button data-m="live">실거래</button>
+        </span>
+        <span class="broker-chip" id="broker-chip">토스증권 미연결</span>
+        <button class="btn ghost" id="folio-settings-btn">설정</button>
       </div>
 
-      <div class="cyc-cols">
-        <div class="card">
-          <h3>월별 테마 수익률</h3>
-          <p class="sub">초록=상승, 빨강=하락. 흰 테두리는 그 달 1위 테마 — 테두리가 옮겨 다니는 모습이 로테이션입니다.</p>
-          <div class="chart-box"><svg id="cyc-heat" width="100%"></svg></div>
-        </div>
+      <div class="folio-kpis" id="folio-kpis"></div>
 
-        <div class="card">
-          <h3>리더십 전이 행렬</h3>
-          <p class="sub">행 = 이번 달 1위 테마, 열 = 다음 달 1위 테마. 숫자는 관측 횟수(총 <span id="trans-total">–</span>회)이며, 행을 클릭하면 분포가 아래에 표시됩니다.</p>
-          <div class="chart-box"><svg id="cyc-trans" width="100%"></svg></div>
-          <div class="trans-detail" id="trans-detail">행을 클릭해 특정 테마 다음에 무엇이 왔는지 확인하세요.</div>
+      <div class="folio-cols">
+        <div class="panel folio-panel">
+          <div class="sec-title"><span>보유 종목<button class="help" data-h="folioHoldings">?</button></span>
+            <span class="mono" id="folio-count"></span></div>
+          <div class="cmp-scroll"><table class="cmp-table" id="folio-table"></table></div>
+        </div>
+        <div class="panel folio-panel">
+          <div class="sec-title"><span>배분<button class="help" data-h="folioAlloc">?</button></span>
+            <span class="seg-mini seg-wrap" id="alloc-mode" style="margin:0">
+              <button data-g="theme" class="on">테마</button><button data-g="market">시장</button><button data-g="profile">성격</button>
+            </span></div>
+          <div id="folio-alloc"></div>
         </div>
       </div>
 
-      <div class="card">
-        <h3>테마 간 주간 시차 상관</h3>
-        <p class="sub" id="cyc-lag-sub">—</p>
-        <div class="chart-box"><svg id="cyc-lag" width="100%"></svg></div>
+      <div class="panel folio-panel">
+        <div class="sec-title"><span>거래 내역<button class="help" data-h="folioTrades">?</button></span>
+          <span><button class="linkbtn" id="folio-export">CSV 내보내기</button></span></div>
+        <div class="cmp-scroll"><table class="cmp-table" id="folio-trades"></table></div>
+      </div>
+
+      <div class="panel folio-panel" id="folio-settings" hidden>
+        <div class="sec-title"><span>설정<button class="help" data-h="folioSettings">?</button></span></div>
+        <div class="set-grid">
+          <label>모의 초기자금 (원)<input type="number" id="set-cash" min="0" step="1000000"></label>
+          <label>수수료 (%)<input type="number" id="set-fee" min="0" max="1" step="0.001"></label>
+          <label>국내 매도 거래세 (%)<input type="number" id="set-tax" min="0" max="1" step="0.01"></label>
+          <label>USD/KRW<input type="number" id="set-fx" min="1" step="1"></label>
+        </div>
+        <div class="set-actions">
+          <button class="btn ghost" id="set-save">저장</button>
+          <button class="btn ghost" id="set-reset">모의 계좌 초기화</button>
+        </div>
+        <div class="sec-title" style="margin-top:16px"><span>토스증권 연결<button class="help" data-h="folioBroker">?</button></span></div>
+        <div class="set-grid">
+          <label>브리지 주소<input type="text" id="set-bridge" placeholder="http://localhost:8787"></label>
+        </div>
+        <div class="set-actions">
+          <button class="btn ghost" id="bridge-test">연결 확인</button>
+          <button class="btn ghost" id="bridge-sync">보유 종목 가져오기</button>
+        </div>
+        <div class="cap" id="bridge-status"></div>
       </div>
     </div>
   </div>
+
+
 
   <div class="left-stack graph-only">
   <div class="panel legend" data-panel="theme">
@@ -693,6 +762,24 @@
         <button class="expand-btn" id="open-candle">⤢ 봉차트</button></span></div>
       <div id="chart-host"><svg id="pricechart" viewBox="0 0 298 116" width="100%" height="116"></svg></div>
       <div id="chart-readout" class="readout">—</div>
+    </div>
+
+    <div id="trade-block">
+      <div class="sec-title"><span>주문<button class="help" data-h="trade">?</button></span>
+        <span class="mono" id="trade-mode-lab"></span></div>
+      <div class="ticket">
+        <div class="tk-row">
+          <span class="seg-mini" id="tk-side"><button data-s="BUY" class="on buy">매수</button><button data-s="SELL" class="sell">매도</button></span>
+          <span class="seg-mini" id="tk-type"><button data-t="MARKET" class="on">시장가</button><button data-t="LIMIT">지정가</button></span>
+        </div>
+        <div class="tk-row">
+          <label class="tk-f">수량<input type="number" id="tk-qty" min="0" step="1" value="1"></label>
+          <label class="tk-f" id="tk-price-wrap" hidden>가격<input type="number" id="tk-price" min="0" step="0.01"></label>
+        </div>
+        <div class="tk-est" id="tk-est">—</div>
+        <button class="btn tk-go" id="tk-submit">매수</button>
+        <div class="cap" id="tk-note"></div>
+      </div>
     </div>
 
     <div id="season-block">
@@ -823,10 +910,6 @@ const CORR = /*__CORR__*/;
          comove{"A|B":{ab:[base,same,next,n], ba:[...]}}, noise{"A|B":n} }
    profiles use corr_k = corr(a[t], b[t-k]); k>0 means B's earlier move matches A today. */
 const PX = /*__PX__*/;
-/* CY: 5-year theme-rotation dataset — theme indices, monthly returns, monthly
-   leadership, leadership transition counts, weekly theme lead-lag, and the
-   significance statistics computed off them. */
-const CY = /*__CY__*/;
 /* OH: 5y OHLCV for the candlestick modal — data[tk][i] = [o,h,l,c,vol(천주)] */
 const OH = /*__OH__*/;
 
@@ -1093,6 +1176,30 @@ const HELP = {
   groupMode: { t: '분류 기준', dir: null, d:
     '같은 그래프를 세 가지 방식으로 색칠합니다. 테마는 사업 성격, 시장은 나스닥·코스피·ETF·암호화폐·원자재, ' +
     '성격은 최근 3년 주가 움직임의 유형입니다. 노드의 위치는 어느 기준에서도 바뀌지 않습니다 — 위치는 오직 상관계수가 정합니다.' },
+  trade: { t: '주문', dir: null, d:
+    '모의는 이 브라우저 안에서만 기록되는 가상 거래입니다. 시장가는 최근 종가로, 지정가는 입력한 가격에 즉시 체결된 것으로 가정합니다 — ' +
+    '실제 지정가 주문은 체결되지 않을 수도 있으므로 시나리오 계산으로만 보세요.\n\n' +
+    '실거래는 토스증권 Open API로 실제 주문을 냅니다. 이 페이지는 공개된 정적 사이트라 API 키를 담을 수 없으므로, ' +
+    '본인 PC에서 실행하는 브리지(build/toss_bridge.py)를 거쳐 전송됩니다. 브리지가 없으면 실거래 버튼은 비활성입니다.\n\n' +
+    '암호화폐와 금 현물은 토스증권 주식 API 대상이 아니라 모의 거래만 가능합니다.' },
+  folioHoldings: { t: '보유 종목', dir: null, d:
+    '평균단가와 현재가는 그 종목이 거래되는 통화 그대로 보여 주고, 평가금액·손익·비중은 원화로 환산해 한 줄로 비교할 수 있게 했습니다. ' +
+    `환율은 설정에서 바꿀 수 있고 기본값은 시가총액 환산에 쓰는 것과 같은 값입니다.\n\n` +
+    '현재가는 마지막 종가입니다 — 장중 실시간 가격이 아닙니다.' },
+  folioAlloc: { t: '배분', dir: null, d:
+    '평가금액 기준 비중입니다. 테마·시장·성격 세 가지로 나눠 볼 수 있어, 한 테마에 쏠려 있는지 또는 고변동성 종목에 몰려 있는지 확인할 수 있습니다.' },
+  folioTrades: { t: '거래 내역', dir: null, d:
+    '모의와 실거래가 같은 장부에 기록되며, 실거래에는 "실" 표시가 붙습니다. 실현손익은 매도 시점의 평균단가 대비 차익에서 수수료와 세금을 뺀 값입니다. ' +
+    'CSV로 내보내 스프레드시트에서 따로 분석할 수 있습니다.' },
+  folioSettings: { t: '설정', dir: null, d:
+    '수수료와 거래세는 증권사·계좌·시장마다 다릅니다. 기본값은 예시일 뿐이므로 본인 조건에 맞게 바꿔서 쓰세요.\n\n' +
+    '초기자금을 바꾸면 차액만큼 현금이 조정되고 누적 수익률의 기준도 함께 바뀝니다. 모든 값은 이 브라우저에만 저장됩니다.' },
+  folioBroker: { t: '토스증권 연결', dir: null, d:
+    '토스증권 Open API는 OAuth 2.0 client credentials 방식이고, 토스 문서도 client secret은 서버에서만 쓰라고 명시합니다. ' +
+    '이 사이트는 누구나 소스를 볼 수 있는 정적 페이지이므로 키를 넣을 수 없습니다.\n\n' +
+    '대신 저장소의 build/toss_bridge.py 를 본인 PC에서 실행하세요. 키는 ~/.money-connection/toss.json 에만 있고, ' +
+    '브라우저는 localhost의 브리지에만 요청합니다.\n\n' +
+    '"보유 종목 가져오기"는 토스 계좌의 실제 보유 수량과 평균단가를 장부에 덮어씁니다. 현금 잔고는 모의 값 그대로 남습니다.' },
   usage: { t: '사용법', dir: null, d:
     '종목을 클릭하면 주가 차트 · 펀더멘털 · 상관계수 순위가 열립니다. ⌘/Ctrl/Shift+클릭으로 최대 5종목까지 겹쳐 비교할 수 있고, ' +
     '상세 아래 연관 종목을 클릭해도 비교에 추가됩니다. 두 종목만 고르면 선행·후행 분석이 함께 나옵니다.\n\n' +
@@ -1349,6 +1456,7 @@ svg.call(zoom);
 function fitToView(duration = 0, subset = null){
   const list = (subset && subset.length > 1) ? subset : nodes;
   if(!list.length) return;
+  if(!(W > 0) || !(H > 0)) return;      // 포트폴리오 뷰에서는 캔버스가 0px 이다
   const drawerOpen = document.getElementById('drawer').classList.contains('show');
   const padL = W > 700 ? 290 : 40;
   const padR = (drawerOpen && W > 700) ? 320 : 60;
@@ -1450,11 +1558,16 @@ function ticked(){
 // settle the layout before first paint, then frame it
 sim.stop(); for(let i=0;i<400;i++) sim.tick(); ticked(); fitToView(); sim.alpha(0.06).restart();
 
-window.addEventListener('resize', ()=>{
-  W = wrap.clientWidth; H = wrap.clientHeight;
+function remeasureGraph(){
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  if(!(w > 0) || !(h > 0)) return false;     // 숨겨져 있으면 크기를 읽지 않는다
+  W = w; H = h;
   svg.attr('viewBox',[0,0,W,H]);
   sim.force('center', d3.forceCenter(W/2,H/2)).alpha(0.15).restart();
-  setTimeout(()=>fitToView(400), 400);
+  return true;
+}
+window.addEventListener('resize', ()=>{
+  if(remeasureGraph()) setTimeout(()=>fitToView(400), 400);
 });
 
 /* ---------- header stats ---------- */
@@ -2970,6 +3083,7 @@ function openDrawer(d, peers, keepScroll){
   drawPriceChart(compareSet);
   drawSeasonality(compareSet);
   renderProfile(compareSet);
+  updateTicket();
   renderMacro(compareSet);
   renderFundamentals(compareSet);
   renderFavorites();
@@ -4255,255 +4369,33 @@ document.getElementById('m-yfit').addEventListener('click', ()=>{ yManual = null
 /*__CANDLE_ENGINE__*/
 
 /* =====================================================================
-   THEME ROTATION VIEW
+   VIEWS — 종목 네트워크 / 포트폴리오
    ===================================================================== */
-const THEME_IDS = Object.keys(CY.themes);
-const themeColor = g => `var(--g${g})`;
-const themeLabel = g => CY.themes[g].label;
-const shortLabel = g => themeLabel(g).split(' · ')[0];
-
-document.querySelectorAll('.tab').forEach(btn => {
-  btn.addEventListener('click', ()=>{
-    document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active', b===btn));
-    const v = btn.dataset.view;
-    document.body.className = 'view-' + v;
-    const sub = document.getElementById('brand-sub');
-    if(v === 'cycle'){
-      sub.textContent = `${CY.range[0]} ~ ${CY.range[1]} 5년 · ${THEME_IDS.length}개 테마 로테이션 분석`;
-      renderCycle();
-    } else {
-      sub.textContent = graphSubtitle();
-      hideTooltip();
-      setTimeout(()=>fitToView(300), 60);
-    }
-  });
-});
+function setView(v){
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  document.body.className = 'view-' + v;
+  const sub = document.getElementById('brand-sub');
+  if(v === 'folio'){
+    sub.textContent = '모의 · 실거래 포트폴리오';
+    renderFolio();
+  } else {
+    sub.textContent = graphSubtitle();
+    hideTooltip();
+    // the canvas was display:none a moment ago — read its size back first
+    setTimeout(() => { remeasureGraph(); fitToView(300); }, 60);
+  }
+}
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
 document.body.className = 'view-graph';
 
-/* --- intro + finding cards --- */
-function renderFindings(){
-  const s = CY.stats;
-  const totalAssets = THEME_IDS.reduce((n, g) => n + CY.themes[g].members.length, 0);
-  document.getElementById('cyc-intro').innerHTML =
-    `${CY.range[0]} ~ ${CY.range[1]} · ${CY.months.length}개월 · ${totalAssets}개 종목/자산을 ${THEME_IDS.length}개 테마로 묶어 동일가중 지수를 만들고,
-     매달 1위 테마가 다음 달 어떤 테마로 넘어갔는지 집계했습니다.
-     표본이 ${s.persist.total}회 전이뿐이라 개별 칸의 확률보다 <b>전체 경향</b>을 보는 용도입니다.`;
+/* =====================================================================
+   THEME LABELS — the rotation view is gone; these are still used by the graph,
+   the legend and the peer table.
+   ===================================================================== */
+const themeColor = g => `var(--g${g})`;
+const themeLabel = g => (META.themes || {})[g] || String(g);
+const shortLabel = g => themeLabel(g).split(' · ')[0];
 
-  const cards = [
-    { k:'리더 지속성', v:`${s.persist.pct}%`,
-      d:`이번 달 1위 테마가 <b>다음 달에도 1위</b>인 경우 ${s.persist.same}/${s.persist.total}회.
-         무작위라면 ${s.persist.random}%여야 합니다 (z=+${s.persist.z}).`,
-      tag:['모멘텀 유의 (p≈0.01)','yes'] },
-    { k:'1위 테마의 다음 달 초과수익', v:`${s.leader_next.excess>=0?'+':''}${s.leader_next.excess}%p`,
-      d:`전체 평균 대비. 다음 달에도 평균을 이긴 비율 ${s.leader_next.winrate}% (n=${s.leader_next.n}, t=${s.leader_next.t}).`,
-      tag:['약한 경향 — 통계적 확신 부족','weak'] },
-    { k:'꼴찌 테마의 반등', v:`${s.worst_next.excess}%p`,
-      d:`이번 달 꼴찌 테마의 다음 달 초과수익 (n=${s.worst_next.n}, t=${s.worst_next.t}).
-         떨어진 테마가 바로 반등한다는 근거는 없습니다.`,
-      tag:['반전 효과 없음','no'] },
-    { k:'테마 간 선행–후행', v:'없음',
-      d:`${THEME_IDS.length}개 테마 모든 조합에서 주간 수익률 상관은 <b>동시(lag 0)</b>가 가장 강했습니다.
-         "A 테마가 오르면 몇 주 뒤 B 테마" 같은 시차 신호는 관측되지 않습니다.`,
-      tag:['모든 쌍에서 lag 0 우세','no'] },
-  ];
-  document.getElementById('findings').innerHTML = cards.map(c=>`
-    <div class="finding"><div class="k">${c.k}</div><div class="v">${c.v}</div>
-      <div class="d">${c.d}</div><span class="tag ${c.tag[1]}">${c.tag[0]}</span></div>`).join('');
-}
-
-/* --- theme index chart (log scale, direct labels) --- */
-function renderThemeIndex(){
-  const host = document.getElementById('cyc-index');
-  const W = Math.max(560, host.parentElement.clientWidth), H = 300;
-  const m = { t:14, r:112, b:24, l:44 };
-  const svg = d3.select(host).attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
-  svg.selectAll('*').remove();
-  const n = CY.dates.length;
-  const all = THEME_IDS.flatMap(g => CY.themes[g].index).concat(CY.market_index).filter(v=>v>0);
-  const y = d3.scaleLog().domain([Math.min(...all)*0.95, Math.max(...all)*1.05]).range([H-m.b, m.t]);
-  const x = d3.scaleLinear().domain([0, n-1]).range([m.l, W-m.r]);
-
-  [100, 200, 400].concat(Math.max(...all) > 500 ? [800] : []).forEach(v=>{
-    if(v < y.domain()[0] || v > y.domain()[1]) return;
-    svg.append('line').attr('x1',m.l).attr('x2',W-m.r).attr('y1',y(v)).attr('y2',y(v))
-      .attr('stroke', v===100 ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.06)').attr('stroke-width',1);
-    svg.append('text').attr('x',m.l-7).attr('y',y(v)+3).attr('text-anchor','end').attr('font-size',9)
-      .attr('fill','#6b7380').attr('font-family',"'JetBrains Mono',monospace").text(v);
-  });
-  // year ticks
-  let lastYear = null;
-  CY.dates.forEach((d,i)=>{
-    const yr = d.slice(0,4);
-    if(yr !== lastYear){ lastYear = yr;
-      svg.append('text').attr('x',x(i)).attr('y',H-7).attr('text-anchor','middle').attr('font-size',9)
-        .attr('fill','#6b7380').attr('font-family',"'JetBrains Mono',monospace").text(yr);
-    }
-  });
-
-  const line = d3.line().x((d,i)=>x(i)).y(d=>y(d));
-  svg.append('path').datum(CY.market_index).attr('d',line).attr('fill','none')
-    .attr('stroke','#6b7380').attr('stroke-width',1.2).attr('stroke-dasharray','3,3');
-
-  const ends = THEME_IDS.map(g => ({ g, v: CY.themes[g].index[n-1], y: y(CY.themes[g].index[n-1]) }));
-  ends.sort((a,b)=>a.y-b.y);
-  for(let i=1;i<ends.length;i++) if(ends[i].y - ends[i-1].y < 13) ends[i].y = ends[i-1].y + 13;
-
-  THEME_IDS.forEach(g=>{
-    svg.append('path').datum(CY.themes[g].index).attr('class','tline t'+g).attr('d',line)
-      .attr('fill','none').attr('stroke',themeColor(g)).attr('stroke-width',1.7).attr('opacity',0.9);
-  });
-  ends.forEach(e=>{
-    svg.append('text').attr('x',W-m.r+8).attr('y',e.y+3).attr('font-size',9.5).attr('fill',themeColor(e.g))
-      .attr('font-weight',600).text(`${shortLabel(e.g)} ${Math.round(e.v/100*10)/10}배`);
-  });
-  svg.append('text').attr('x',W-m.r+8).attr('y',y(CY.market_index[n-1])+3).attr('font-size',9)
-    .attr('fill','#6b7380').text('');
-
-  document.getElementById('cyc-legend').innerHTML = THEME_IDS.map(g=>
-    `<div data-g="${g}"><span class="dot" style="width:8px;height:8px;background:${themeColor(g)};box-shadow:none"></span>${themeLabel(g)}</div>`
-  ).join('') + `<div style="color:var(--text-muted)"><span style="width:14px;border-top:1.5px dashed #6b7380;display:inline-block"></span>전체 평균</div>`;
-  document.querySelectorAll('#cyc-legend div[data-g]').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      const g = el.dataset.g, on = el.classList.toggle('dim');
-      svg.selectAll('.t'+g).attr('opacity', on ? 0.12 : 0.9).attr('stroke-width', on ? 1 : 1.7);
-    });
-  });
-}
-
-/* --- monthly return heatmap --- */
-function renderHeatmap(){
-  const host = document.getElementById('cyc-heat');
-  const labelW = 128, cell = 11, gap = 1.5, rowH = 20;
-  const months = CY.months;
-  const W = Math.max(labelW + months.length*(cell+gap) + 12, 480);
-  const H = THEME_IDS.length*rowH + 34;
-  const svg = d3.select(host).attr('viewBox',`0 0 ${W} ${H}`).attr('height',H).attr('width',W);
-  svg.selectAll('*').remove();
-  const vals = THEME_IDS.flatMap(g => CY.theme_month[g]).filter(v=>v!=null).map(Math.abs);
-  const cap = d3.quantile(vals.sort(d3.ascending), 0.92) || 10;
-  const col = v => {
-    const t = Math.max(-1, Math.min(1, v/cap));
-    return t >= 0 ? d3.interpolateRgb('#141a17','#3ddc84')(Math.max(0.12,t))
-                  : d3.interpolateRgb('#1c1416','#ff5c72')(Math.max(0.12,-t));
-  };
-  THEME_IDS.forEach((g,ri)=>{
-    svg.append('text').attr('x',labelW-8).attr('y',26+ri*rowH).attr('text-anchor','end')
-      .attr('font-size',10).attr('fill','var(--text-secondary)').text(shortLabel(g));
-    months.forEach((mk,ci)=>{
-      const v = CY.theme_month[g][ci];
-      if(v==null) return;
-      const isLead = CY.leaders[ci] === g;
-      svg.append('rect').attr('x',labelW+ci*(cell+gap)).attr('y',16+ri*rowH-9)
-        .attr('width',cell).attr('height',rowH-5).attr('rx',2)
-        .attr('fill',col(v))
-        .attr('stroke', isLead ? 'rgba(255,255,255,0.85)' : 'none').attr('stroke-width', isLead?1.2:0)
-        .style('cursor','pointer')
-        .append('title').text(`${mk} · ${themeLabel(g)} ${v>=0?'+':''}${v}%${isLead?'  (그 달 1위)':''}`);
-    });
-  });
-  months.forEach((mk,ci)=>{
-    if(!mk.endsWith('-01') && ci!==0) return;
-    svg.append('text').attr('x',labelW+ci*(cell+gap)+cell/2).attr('y',H-6).attr('text-anchor','middle')
-      .attr('font-size',9).attr('fill','#6b7380').attr('font-family',"'JetBrains Mono',monospace").text(mk.slice(0,4));
-  });
-}
-
-/* --- leadership transition matrix --- */
-function renderTransitions(){
-  document.getElementById('trans-total').textContent = CY.stats.persist.total;
-  const host = document.getElementById('cyc-trans');
-  const labelW = 118, cell = 30, top = 46;
-  const W = labelW + THEME_IDS.length*cell + 10, H = top + THEME_IDS.length*cell + 8;
-  const svg = d3.select(host).attr('viewBox',`0 0 ${W} ${H}`).attr('height',H).attr('width',W);
-  svg.selectAll('*').remove();
-  const maxV = Math.max(...THEME_IDS.flatMap(a => THEME_IDS.map(b => CY.transitions[a][b])));
-
-  THEME_IDS.forEach((b,ci)=>{
-    svg.append('text').attr('transform',`translate(${labelW+ci*cell+cell/2},${top-8}) rotate(-42)`)
-      .attr('font-size',9).attr('fill','var(--text-secondary)').text(shortLabel(b).slice(0,7));
-  });
-  THEME_IDS.forEach((a,ri)=>{
-    const rowTotal = THEME_IDS.reduce((s,b)=>s+CY.transitions[a][b],0);
-    svg.append('text').attr('x',labelW-8).attr('y',top+ri*cell+cell/2+3).attr('text-anchor','end')
-      .attr('font-size',9.5).attr('fill', rowTotal>=5?'var(--text-primary)':'var(--text-muted)')
-      .style('cursor','pointer').text(`${shortLabel(a).slice(0,8)} (${rowTotal})`)
-      .on('click',()=>showTransRow(a));
-    THEME_IDS.forEach((b,ci)=>{
-      const v = CY.transitions[a][b];
-      const t = maxV ? v/maxV : 0;
-      svg.append('rect').attr('x',labelW+ci*cell).attr('y',top+ri*cell)
-        .attr('width',cell-2).attr('height',cell-2).attr('rx',3)
-        .attr('fill', v ? d3.interpolateRgb('#151a21','#5fd0ff')(0.15+t*0.85) : 'rgba(255,255,255,0.03)')
-        .attr('stroke', a===b ? 'rgba(255,255,255,0.28)' : 'none')
-        .style('cursor','pointer').on('click',()=>showTransRow(a))
-        .append('title').text(`${themeLabel(a)} 1위 → 다음 달 ${themeLabel(b)} 1위: ${v}회 / ${rowTotal}회`);
-      if(v) svg.append('text').attr('x',labelW+ci*cell+(cell-2)/2).attr('y',top+ri*cell+cell/2+3.5)
-        .attr('text-anchor','middle').attr('font-size',10).attr('font-weight',600)
-        .attr('fill', t>0.5?'#0a0c10':'var(--text-primary)')
-        .attr('font-family',"'JetBrains Mono',monospace").style('pointer-events','none').text(v);
-    });
-  });
-}
-function showTransRow(a){
-  const row = THEME_IDS.map(b=>({b, v:CY.transitions[a][b]})).filter(d=>d.v>0).sort((x,y)=>y.v-x.v);
-  const total = row.reduce((s,d)=>s+d.v,0);
-  const parts = row.map(d=>{
-    const self = d.b===a ? ' (같은 테마 지속)' : '';
-    return `<b style="color:${themeColor(d.b)}">${shortLabel(d.b)}</b> ${d.v}회${self}`;
-  }).join(' · ');
-  document.getElementById('trans-detail').innerHTML = total
-    ? `<b>${themeLabel(a)}</b>가 1위였던 달은 총 ${total}회. 그 다음 달 1위는 → ${parts}
-       <div style="color:var(--text-muted);margin-top:5px">${total < 8 ? '표본이 작아 (10회 미만) 경향으로만 참고하세요.' : ''}</div>`
-    : `<b>${themeLabel(a)}</b>가 1위였던 달이 없습니다.`;
-}
-
-/* --- theme lead-lag small multiples --- */
-function renderThemeLag(){
-  const host = document.getElementById('cyc-lag');
-  const keys = Object.keys(CY.lead);
-  const ML = CY.max_lag;
-  const perRow = 7, bw = 9, chartW = (2*ML+1)*bw + 16, chartH = 62, labelH = 22;
-  const rows = Math.ceil(keys.length/perRow);
-  const W = Math.max(560, perRow*chartW + 12), H = rows*(chartH+labelH) + 10;
-  const svg = d3.select(host).attr('viewBox',`0 0 ${W} ${H}`).attr('height',H);
-  svg.selectAll('*').remove();
-
-  const band = 2/Math.sqrt(CY.weeks);
-  const maxAll = Math.max(...keys.flatMap(k=>CY.lead[k].filter(v=>v!=null).map(Math.abs)));
-  keys.forEach((key,i)=>{
-    const [a,b] = key.split('|');
-    const ox = (i%perRow)*chartW + 8, oy = Math.floor(i/perRow)*(chartH+labelH) + 6;
-    const y = v => oy + chartH/2 - (v/maxAll)*(chartH/2 - 4);
-    svg.append('rect').attr('x',ox).attr('y',y(band)).attr('width',(2*ML+1)*bw).attr('height',y(-band)-y(band))
-      .attr('fill','rgba(255,255,255,0.05)');
-    svg.append('line').attr('x1',ox).attr('x2',ox+(2*ML+1)*bw).attr('y1',y(0)).attr('y2',y(0))
-      .attr('stroke','rgba(255,255,255,0.18)');
-    CY.lead[key].forEach((v,j)=>{
-      if(v==null) return;
-      const k = j-ML;
-      svg.append('rect').attr('x',ox+j*bw+1.2).attr('width',bw-2.4)
-        .attr('y', v>=0?y(v):y(0)).attr('height',Math.max(1,Math.abs(y(v)-y(0)))).attr('rx',1)
-        .attr('fill', k===0 ? 'var(--accent)' : (v>=0?'var(--up)':'var(--down)'))
-        .attr('opacity', k===0?1:0.7)
-        .append('title').text(`${shortLabel(a)} ↔ ${shortLabel(b)} · ${k>0?'+':''}${k}주 시차 r=${v}`);
-    });
-    svg.append('text').attr('x',ox).attr('y',oy+chartH+11).attr('font-size',8.5).attr('fill','var(--text-secondary)')
-      .text(`${shortLabel(a).slice(0,6)}↔${shortLabel(b).slice(0,6)}`);
-    svg.append('text').attr('x',ox).attr('y',oy+chartH+20).attr('font-size',8).attr('fill','#565d69')
-      .attr('font-family',"'JetBrains Mono',monospace").text(`동시 r=${CY.lead[key][ML]}`);
-  });
-  document.getElementById('cyc-lag-sub').innerHTML =
-    `테마 쌍마다 −${ML}주 ~ +${ML}주 시차 상관을 그린 것. 가운데 하늘색 막대(동시)가 모든 쌍에서 가장 큽니다 —
-     회색 띠는 노이즈 한계(±2/√${CY.weeks}주). 즉 <b>테마 로테이션은 몇 주 앞서 예고되지 않고 같은 주에 함께 반영</b>됩니다.`;
-}
-
-let cycleDrawn = false;
-function renderCycle(){
-  renderFindings();
-  renderThemeIndex(); renderHeatmap(); renderTransitions(); renderThemeLag();
-  if(!cycleDrawn){ showTransRow(THEME_IDS[0]); cycleDrawn = true; }
-}
-window.addEventListener('resize', ()=>{ if(document.body.classList.contains('view-cycle')) renderCycle(); });
 
 renderLeaders();
 /* =====================================================================
@@ -4565,6 +4457,452 @@ document.querySelectorAll('.left-stack > .panel[data-panel]').forEach(panel => {
     h.addEventListener('click', () => btn.click());
   });
 });
+
+/* =====================================================================
+   PORTFOLIO — 모의 트레이딩과 실거래를 같은 장부에 기록한다.
+
+   Everything is valued in KRW because the cash account is KRW; USD positions
+   convert at META.fx.KRW, the same rate the market caps use. Positions keep
+   their cost in the currency they trade in, so an average price shown next to
+   a US ticker is a dollar price, not a converted one.
+
+   A paper order fills immediately: at the last close for 시장가, at the typed
+   price for 지정가. That second one is an assumption, not a simulation — a real
+   limit order may never fill — and the ticket says so.
+   ===================================================================== */
+const FOLIO_KEY = 'money-connection.folio';
+const FOLIO_DEFAULTS = {
+  startCash: 10000000,        // 모의 초기자금 1천만원
+  cash: 10000000,
+  feePct: 0.015,              // 수수료 %
+  taxPct: 0.18,               // 국내 매도 거래세 %
+  fx: null,                   // null이면 META.fx.KRW 사용
+  bridge: 'http://localhost:8787',
+  positions: {},              // tk -> { qty, cost }  (cost는 거래통화 기준 총 매입금액)
+  trades: [],
+  realized: 0,                // 실현손익 (KRW)
+};
+let folio = { ...FOLIO_DEFAULTS, positions: {}, trades: [] };
+let folioMode = 'paper';      // 'paper' | 'live'
+let allocMode = 'theme';
+
+function loadFolio(){
+  folio = { ...FOLIO_DEFAULTS, positions: {}, trades: [] };
+  try {
+    const raw = localStorage.getItem(FOLIO_KEY);
+    if(raw) folio = { ...folio, ...JSON.parse(raw) };
+  } catch(e){ /* blocked storage: memory only */ }
+}
+function saveFolio(){
+  try { localStorage.setItem(FOLIO_KEY, JSON.stringify(folio)); } catch(e){}
+}
+const fxRate = () => folio.fx || (META.fx || {}).KRW || 1350;
+const toKrw = (v, cur) => cur === 'KRW' ? v : v * fxRate();
+const fmtKrw = v => '₩' + Math.round(v).toLocaleString('ko-KR');
+const isKr = tk => (nodeIndex.get(tk)?.currency || 'USD') === 'KRW';
+/* Toss trades stocks and ETFs; crypto and spot gold are not on that API */
+const tradable = tk => ['us_stock', 'kr_stock', 'etf'].includes(nodeIndex.get(tk)?.assetClass);
+
+function posOf(tk){ return folio.positions[tk] || { qty: 0, cost: 0 }; }
+function avgCost(tk){ const p = posOf(tk); return p.qty > 0 ? p.cost / p.qty : null; }
+
+function costs(tk, side, gross){
+  const fee = gross * folio.feePct / 100;
+  const tax = (side === 'SELL' && isKr(tk)) ? gross * folio.taxPct / 100 : 0;
+  return { fee, tax, total: fee + tax };
+}
+
+/* One place where a fill changes the book, whichever venue produced it. */
+function applyFill({ tk, side, qty, px, mode }){
+  const cur = nodeIndex.get(tk)?.currency || 'USD';
+  const gross = qty * px;
+  const c = costs(tk, side, gross);
+  const p = posOf(tk);
+  let realized = 0;
+
+  if(side === 'BUY'){
+    const need = toKrw(gross + c.total, cur);
+    // live fills are already funded by the broker; only the paper book is ours to bound
+    if(mode !== 'live' && need > folio.cash + 1e-6){
+      return { ok: false, msg: `현금이 부족합니다. 필요 ${fmtKrw(need)} · 보유 현금 ${fmtKrw(folio.cash)}` };
+    }
+    folio.positions[tk] = { qty: p.qty + qty, cost: p.cost + gross };
+    folio.cash -= need;
+  } else {
+    if(qty > p.qty + 1e-9) return { ok: false, msg: `보유 ${p.qty}주보다 많이 팔 수 없습니다.` };
+    const avg = p.qty > 0 ? p.cost / p.qty : px;
+    realized = toKrw((px - avg) * qty - c.total, cur);
+    const left = p.qty - qty;
+    folio.positions[tk] = left > 1e-9 ? { qty: left, cost: p.cost - avg * qty } : undefined;
+    if(!folio.positions[tk]) delete folio.positions[tk];
+    folio.cash += toKrw(gross - c.total, cur);
+    folio.realized += realized;
+  }
+  folio.trades.unshift({
+    id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    ts: new Date().toISOString(), tk, side, qty, px, cur, mode,
+    fee: c.fee, tax: c.tax, realized: side === 'SELL' ? realized : null,
+  });
+  if(folio.trades.length > 500) folio.trades.length = 500;
+  saveFolio();
+  return { ok: true, realized };
+}
+
+function folioRows(){
+  return Object.entries(folio.positions).map(([tk, p]) => {
+    const n = nodeIndex.get(tk);
+    const cur = n?.currency || 'USD';
+    const last = (latestClose(tk) || {}).px ?? (p.cost / p.qty);
+    const value = toKrw(last * p.qty, cur);
+    const cost = toKrw(p.cost, cur);
+    return { tk, n, cur, qty: p.qty, avg: p.cost / p.qty, last, value, cost,
+             pl: value - cost, plPct: cost ? (value - cost) / cost * 100 : 0 };
+  }).sort((a, b) => b.value - a.value);
+}
+
+function renderFolio(){
+  const rows = folioRows();
+  const invested = rows.reduce((a, r) => a + r.cost, 0);
+  const value = rows.reduce((a, r) => a + r.value, 0);
+  const total = value + folio.cash;
+  const unreal = value - invested;
+  const totalPl = total - folio.startCash;
+
+  const kpi = (l, v, sub, col) => `<div class="folio-kpi"><div class="l">${l}</div>
+    <div class="v"${col ? ` style="color:${col}"` : ''}>${v}</div><div class="s">${sub || ''}</div></div>`;
+  const sgn = v => (v >= 0 ? '+' : '') + fmtKrw(v).replace('₩', '') ;
+  const col = v => v >= 0 ? 'var(--up)' : 'var(--down)';
+  document.getElementById('folio-kpis').innerHTML =
+    kpi('총 자산', fmtKrw(total),
+        `평가 ${fmtKrw(value)} + 현금 ${fmtKrw(folio.cash)}`) +
+    kpi('평가손익', (unreal >= 0 ? '+' : '') + fmtKrw(unreal),
+        invested ? `투자원금 대비 ${(unreal / invested * 100).toFixed(2)}%` : '보유 없음', col(unreal)) +
+    kpi('실현손익', (folio.realized >= 0 ? '+' : '') + fmtKrw(folio.realized),
+        `${folio.trades.filter(t => t.side === 'SELL').length}회 매도`, col(folio.realized)) +
+    kpi('누적 수익률', (totalPl >= 0 ? '+' : '') + (folio.startCash ? (totalPl / folio.startCash * 100).toFixed(2) : '0.00') + '%',
+        `초기자금 ${fmtKrw(folio.startCash)}`, col(totalPl));
+
+  document.getElementById('folio-count').textContent = rows.length ? `${rows.length}종목` : '';
+  const tbl = document.getElementById('folio-table');
+  if(!rows.length){
+    tbl.innerHTML = `<tbody><tr><td class="folio-empty" colspan="8">
+      보유 종목이 없습니다. 종목 네트워크에서 종목을 고르고 상세 패널의 <b>주문</b>에서 매수하세요.</td></tr></tbody>`;
+  } else {
+    tbl.innerHTML = `<thead><tr><th>종목</th><th>수량</th><th>평균단가</th><th>현재가</th>
+        <th>평가금액</th><th>손익</th><th>비중</th><th></th></tr></thead><tbody>` +
+      rows.map(r => `<tr>
+        <td class="tk" style="color:${r.n?.color || 'inherit'}">${isKr(r.tk) ? (r.n?.name || r.tk) : r.tk}</td>
+        <td>${(+r.qty.toFixed(6)).toLocaleString()}</td>
+        <td>${fmtPx(r.avg, r.cur)}</td>
+        <td>${fmtPx(r.last, r.cur)}</td>
+        <td>${fmtKrw(r.value)}</td>
+        <td style="color:${col(r.pl)}">${r.pl >= 0 ? '+' : ''}${fmtKrw(r.pl)}<br>
+          <span style="font-size:10px">${r.plPct >= 0 ? '+' : ''}${r.plPct.toFixed(2)}%</span></td>
+        <td>${value ? (r.value / value * 100).toFixed(1) : '0.0'}%</td>
+        <td><button class="sell-btn" data-sell="${r.tk}">매도</button></td></tr>`).join('') + '</tbody>';
+    tbl.querySelectorAll('[data-sell]').forEach(b => b.addEventListener('click', () => {
+      const n = nodeIndex.get(b.dataset.sell);
+      if(n){ setView('graph'); focusNode(n); setTimeout(() => {
+        document.querySelector('#tk-side button[data-s="SELL"]')?.click();
+        document.getElementById('trade-block')?.scrollIntoView({ block: 'center' });
+      }, 400); }
+    }));
+  }
+
+  renderAlloc(rows, value);
+  renderTrades();
+}
+
+function renderAlloc(rows, value){
+  const host = document.getElementById('folio-alloc');
+  if(!rows.length || !value){ host.innerHTML = '<div class="folio-empty">보유 종목이 생기면 배분이 표시됩니다.</div>'; return; }
+  const defs = allocMode === 'theme' ? GROUPS : allocMode === 'market' ? MARKETS : PROFILES;
+  const key = allocMode === 'theme' ? 'themeId' : allocMode === 'market' ? 'marketId' : 'profileId';
+  const by = new Map();
+  rows.forEach(r => {
+    const g = r.n?.[key];
+    by.set(g, (by.get(g) || 0) + r.value);
+  });
+  host.innerHTML = [...by.entries()].sort((a, b) => b[1] - a[1]).map(([g, v]) => {
+    const d = defs.find(x => x.id === g);
+    const pc = v / value * 100;
+    return `<div class="alloc-row"><span class="nm" style="color:${d?.color || 'var(--g9)'}">${d?.label || '기타'}</span>
+      <span class="bar"><span style="width:${pc}%;background:${d?.color || 'var(--g9)'}"></span></span>
+      <span class="pc">${pc.toFixed(1)}%</span></div>`;
+  }).join('');
+}
+
+function renderTrades(){
+  const t = document.getElementById('folio-trades');
+  if(!folio.trades.length){
+    t.innerHTML = '<tbody><tr><td class="folio-empty">아직 거래가 없습니다.</td></tr></tbody>';
+    return;
+  }
+  t.innerHTML = `<thead><tr><th>시각</th><th>종목</th><th>구분</th><th>수량</th><th>체결가</th>
+      <th>수수료·세금</th><th>실현손익</th></tr></thead><tbody>` +
+    folio.trades.slice(0, 60).map(x => `<tr>
+      <td>${x.ts.slice(2, 16).replace('T', ' ')}</td>
+      <td class="tk">${isKr(x.tk) ? (nodeIndex.get(x.tk)?.name || x.tk) : x.tk}</td>
+      <td style="color:${x.side === 'BUY' ? 'var(--up)' : 'var(--down)'}">${x.side === 'BUY' ? '매수' : '매도'}${
+        x.mode === 'live' ? ' <span style="color:var(--fav);font-size:9px">실</span>' : ''}</td>
+      <td>${(+x.qty.toFixed(6)).toLocaleString()}</td>
+      <td>${fmtPx(x.px, x.cur)}</td>
+      <td>${fmtPx(x.fee + x.tax, x.cur)}</td>
+      <td${x.realized != null ? ` style="color:${x.realized >= 0 ? 'var(--up)' : 'var(--down)'}"` : ''}>${
+        x.realized == null ? '—' : (x.realized >= 0 ? '+' : '') + fmtKrw(x.realized)}</td></tr>`).join('') + '</tbody>';
+}
+
+/* =====================================================================
+   ORDER TICKET — the stock detail's buy/sell panel.
+
+   모의 fills the book straight away. 실거래 goes to the Toss Securities Open
+   API, but never from this page directly: the API is OAuth2 client-credentials
+   and Toss's own docs say the client secret is server-side only, so orders are
+   relayed through a bridge the user runs on their own machine
+   (build/toss_bridge.py). Published pages are world-readable — a secret in one
+   is a published secret.
+   ===================================================================== */
+let tkSide = 'BUY', tkType = 'MARKET';
+let bridgeOk = false, bridgeAccount = null;
+
+const bridgeUrl = () => (folio.bridge || '').replace(/\/+$/, '');
+async function bridge(path, opts){
+  const base = bridgeUrl();
+  if(!base) throw new Error('브리지 주소가 비어 있습니다.');
+  const r = await fetch(base + path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', ...(opts?.headers || {}) },
+  });
+  const body = await r.json().catch(() => ({}));
+  if(!r.ok) throw new Error(body.error || `${r.status} ${r.statusText}`);
+  return body;
+}
+function setBrokerChip(){
+  const chip = document.getElementById('broker-chip');
+  chip.classList.toggle('on', bridgeOk);
+  chip.textContent = bridgeOk
+    ? `토스증권 연결됨${bridgeAccount ? ' · ' + bridgeAccount : ''}`
+    : '토스증권 미연결';
+}
+async function checkBridge(quiet){
+  const st = document.getElementById('bridge-status');
+  try {
+    const r = await bridge('/health');
+    bridgeOk = !!r.ok;
+    bridgeAccount = r.accountNo || null;
+    if(st) st.textContent = bridgeOk
+      ? `연결됨 · 계좌 ${r.accountNo || '?'} (seq ${r.accountSeq ?? '?'})`
+      : '브리지는 응답했지만 계좌 인증에 실패했습니다.';
+  } catch(e){
+    bridgeOk = false; bridgeAccount = null;
+    if(st && !quiet) st.textContent = `연결 실패: ${e.message} — 로컬에서 build/toss_bridge.py 를 실행했는지 확인하세요.`;
+  }
+  setBrokerChip();
+  updateTicket();
+  return bridgeOk;
+}
+
+function tkPrice(){
+  const tk = selectedTk;
+  if(tkType === 'LIMIT'){
+    const v = parseFloat(document.getElementById('tk-price').value);
+    if(isFinite(v) && v > 0) return v;
+  }
+  return (latestClose(tk) || {}).px ?? null;
+}
+function updateTicket(){
+  const block = document.getElementById('trade-block');
+  const tk = selectedTk;
+  if(!tk || compareSet.length > 1){ block.style.display = 'none'; return; }
+  block.style.display = '';
+  const n = nodeIndex.get(tk);
+  const cur = n?.currency || 'USD';
+  const px = tkPrice();
+  const qty = Math.max(0, parseFloat(document.getElementById('tk-qty').value) || 0);
+  const pos = posOf(tk);
+  const live = folioMode === 'live';
+  const canTrade = tradable(tk);
+
+  document.getElementById('tk-price-wrap').hidden = tkType !== 'LIMIT';
+  document.getElementById('trade-mode-lab').textContent = live ? '실거래' : '모의';
+
+  const btn = document.getElementById('tk-submit');
+  btn.textContent = (live ? '실제 ' : '모의 ') + (tkSide === 'BUY' ? '매수' : '매도');
+  btn.classList.toggle('buy', tkSide === 'BUY');
+  btn.classList.toggle('sell', tkSide === 'SELL');
+  btn.disabled = !px || !qty || (live && (!bridgeOk || !canTrade)) || (!canTrade && live);
+
+  const est = document.getElementById('tk-est');
+  if(!px || !qty){ est.textContent = '수량과 가격을 입력하세요.'; }
+  else {
+    const gross = px * qty, c = costs(tk, tkSide, gross);
+    const net = tkSide === 'BUY' ? gross + c.total : gross - c.total;
+    const short = folioMode === 'paper' && tkSide === 'BUY' && toKrw(net, cur) > folio.cash;
+    const over = tkSide === 'SELL' && qty > pos.qty;
+    if(short || over) btn.disabled = true;
+    est.innerHTML = (short ? `<span style="color:var(--down)">모의 현금 부족 · 보유 ${fmtKrw(folio.cash)}</span><br>` : '') +
+      (over ? `<span style="color:var(--down)">보유 수량(${+pos.qty.toFixed(6)}주)을 초과합니다</span><br>` : '') +
+      `${tkSide === 'BUY' ? '필요 금액' : '수령 금액'} <b>${fmtPx(net, cur)}</b>` +
+      (cur !== 'KRW' ? ` <span style="color:var(--text-muted)">≈ ${fmtKrw(toKrw(net, cur))}</span>` : '') +
+      `<br><span style="color:var(--text-muted)">수수료 ${fmtPx(c.fee, cur)}${
+        c.tax ? ` · 거래세 ${fmtPx(c.tax, cur)}` : ''} · 보유 ${(+pos.qty.toFixed(6)) || 0}주${
+        avgCost(tk) != null ? ` · 평균 ${fmtPx(avgCost(tk), cur)}` : ''}</span>`;
+  }
+
+  const note = document.getElementById('tk-note');
+  if(!canTrade){
+    note.innerHTML = '<span style="color:var(--fav)">이 자산은 토스증권 주식 API로 매매할 수 없어 모의 거래만 가능합니다.</span>';
+  } else if(live && !bridgeOk){
+    note.innerHTML = '<span style="color:var(--down)">실거래 브리지가 연결되지 않았습니다. 포트폴리오 → 설정에서 연결하세요.</span>';
+  } else if(live){
+    note.innerHTML = '<span style="color:var(--down)">실제 주문이 토스증권 계좌로 전송됩니다.</span>';
+  } else {
+    note.textContent = tkType === 'LIMIT'
+      ? '모의 지정가는 입력한 가격에 즉시 체결된 것으로 가정합니다. 실제로는 체결되지 않을 수 있습니다.'
+      : '모의 시장가는 최근 종가로 체결된 것으로 가정합니다.';
+  }
+}
+
+async function submitTicket(){
+  const tk = selectedTk;
+  const n = nodeIndex.get(tk);
+  const cur = n?.currency || 'USD';
+  const qty = parseFloat(document.getElementById('tk-qty').value);
+  const px = tkPrice();
+  if(!tk || !(qty > 0) || !(px > 0)) return;
+  const live = folioMode === 'live';
+  const gross = px * qty, c = costs(tk, tkSide, gross);
+  const net = tkSide === 'BUY' ? gross + c.total : gross - c.total;
+
+  const label = `${isKr(tk) ? n.name : tk} ${qty}주 ${tkSide === 'BUY' ? '매수' : '매도'}` +
+    ` · ${tkType === 'LIMIT' ? '지정가 ' + fmtPx(px, cur) : '시장가'}` +
+    ` · ${tkSide === 'BUY' ? '필요' : '수령'} ${fmtPx(net, cur)}`;
+  if(!confirm((live ? '[실제 주문] 토스증권 계좌로 전송됩니다.\n\n' : '[모의 거래]\n\n') + label + '\n\n진행할까요?')) return;
+
+  if(live){
+    const btn = document.getElementById('tk-submit');
+    btn.disabled = true; btn.textContent = '전송 중…';
+    try {
+      const r = await bridge('/order', { method: 'POST', body: JSON.stringify({
+        symbol: tk, side: tkSide, orderType: tkType,
+        quantity: String(qty), ...(tkType === 'LIMIT' ? { price: String(px) } : {}),
+      }) });
+      // The book records the fill we asked for; the broker is the authority on
+      // what actually filled, so the order id is kept for reconciliation.
+      applyFill({ tk, side: tkSide, qty, px, mode: 'live' });
+      folio.trades[0].orderId = r.orderId || null;
+      saveFolio();
+      alert(`주문이 접수되었습니다.\n주문번호 ${r.orderId || '(없음)'}\n\n실제 체결 수량·가격은 토스증권 앱에서 확인하세요. 설정의 "보유 종목 가져오기"로 장부를 맞출 수 있습니다.`);
+    } catch(e){
+      alert('주문 실패: ' + e.message);
+    }
+  } else {
+    const r = applyFill({ tk, side: tkSide, qty, px, mode: 'paper' });
+    if(!r.ok){ alert(r.msg); return; }
+  }
+  updateTicket();
+  renderFavorites();
+  if(document.body.classList.contains('view-folio')) renderFolio();
+}
+
+/* ---- wiring ---- */
+document.querySelectorAll('#tk-side button').forEach(b => b.addEventListener('click', () => {
+  tkSide = b.dataset.s;
+  document.querySelectorAll('#tk-side button').forEach(x => x.classList.toggle('on', x === b));
+  updateTicket();
+}));
+document.querySelectorAll('#tk-type button').forEach(b => b.addEventListener('click', () => {
+  tkType = b.dataset.t;
+  document.querySelectorAll('#tk-type button').forEach(x => x.classList.toggle('on', x === b));
+  if(tkType === 'LIMIT' && !document.getElementById('tk-price').value){
+    const p = (latestClose(selectedTk) || {}).px;
+    if(p) document.getElementById('tk-price').value = p;
+  }
+  updateTicket();
+}));
+['tk-qty', 'tk-price'].forEach(id => document.getElementById(id).addEventListener('input', updateTicket));
+document.getElementById('tk-submit').addEventListener('click', submitTicket);
+
+document.querySelectorAll('#folio-mode button').forEach(b => b.addEventListener('click', () => {
+  folioMode = b.dataset.m;
+  document.querySelectorAll('#folio-mode button').forEach(x => x.classList.toggle('on', x === b));
+  if(folioMode === 'live' && !bridgeOk) checkBridge(true);
+  updateTicket();
+}));
+document.querySelectorAll('#alloc-mode button').forEach(b => b.addEventListener('click', () => {
+  allocMode = b.dataset.g;
+  document.querySelectorAll('#alloc-mode button').forEach(x => x.classList.toggle('on', x === b));
+  renderFolio();
+}));
+document.getElementById('folio-settings-btn').addEventListener('click', () => {
+  const el = document.getElementById('folio-settings');
+  el.hidden = !el.hidden;
+  if(!el.hidden){
+    document.getElementById('set-cash').value = folio.startCash;
+    document.getElementById('set-fee').value = folio.feePct;
+    document.getElementById('set-tax').value = folio.taxPct;
+    document.getElementById('set-fx').value = fxRate();
+    document.getElementById('set-bridge').value = folio.bridge || '';
+    checkBridge(true);
+  }
+});
+document.getElementById('set-save').addEventListener('click', () => {
+  const num = (id, dflt) => { const v = parseFloat(document.getElementById(id).value); return isFinite(v) ? v : dflt; };
+  folio.feePct = num('set-fee', folio.feePct);
+  folio.taxPct = num('set-tax', folio.taxPct);
+  folio.fx = num('set-fx', fxRate());
+  folio.bridge = document.getElementById('set-bridge').value.trim();
+  const cash = num('set-cash', folio.startCash);
+  if(cash !== folio.startCash){
+    // moving the starting capital without resetting would make the return meaningless
+    folio.cash += cash - folio.startCash;
+    folio.startCash = cash;
+  }
+  saveFolio(); renderFolio(); updateTicket();
+  document.getElementById('bridge-status').textContent = '저장했습니다.';
+});
+document.getElementById('set-reset').addEventListener('click', () => {
+  if(!confirm('모의 계좌를 초기화합니다. 보유 종목과 거래 내역이 모두 지워집니다. 계속할까요?')) return;
+  const keep = { feePct: folio.feePct, taxPct: folio.taxPct, fx: folio.fx, bridge: folio.bridge, startCash: folio.startCash };
+  folio = { ...FOLIO_DEFAULTS, ...keep, cash: keep.startCash, positions: {}, trades: [], realized: 0 };
+  saveFolio(); renderFolio(); updateTicket();
+});
+document.getElementById('bridge-test').addEventListener('click', () => checkBridge(false));
+document.getElementById('bridge-sync').addEventListener('click', async () => {
+  const st = document.getElementById('bridge-status');
+  try {
+    const r = await bridge('/holdings');
+    const items = r.items || [];
+    if(!items.length){ st.textContent = '토스증권 계좌에 보유 종목이 없습니다.'; return; }
+    const unknown = [];
+    let applied = 0;
+    items.forEach(it => {
+      if(!nodeIndex.has(it.symbol)){ unknown.push(it.symbol); return; }
+      const qty = parseFloat(it.quantity), avg = parseFloat(it.averagePurchasePrice);
+      if(!(qty > 0) || !isFinite(avg)) return;
+      folio.positions[it.symbol] = { qty, cost: qty * avg };
+      applied++;
+    });
+    saveFolio(); renderFolio(); updateTicket();
+    st.textContent = `보유 ${applied}종목을 장부에 반영했습니다.` +
+      (unknown.length ? ` 이 대시보드에 없는 종목은 건너뛰었습니다: ${unknown.join(', ')}` : '') +
+      ' 현금 잔고는 모의 값 그대로입니다.';
+  } catch(e){ st.textContent = '가져오기 실패: ' + e.message; }
+});
+document.getElementById('folio-export').addEventListener('click', () => {
+  const head = 'time,ticker,side,quantity,price,currency,fee,tax,realized_krw,mode,orderId';
+  const body = folio.trades.map(t => [t.ts, t.tk, t.side, t.qty, t.px, t.cur,
+    t.fee.toFixed(4), t.tax.toFixed(4), t.realized ?? '', t.mode, t.orderId || ''].join(',')).join('\n');
+  const blob = new Blob(['﻿' + head + '\n' + body], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `money-connection-trades-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+});
+
+loadFolio();
+setBrokerChip();
 
 initFavSync();   // last: every section's state exists by now
 

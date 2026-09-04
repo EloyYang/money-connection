@@ -991,7 +991,6 @@ def analyse(series, members, themes, index_date, nasdaq_tickers, factors=None, b
     # 지수/주도주 stays Nasdaq-100-only — see module docstring
     nd_scope = [t for t in tickers if t in nasdaq_tickers]
     leaders = latest_session_leaders(dates, ohlc, nd_scope, members)
-    cycle = analyse_cycle(dates, rets5y, tickers, themes)
 
     betas = compute_factor_betas(tickers, dates, rets5y, factors or {})
     macro_month, macro_series = compute_macro_monthly(tickers, dates, closes, bls or {})
@@ -1004,7 +1003,7 @@ def analyse(series, members, themes, index_date, nasdaq_tickers, factors=None, b
         "window": "최근 1년 일간 수익률 회귀",
     }
     log(f"macro: {len(betas)} tickers with factor betas, {len(macro_month)} with monthly macro")
-    return corr, px, oh, cycle, leaders, macro
+    return corr, px, oh, leaders, macro
 
 
 def latest_session_leaders(dates, ohlc, tickers, members, top=6):
@@ -1050,145 +1049,7 @@ def latest_session_leaders(dates, ohlc, tickers, members, top=6):
     }
 
 
-def analyse_cycle(dates, rets, tickers, themes):
-    cfg = load_theme_config()
-    groups = {}
-    for t in tickers:
-        groups.setdefault(str(themes.get(t, 9)), []).append(t)
-    groups = {g: m for g, m in groups.items() if m}
-
-    theme_ret, theme_idx = {}, {}
-    for g, members in groups.items():
-        tr, lvl, idx = [], 100.0, []
-        for i in range(len(dates)):
-            vals = [rets[t][i] for t in members if rets[t][i] is not None]
-            v = sum(vals) / len(vals) if vals else None
-            tr.append(v)
-            if v is not None: lvl *= (1 + v)
-            idx.append(round(lvl, 2))
-        theme_ret[g], theme_idx[g] = tr, idx
-
-    mkt, lvl, mkt_idx = [], 100.0, []
-    for i in range(len(dates)):
-        vals = [rets[t][i] for t in tickers if rets[t][i] is not None]
-        v = sum(vals) / len(vals) if vals else None
-        mkt.append(v)
-        if v is not None: lvl *= (1 + v)
-        mkt_idx.append(round(lvl, 2))
-
-    months = sorted({(d.year, d.month) for d in dates})
-    mkeys = [f"{y}-{m:02d}" for y, m in months]
-    mi = {k: i for i, k in enumerate(mkeys)}
-
-    def monthly(series_ret):
-        acc, seen = [1.0] * len(mkeys), [0] * len(mkeys)
-        for i, d in enumerate(dates):
-            v = series_ret[i]
-            if v is None: continue
-            k = mi[f"{d.year}-{d.month:02d}"]
-            acc[k] *= (1 + v); seen[k] += 1
-        return [round((acc[i] - 1) * 100, 2) if seen[i] >= 10 else None for i in range(len(mkeys))]
-
-    theme_month = {g: monthly(theme_ret[g]) for g in groups}
-    mkt_month = monthly(mkt)
-
-    leaders = []
-    for i in range(len(mkeys)):
-        vals = [(theme_month[g][i], g) for g in groups if theme_month[g][i] is not None]
-        leaders.append(max(vals)[1] if vals else None)
-
-    trans = {a: {b: 0 for b in groups} for a in groups}
-    for i in range(len(leaders) - 1):
-        a, b = leaders[i], leaders[i + 1]
-        if a and b: trans[a][b] += 1
-
-    weeks = {}
-    for i, d in enumerate(dates):
-        weeks.setdefault(d.isocalendar()[:2], []).append(i)
-    wkeys = sorted(weeks)
-
-    def weekly(series_ret):
-        out = []
-        for wk in wkeys:
-            acc, seen = 1.0, 0
-            for i in weeks[wk]:
-                v = series_ret[i]
-                if v is not None: acc *= (1 + v); seen += 1
-            out.append(acc - 1 if seen >= 3 else None)
-        return out
-
-    tw = {g: weekly(theme_ret[g]) for g in groups}
-    MAXL = 4
-
-    def lc(a, b, k):
-        xs, ys = [], []
-        for t in range(len(a)):
-            s = t - k
-            if s < 0 or s >= len(b) or a[t] is None or b[s] is None: continue
-            xs.append(a[t]); ys.append(b[s])
-        if len(xs) < 30: return None
-        r = pearson(xs, ys)
-        return None if r is None else round(r, 3)
-
-    gs = sorted(groups, key=int)
-    lead = {f"{a}|{b}": [lc(tw[a], tw[b], k) for k in range(-MAXL, MAXL + 1)]
-            for ai, a in enumerate(gs) for b in gs[ai + 1:]}
-
-    lead_ex, worst_ex = [], []
-    for i in range(len(mkeys) - 1):
-        if not leaders[i] or mkt_month[i + 1] is None: continue
-        nxt = {g: theme_month[g][i + 1] for g in groups if theme_month[g][i + 1] is not None}
-        cur = {g: theme_month[g][i] for g in groups if theme_month[g][i] is not None}
-        if not nxt or not cur: continue
-        if leaders[i] in nxt: lead_ex.append(nxt[leaders[i]] - mkt_month[i + 1])
-        worst = min(cur, key=cur.get)
-        if worst in nxt: worst_ex.append(nxt[worst] - mkt_month[i + 1])
-
-    def tstat(xs):
-        if len(xs) < 3: return 0.0, 0.0, len(xs)
-        m = sum(xs) / len(xs)
-        sd = (sum((x - m) ** 2 for x in xs) / (len(xs) - 1)) ** 0.5
-        return round(m, 2), (round(m / (sd / math.sqrt(len(xs))), 2) if sd else 0.0), len(xs)
-
-    same = sum(trans[a][a] for a in groups)
-    tot = sum(trans[a][b] for a in groups for b in groups)
-    p0 = 1 / max(1, len(groups))
-    z = ((same - tot * p0) / ((tot * p0 * (1 - p0)) ** 0.5)) if tot else 0
-    lm, lt, ln = tstat(lead_ex)
-    wm, wt, wn = tstat(worst_ex)
-
-    return {
-        "stats": {
-            "persist": {"same": same, "total": tot, "pct": round(same / tot * 100) if tot else 0,
-                        "random": round(p0 * 100), "z": round(z, 2)},
-            "leader_next": {"excess": lm, "t": lt, "n": ln,
-                            "winrate": round(sum(1 for x in lead_ex if x > 0) / ln * 100) if ln else 0},
-            "worst_next": {"excess": wm, "t": wt, "n": wn},
-            "lag0_dominant": all(
-                (p[MAXL] is not None) and all(abs(p[k + MAXL]) <= abs(p[MAXL])
-                                              for k in range(-MAXL, MAXL + 1) if p[k + MAXL] is not None)
-                for p in lead.values()) if lead else True,
-        },
-        "dates": [d.isoformat() for d in dates],
-        "themes": {g: {"label": cfg["themes"][g]["label"], "index": theme_idx[g], "members": groups[g]}
-                   for g in gs},
-        "market_index": mkt_idx,
-        "months": mkeys,
-        "theme_month": theme_month,
-        "market_month": mkt_month,
-        "leaders": leaders,
-        "transitions": trans,
-        "weeks": len(wkeys),
-        "max_lag": MAXL,
-        "lead": lead,
-        "range": [dates[0].isoformat(), dates[-1].isoformat()],
-    }
-
-
-# --------------------------------------------------------------------------
-# 5. render
-# --------------------------------------------------------------------------
-def render(corr, px, oh, cycle, leaders, fund, macro, members, themes, index_date, problems, out_dir, usdkrw=None):
+def render(corr, px, oh, leaders, fund, macro, members, themes, index_date, problems, out_dir, usdkrw=None):
     tpl = open(os.path.join(ROOT, "build", "template.html")).read()
     engine = open(os.path.join(ROOT, "build", "candle_engine.js")).read()
     cfg = load_theme_config()
@@ -1222,7 +1083,6 @@ def render(corr, px, oh, cycle, leaders, fund, macro, members, themes, index_dat
     body = (tpl.replace("/*__CANDLE_ENGINE__*/", engine, 1)
                .replace("/*__CORR__*/", blob(corr))
                .replace("/*__PX__*/", blob(px))
-               .replace("/*__CY__*/", blob(cycle))
                .replace("/*__OH__*/", blob(oh))
                .replace("/*__NODES__*/", blob(nodes))
                .replace("/*__FUND__*/", blob(fund))
@@ -1316,10 +1176,9 @@ def main():
         log(f"ABORT: only {len(series)}/{len(members)} tickers fetched — refusing to publish a thin build")
         sys.exit(1)
 
-    corr, px, oh, cycle, leaders, macro = analyse(series, members, themes, index_date,
+    corr, px, oh, leaders, macro = analyse(series, members, themes, index_date,
                                                   nasdaq_tickers, factors, bls)
-    log(f"analysed: {len(corr['tickers'])} tickers, {len(px['profiles'])} lag profiles, "
-        f"{len(cycle['themes'])} themes, {len(cycle['months'])} months")
+    log(f"analysed: {len(corr['tickers'])} tickers, {len(px['profiles'])} lag profiles")
     log(f"latest session {leaders.get('date')}: 나스닥100 지수 {leaders.get('index_chg')}% "
         f"({leaders.get('advancers')} up / {leaders.get('decliners')} down)")
 
@@ -1328,7 +1187,7 @@ def main():
     fund_scope = [t for t in corr["tickers"] if t in nasdaq_tickers]
     fund = fetch_fundamentals(fund_scope, os.path.join(a.cache, "fundamentals.json"),
                               a.fundamentals_refresh, a.max_workers)
-    render(corr, px, oh, cycle, leaders, fund, macro, members, themes, index_date, problems, a.out, usdkrw)
+    render(corr, px, oh, leaders, fund, macro, members, themes, index_date, problems, a.out, usdkrw)
 
 
 if __name__ == "__main__":
