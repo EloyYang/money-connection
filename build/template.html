@@ -105,7 +105,7 @@
   .ctl-label{ font-size:9.5px; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted);
               font-weight:600; margin:2px 0 4px; }
   .seg-wrap{ display:flex; flex-wrap:wrap; margin-bottom:8px; }
-  .seg-wrap button{ flex:1 1 auto; }
+  .seg-wrap button{ flex:1 1 auto; white-space:nowrap; }   /* CJK는 단어 중간에서 줄바꿈된다 */
   .ctl-note{ font-size:10px; color:var(--text-muted); line-height:1.5; margin:-2px 0 8px; }
   .legend-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
   .legend-head h3{ margin:0 !important; flex:1 1 auto; }
@@ -296,7 +296,8 @@
   .lead-row{ display:flex; align-items:center; gap:7px; padding:3px 3px; border-radius:6px; cursor:pointer; font-size:11.5px; }
   .lead-row:hover{ background:rgba(255,255,255,0.05); }
   .lead-row .rk{ color:var(--text-muted); font-family:'JetBrains Mono',monospace; font-size:10px; width:11px; }
-  .lead-row .tk4{ font-family:'JetBrains Mono',monospace; font-weight:600; min-width:46px; }
+  .lead-row .tk4{ font-family:'JetBrains Mono',monospace; font-weight:600; min-width:46px;
+    max-width:72px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .lead-row .barwrap{ flex:1 1 auto; height:4px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden; }
   .lead-row .barwrap span{ display:block; height:100%; border-radius:2px; }
   .lead-row .pct{ font-family:'JetBrains Mono',monospace; font-size:11px; min-width:50px; text-align:right; }
@@ -539,10 +540,18 @@
       <h3>주도주</h3><span class="cnt mono" id="lead-date">—</span>
       <button class="fav-only" id="lead-only">주도주만</button>
     </div>
-    <div class="seg-mini" id="lead-mode">
-      <button data-mode="chg" class="on">등락률</button>
-      <button data-mode="contrib">지수 기여도</button>
-    </div>
+    <div class="ctl-label" id="lead-period-label">기간</div>
+    <span class="seg-mini seg-wrap" id="lead-period">
+      <button data-d="1" class="on">1일</button><button data-d="5">1주</button><button data-d="21">1개월</button><button data-d="63">3개월</button><button data-d="252">1년</button>
+    </span>
+    <div class="ctl-label">시세 기준</div>
+    <span class="seg-mini seg-wrap" id="lead-mode">
+      <button data-mode="chg" class="on">등락률</button><button data-mode="contrib">지수 기여도</button><button data-mode="turnover">거래대금</button><button data-mode="volspike">거래량 급증</button>
+    </span>
+    <div class="ctl-label">펀더멘털 기준</div>
+    <span class="seg-mini seg-wrap" id="lead-fund">
+      <button data-mode="rev_yoy">매출성장</button><button data-mode="ni_yoy">순이익성장</button><button data-mode="op_margin">영업이익률</button><button data-mode="per">PER</button><button data-mode="de">부채/자본</button>
+    </span>
     <div id="lead-list"></div>
     <div class="lead-breadth" id="lead-breadth"></div>
   </div>
@@ -2831,66 +2840,257 @@ document.querySelectorAll('#season-avg button').forEach(b => {
    "등락률" is the plain move; "지수 기여도" weights it by market-cap share,
    which is what actually pushed the index.
    ===================================================================== */
-const LEAD = META.leaders || {};
 let leadMode = 'chg', leadOnly = false;
 
-function leadSets(){
-  const up = leadMode === 'chg' ? (LEAD.up || []) : (LEAD.by_contrib_up || []);
-  const dn = leadMode === 'chg' ? (LEAD.down || []) : (LEAD.by_contrib_down || []);
-  return { up, dn };
+/* =====================================================================
+   LEADERS — who moved, over a chosen window, by a chosen yardstick.
+
+   Everything here is recomputed in the browser from the 5-year OHLCV rather
+   than read off the pre-baked previous-session table, because the period is
+   now user-chosen. Sessions are counted per ticker: OH.dates is the merged
+   axis of three markets (KOSPI closes before the US session, crypto trades
+   weekends), so "21 rows back" is not "21 sessions back" for a given asset.
+   ===================================================================== */
+const NASDAQ_SCOPE = () => nodes.filter(n => n.assetClass === 'us_stock').map(n => n.id);
+const _sessions = new Map();
+function sessionsOf(tk){
+  let a = _sessions.get(tk);
+  if(!a){
+    a = []; const rows = OH.data[tk] || [];
+    for(let i = 0; i < rows.length; i++) if(rows[i]) a.push(i);
+    _sessions.set(tk, a);
+  }
+  return a;
 }
+function fxToUsd(tk){
+  const cur = nodeIndex.get(tk)?.currency || 'USD';
+  if(cur === 'USD') return 1;
+  const rate = (META.fx || {})[cur];       // META.fx는 달러당 현지통화
+  return rate ? 1 / rate : null;
+}
+function abbrUsd(v){
+  const a = Math.abs(v);
+  if(a >= 1e9) return (v/1e9).toFixed(1) + 'B';
+  if(a >= 1e6) return (v/1e6).toFixed(0) + 'M';
+  if(a >= 1e3) return (v/1e3).toFixed(0) + 'K';
+  return v.toFixed(0);
+}
+
+const VOL_UNIT = 1000;   // 파이프라인이 거래량을 천 주 단위로 저장한다
+
+/* A ticker without the full window is left out rather than measured over a
+   shorter span — a 3-month-old listing has no "1년 등락률". */
+function periodChange(tk, days){
+  const ss = sessionsOf(tk), rows = OH.data[tk];
+  if(ss.length <= days) return null;
+  const cur = rows[ss[ss.length - 1]];
+  const prev = rows[ss[ss.length - 1 - days]];
+  if(!cur || !prev || !prev[3]) return null;
+  return (cur[3] - prev[3]) / prev[3] * 100;
+}
+function avgTurnover(tk, days){
+  const ss = sessionsOf(tk), rows = OH.data[tk];
+  const fx = fxToUsd(tk);
+  if(fx == null) return null;
+  const take = ss.slice(Math.max(0, ss.length - Math.max(1, days)));
+  let sum = 0, n = 0;
+  for(const i of take){ const r = rows[i]; if(r && r[4]){ sum += r[3] * r[4] * VOL_UNIT; n++; } }
+  return n ? sum / n * fx : null;
+}
+function volSpike(tk, days){
+  const ss = sessionsOf(tk), rows = OH.data[tk];
+  const win = Math.max(1, days);
+  if(ss.length < 60 + win) return null;
+  const avg = idxs => {
+    let sum = 0, n = 0;
+    for(const i of idxs){ const r = rows[i]; if(r && r[4]){ sum += r[4]; n++; } }
+    return n ? sum / n : null;
+  };
+  const recent = avg(ss.slice(ss.length - win));
+  const base = avg(ss.slice(Math.max(0, ss.length - win - 252), ss.length - win));
+  return (recent && base) ? recent / base : null;
+}
+const fundOf = tk => FUND[tk] || null;
+const perOf = tk => {
+  const f = fundOf(tk), px = (latestClose(tk) || {}).px;
+  return (f && f.eps_ttm > 0 && px) ? px / f.eps_ttm : null;
+};
+
+const LEAD_METRICS = {
+  chg: { label: '등락률', period: true, signed: true,
+    fmt: v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%',
+    up: '▲ 상승 주도주', dn: '▼ 하락 주도주',
+    get: (tk, d) => periodChange(tk, d),
+    note: '해당 기간의 첫 종가 대비 마지막 종가입니다.' },
+  contrib: { label: '지수 기여도', period: true, signed: true, scope: 'nasdaq',
+    fmt: v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%p',
+    up: '▲ 지수를 끌어올린 종목', dn: '▼ 지수를 끌어내린 종목',
+    get: (tk, d, ctx) => { const c = periodChange(tk, d); return c == null ? null : c * ctx.weight(tk); },
+    note: '기여도 = 등락률 × 시총 비중. 지수가 성립하는 나스닥 100만 대상입니다.' },
+  turnover: { label: '거래대금', period: true, signed: false,
+    fmt: v => '$' + abbrUsd(v),
+    up: '▲ 거래대금 상위', dn: '▼ 거래대금 하위',
+    get: (tk, d) => avgTurnover(tk, d),
+    note: '기간 중 하루 평균 거래대금(종가×거래량)을 달러로 환산했습니다.' },
+  volspike: { label: '거래량 급증', period: true, signed: false,
+    fmt: v => v.toFixed(2) + '배',
+    up: '▲ 평소보다 몰린 종목', dn: '▼ 평소보다 한산한 종목',
+    get: (tk, d) => volSpike(tk, d),
+    note: '기간 평균 거래량 ÷ 직전 1년 평균 거래량. 1배보다 크면 평소보다 거래가 몰린 것입니다.' },
+  rev_yoy: { label: '매출성장', period: false, signed: true,
+    fmt: v => (v >= 0 ? '+' : '') + v.toFixed(0) + '%',
+    up: '▲ 매출 성장 상위', dn: '▼ 매출 역성장',
+    get: tk => { const f = fundOf(tk); return f ? yoy(f.revenue) : null; } },
+  ni_yoy: { label: '순이익성장', period: false, signed: true,
+    fmt: v => (v >= 0 ? '+' : '') + v.toFixed(0) + '%',
+    up: '▲ 순이익 성장 상위', dn: '▼ 순이익 감소',
+    get: tk => { const f = fundOf(tk); return f ? yoy(f.net_income) : null; } },
+  op_margin: { label: '영업이익률', period: false, signed: true,
+    fmt: v => v.toFixed(1) + '%',
+    up: '▲ 영업이익률 상위', dn: '▼ 영업이익률 하위',
+    get: tk => { const f = fundOf(tk);
+      return (f && f.op_income && f.revenue && f.revenue[0]) ? f.op_income[0] / f.revenue[0] * 100 : null; } },
+  per: { label: 'PER', period: false, signed: false,
+    fmt: v => v.toFixed(1),
+    up: '▲ PER 높음 (비싸게 거래)', dn: '▼ PER 낮음 (싸게 거래)',
+    get: tk => perOf(tk),
+    note: 'TTM 주당순이익 기준. 적자 기업은 PER이 성립하지 않아 제외됩니다.' },
+  de: { label: '부채/자본', period: false, signed: false,
+    fmt: v => v.toFixed(2),
+    up: '▲ 부채 부담 큼', dn: '▼ 부채 부담 작음',
+    get: tk => { const f = fundOf(tk);
+      return (f && f.liabilities && f.equity && f.equity[0]) ? f.liabilities[0] / f.equity[0] : null; } },
+};
+const LEAD_TOP = 6;
+let leadDays = 1;
+let _leadCache = null;
+
+function leadData(){
+  const key = leadMode + '|' + leadDays;
+  if(_leadCache && _leadCache.key === key) return _leadCache;
+  const m = LEAD_METRICS[leadMode] || LEAD_METRICS.chg;
+  const universe = m.scope === 'nasdaq' ? NASDAQ_SCOPE() : nodes.map(n => n.id);
+  const capTotal = universe.reduce((a, t) => a + (capOf.get(t) || 0), 0) || 1;
+  const ctx = { weight: t => (capOf.get(t) || 0) / capTotal };
+  const days = m.period ? leadDays : 0;
+
+  const rows = [];
+  for(const t of universe){
+    const v = m.get(t, days, ctx);
+    if(v == null || !isFinite(v)) continue;
+    rows.push({ t, v });
+  }
+  rows.sort((a, b) => b.v - a.v);
+
+  // breadth belongs to a directional price move, not to a turnover ranking
+  let breadth = null;
+  if(m.period){
+    const scope = NASDAQ_SCOPE();
+    const capN = scope.reduce((a, t) => a + (capOf.get(t) || 0), 0) || 1;
+    let idx = 0, adv = 0, dec = 0, counted = 0;
+    for(const t of scope){
+      const c = periodChange(t, days);
+      if(c == null) continue;
+      idx += c * ((capOf.get(t) || 0) / capN);
+      if(c > 0) adv++; else if(c < 0) dec++;
+      counted++;
+    }
+    breadth = { idx, adv, dec, counted };
+  }
+  const anchor = NASDAQ_SCOPE().find(t => sessionsOf(t).length > 1);
+  const ss = anchor ? sessionsOf(anchor) : [];
+  const range = ss.length
+    ? { to: OH.dates[ss[ss.length - 1]],
+        from: OH.dates[ss[Math.max(0, ss.length - 1 - Math.max(1, days))]] }
+    : null;
+
+  _leadCache = { key, metric: m, up: rows.slice(0, LEAD_TOP),
+                 dn: rows.slice(-LEAD_TOP).reverse(), breadth, range, count: rows.length };
+  return _leadCache;
+}
+
+function leadSets(){ const d = leadData(); return { up: d.up, dn: d.dn }; }
 function leadTickers(){
   const { up, dn } = leadSets();
   return new Set([...up, ...dn].map(r => r.t));
 }
 
-function leadRowHTML(r, i, kind){
+function leadRowHTML(r, i, kind, d){
   const n = nodeIndex.get(r.t);
   if(!n) return '';
-  const val = leadMode === 'chg' ? r.chg : r.contrib;
-  const col = val >= 0 ? 'var(--up)' : 'var(--down)';
-  const { up, dn } = leadSets();
-  const scale = Math.max(...[...up, ...dn].map(x => Math.abs(leadMode === 'chg' ? x.chg : x.contrib)), 0.01);
-  const w = Math.min(100, Math.abs(val) / scale * 100);
-  const text = leadMode === 'chg'
-    ? `${val >= 0 ? '+' : ''}${val.toFixed(2)}%`
-    : `${val >= 0 ? '+' : ''}${val.toFixed(2)}%p`;
+  const m = d.metric;
+  const col = m.signed ? (r.v >= 0 ? 'var(--up)' : 'var(--down)')
+                       : (kind === 'up' ? 'var(--accent)' : 'var(--text-muted)');
+  const scale = Math.max(...[...d.up, ...d.dn].map(x => Math.abs(x.v)), 1e-9);
+  const w = Math.min(100, Math.abs(r.v) / scale * 100);
   return `<div class="lead-row" data-tk="${r.t}">
       <span class="rk">${i + 1}</span>
       <span class="dot" style="width:6px;height:6px;background:${n.color};box-shadow:none"></span>
-      <span class="tk4">${r.t}</span>
+      <span class="tk4" title="${n.name}">${n.assetClass === 'kr_stock' ? n.name : r.t}</span>
       <span class="barwrap"><span style="width:${w}%;background:${col}"></span></span>
-      <span class="pct" style="color:${col}">${text}</span>
+      <span class="pct" style="color:${col}">${m.fmt(r.v)}</span>
     </div>`;
 }
 
 function renderLeaders(){
-  if(!LEAD.date){ document.getElementById('lead-panel').style.display = 'none'; return; }
-  const { up, dn } = leadSets();
-  document.getElementById('lead-date').textContent = LEAD.date;
+  const d = leadData(), m = d.metric;
+  document.getElementById('lead-panel').style.display = '';
+  document.getElementById('lead-period-label').textContent =
+    m.period ? '기간' : '기간 (시세 기준에만 적용)';
+  document.getElementById('lead-period').style.opacity = m.period ? 1 : 0.4;
+  document.getElementById('lead-date').textContent =
+    m.period ? (d.range ? d.range.to : '—') : `${d.count}개 종목`;
+
+  if(!d.up.length){
+    document.getElementById('lead-list').innerHTML =
+      '<div class="empty">이 기준으로 순위를 낼 데이터가 없습니다.</div>';
+    document.getElementById('lead-breadth').innerHTML = '';
+    return;
+  }
   document.getElementById('lead-list').innerHTML =
-    `<div class="lead-split" style="color:var(--up)">▲ 상위 주도주</div>` +
-    up.map((r, i) => leadRowHTML(r, i, 'up')).join('') +
-    `<div class="lead-split" style="color:var(--down)">▼ 하위 주도주</div>` +
-    dn.map((r, i) => leadRowHTML(r, i, 'down')).join('');
-  const ic = LEAD.index_chg ?? 0;
-  document.getElementById('lead-breadth').innerHTML =
-    `시총가중 지수 <b style="color:${ic >= 0 ? 'var(--up)' : 'var(--down)'}">${ic >= 0 ? '+' : ''}${ic}%</b>` +
-    ` · 상승 <b style="color:var(--up)">${LEAD.advancers}</b> / 하락 <b style="color:var(--down)">${LEAD.decliners}</b>` +
-    `<br>기여도 = 등락률 × 시총 비중 (지수를 실제로 움직인 크기)`;
+    `<div class="lead-split" style="color:${m.signed ? 'var(--up)' : 'var(--accent)'}">${m.up}</div>` +
+    d.up.map((r, i) => leadRowHTML(r, i, 'up', d)).join('') +
+    `<div class="lead-split" style="color:${m.signed ? 'var(--down)' : 'var(--text-muted)'}">${m.dn}</div>` +
+    d.dn.map((r, i) => leadRowHTML(r, i, 'down', d)).join('');
+
+  const bits = [];
+  if(d.breadth && d.breadth.counted){
+    const b = d.breadth;
+    bits.push(`나스닥 100 시총가중 <b style="color:${b.idx >= 0 ? 'var(--up)' : 'var(--down)'}">${b.idx >= 0 ? '+' : ''}${b.idx.toFixed(2)}%</b>` +
+      ` · 상승 <b style="color:var(--up)">${b.adv}</b> / 하락 <b style="color:var(--down)">${b.dec}</b>`);
+  }
+  if(m.period && d.range) bits.push(`${d.range.from} ~ ${d.range.to} · ${d.count}개 종목`);
+  else if(!m.period) bits.push('최근 회계연도 기준 · 펀더멘털 데이터가 있는 종목만');
+  if(m.note) bits.push(m.note);
+  document.getElementById('lead-breadth').innerHTML = bits.join('<br>');
+
   document.getElementById('lead-list').querySelectorAll('.lead-row').forEach(row => {
     row.addEventListener('click', () => { const n = nodeIndex.get(row.dataset.tk); if(n) focusNode(n); });
   });
 }
 
-document.querySelectorAll('#lead-mode button').forEach(b => {
+function setLeadMode(mode){
+  leadMode = mode;
+  document.querySelectorAll('#lead-mode button, #lead-fund button')
+    .forEach(x => x.classList.toggle('on', x.dataset.mode === mode));
+  _leadCache = null;
+  renderLeaders();
+  if(leadOnly) resetOpacities();
+}
+document.querySelectorAll('#lead-mode button, #lead-fund button').forEach(b => {
+  b.addEventListener('click', () => setLeadMode(b.dataset.mode));
+});
+document.querySelectorAll('#lead-period button').forEach(b => {
   b.addEventListener('click', () => {
-    leadMode = b.dataset.mode;
-    document.querySelectorAll('#lead-mode button').forEach(x => x.classList.toggle('on', x === b));
-    renderLeaders();
-    if(leadOnly) resetOpacities();
+    leadDays = +b.dataset.d;
+    document.querySelectorAll('#lead-period button').forEach(x => x.classList.toggle('on', x === b));
+    _leadCache = null;
+    // choosing a window means you want a price ranking; fundamentals ignore it
+    if(!LEAD_METRICS[leadMode].period) setLeadMode('chg');
+    else renderLeaders();
   });
 });
+
 document.getElementById('lead-only').addEventListener('click', () => {
   leadOnly = !leadOnly;
   document.getElementById('lead-only').classList.toggle('on', leadOnly);

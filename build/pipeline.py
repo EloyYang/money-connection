@@ -1085,7 +1085,7 @@ def analyse_cycle(dates, rets, tickers, themes):
 # --------------------------------------------------------------------------
 # 5. render
 # --------------------------------------------------------------------------
-def render(corr, px, oh, cycle, leaders, fund, macro, members, themes, index_date, problems, out_dir):
+def render(corr, px, oh, cycle, leaders, fund, macro, members, themes, index_date, problems, out_dir, usdkrw=None):
     tpl = open(os.path.join(ROOT, "build", "template.html")).read()
     engine = open(os.path.join(ROOT, "build", "candle_engine.js")).read()
     cfg = load_theme_config()
@@ -1103,6 +1103,7 @@ def render(corr, px, oh, cycle, leaders, fund, macro, members, themes, index_dat
         "problems": [{"ticker": t, "note": p} for t, p in problems],
         "themes": {g: cfg["themes"][g]["label"] for g in cfg["themes"]},
         "leaders": leaders,
+        "fx": {"KRW": usdkrw},          # 거래대금을 달러로 환산할 때 쓴다
     }
     blob = lambda o: json.dumps(o, separators=(",", ":"), ensure_ascii=False)
     body = (tpl.replace("/*__CANDLE_ENGINE__*/", engine, 1)
@@ -1214,7 +1215,7 @@ def main():
     fund_scope = [t for t in corr["tickers"] if t in nasdaq_tickers]
     fund = fetch_fundamentals(fund_scope, os.path.join(a.cache, "fundamentals.json"),
                               a.fundamentals_refresh, a.max_workers)
-    render(corr, px, oh, cycle, leaders, fund, macro, members, themes, index_date, problems, a.out)
+    render(corr, px, oh, cycle, leaders, fund, macro, members, themes, index_date, problems, a.out, usdkrw)
 
 
 if __name__ == "__main__":
