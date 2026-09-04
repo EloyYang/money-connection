@@ -393,13 +393,12 @@
   <div class="brand">
     <div class="title">
       <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
-        <path d="M22.6 8.4a9.8 9.8 0 1 0 0 15.2" fill="none" stroke="#5fd0ff" stroke-width="2.9" stroke-linecap="round"/>
-        <g stroke="#7e8794" stroke-width="1">
-          <line x1="15.6" y1="16.4" x2="12.4" y2="11.4"/><line x1="15.6" y1="16.4" x2="20.6" y2="13.6"/>
-          <line x1="15.6" y1="16.4" x2="13.6" y2="21"/><line x1="12.4" y1="11.4" x2="20.6" y2="13.6"/>
+        <g stroke="#7e8794" stroke-width="1.5">
+          <line x1="16" y1="16.5" x2="8.5" y2="8.5"/><line x1="16" y1="16.5" x2="24.5" y2="11"/>
+          <line x1="16" y1="16.5" x2="11" y2="25"/><line x1="8.5" y1="8.5" x2="24.5" y2="11"/>
         </g>
-        <circle cx="15.6" cy="16.4" r="2.3" fill="#e8eaed"/><circle cx="12.4" cy="11.4" r="1.8" fill="#3987e5"/>
-        <circle cx="20.6" cy="13.6" r="1.8" fill="#3ddc84"/><circle cx="13.6" cy="21" r="1.8" fill="#f7931a"/>
+        <circle cx="16" cy="16.5" r="4" fill="#e8eaed"/><circle cx="8.5" cy="8.5" r="3.1" fill="#3987e5"/>
+        <circle cx="24.5" cy="11" r="3.1" fill="#3ddc84"/><circle cx="11" cy="25" r="3.1" fill="#f7931a"/>
       </svg><span>머니 커넥션</span>
     </div>
     <div class="sub" id="brand-sub">최근 1년 일별 종가 수익률 상관계수 · 상승/하락 연쇄 시뮬레이션</div>
@@ -2194,14 +2193,19 @@ document.getElementById('mode-reset').addEventListener('click', clearAll);
    WATCHLIST — saved to the artifact store when this view can run `db`,
    mirrored to localStorage so it also works offline / in a plain browser
    ===================================================================== */
-const FAV_KEY = 'nasdaq100-graph.favorites';
+const FAV_KEY = 'money-connection.favorites';
+const FAV_KEY_LEGACY = 'nasdaq100-graph.favorites';   // pre-rename key
 const FAV_PATH = 'watchlist/main';
 let favorites = new Set();
 let favDoc = null, favApplying = false;
 
 function loadLocalFavorites(){
   try {
-    const raw = localStorage.getItem(FAV_KEY);
+    let raw = localStorage.getItem(FAV_KEY);
+    if(!raw){                                   // migrate from the pre-rename key
+      const legacy = localStorage.getItem(FAV_KEY_LEGACY);
+      if(legacy){ raw = legacy; localStorage.setItem(FAV_KEY, legacy); }
+    }
     if(raw) favorites = new Set(JSON.parse(raw).filter(t => nodeIndex.has(t)));
   } catch(e){ /* private mode / blocked storage: stay in memory */ }
 }

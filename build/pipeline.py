@@ -894,21 +894,19 @@ def render(corr, px, oh, cycle, leaders, fund, members, themes, index_date, prob
     # The template is written for the Artifact wrapper, which supplies the
     # document head. A standalone site has to bring its own — without the
     # viewport meta, phones lay the page out at 980px and zoom out.
-    # Logo: a "C" (Connection) whose bowl holds a small node network — the same
-    # thing the dashboard draws. Inline SVG data URI so there is no extra file.
+    # Logo: the node network the dashboard itself draws — a hub with three
+    # connected satellites. No lettermark; the graph IS the mark.
     icon = ("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>"
             "<rect width='32' height='32' rx='7' fill='%230a0c10'/>"
-            "<path d='M22.6 8.4a9.8 9.8 0 1 0 0 15.2' fill='none' stroke='%235fd0ff'"
-            " stroke-width='2.9' stroke-linecap='round'/>"
-            "<g stroke='%237e8794' stroke-width='1'>"
-            "<line x1='15.6' y1='16.4' x2='12.4' y2='11.4'/>"
-            "<line x1='15.6' y1='16.4' x2='20.6' y2='13.6'/>"
-            "<line x1='15.6' y1='16.4' x2='13.6' y2='21'/>"
-            "<line x1='12.4' y1='11.4' x2='20.6' y2='13.6'/></g>"
-            "<circle cx='15.6' cy='16.4' r='2.3' fill='%23e8eaed'/>"
-            "<circle cx='12.4' cy='11.4' r='1.8' fill='%233987e5'/>"
-            "<circle cx='20.6' cy='13.6' r='1.8' fill='%233ddc84'/>"
-            "<circle cx='13.6' cy='21' r='1.8' fill='%23f7931a'/></svg>")
+            "<g stroke='%237e8794' stroke-width='1.5'>"
+            "<line x1='16' y1='16.5' x2='8.5' y2='8.5'/>"
+            "<line x1='16' y1='16.5' x2='24.5' y2='11'/>"
+            "<line x1='16' y1='16.5' x2='11' y2='25'/>"
+            "<line x1='8.5' y1='8.5' x2='24.5' y2='11'/></g>"
+            "<circle cx='16' cy='16.5' r='4' fill='%23e8eaed'/>"
+            "<circle cx='8.5' cy='8.5' r='3.1' fill='%233987e5'/>"
+            "<circle cx='24.5' cy='11' r='3.1' fill='%233ddc84'/>"
+            "<circle cx='11' cy='25' r='3.1' fill='%23f7931a'/></svg>")
     html = f"""<!doctype html>
 <html lang="ko">
 <head>
