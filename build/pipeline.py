@@ -153,7 +153,8 @@ def resolve_kospi_themes(kospi_members, cfg, cache_path):
     codes get fetched."""
     cache = json.load(open(cache_path)) if os.path.exists(cache_path) else {}
     codes = list(kospi_members)
-    missing = [c for c in codes if c not in cache]
+    # entries cached before the dividend field was added are bare strings
+    missing = [c for c in codes if not isinstance(cache.get(c), dict)]
     if missing:
         log(f"looking up WICS industry for {len(missing)} new KOSPI ticker(s)")
 
@@ -162,10 +163,14 @@ def resolve_kospi_themes(kospi_members, cfg, cache_path):
             html = get_text(f"https://finance.naver.com/item/main.naver?code={code}",
                             encoding="utf-8", retries=3, timeout=20)
             m = re.search(r'업종명\s*:\s*<a[^>]*>([^<]+)</a>', html)
-            return code, (m.group(1).strip() if m else None)
+            # same page carries 배당수익률 — free, and the defensive/income
+            # profile is dishonest if only US names have a dividend
+            y = re.search(r'배당수익률[\s\S]{0,300}?<em[^>]*>([\d.]+)</em>', html)
+            return code, {"industry": m.group(1).strip() if m else None,
+                          "yield": float(y.group(1)) if y else None}
         except Exception as e:                        # noqa: BLE001
             log(f"  ! industry lookup failed for {code}: {e}")
-            return code, None
+            return code, {"industry": None, "yield": None}
 
     if missing:
         with ThreadPoolExecutor(max_workers=6) as ex:
@@ -175,9 +180,11 @@ def resolve_kospi_themes(kospi_members, cfg, cache_path):
     assign = {}
     imap = cfg.get("kospi_industry_map", {})
     for code in codes:
-        ind = cache.get(code)
+        rec = cache.get(code) or {}
+        ind = rec.get("industry")
         theme = imap.get(ind, 9)
         assign[code] = theme
+        kospi_members[code]["div_yield"] = rec.get("yield")
         if theme == 9:
             log(f"  ! {code} ({kospi_members[code]['name']}) industry '{ind}' has no theme mapping")
     cache = {c: v for c, v in cache.items() if c in set(codes)}   # drop removed members
@@ -754,6 +761,98 @@ def compute_macro_monthly(tickers, dates, closes, bls):
     return out, series_out
 
 
+PROFILE_YEARS = 3
+
+
+def weekly_returns(dates, closes, i0):
+    """Week-over-week returns keyed by ISO year-week, using each week's last
+    available close. Returns {} when the series is empty."""
+    if not closes: return {}
+    last = {}
+    for i in range(i0, len(dates)):
+        v = closes[i]
+        if v is None: continue
+        y, w, _ = dates[i].isocalendar()
+        last[(y, w)] = v
+    keys = sorted(last)
+    out = {}
+    for a, b in zip(keys, keys[1:]):
+        pa = last[a]
+        if pa: out[b] = (last[b] - pa) / pa
+    return out
+
+
+def compute_profiles(dates, closes, rets, tickers, bench):
+    """The long-run character of each asset over the last 3 years.
+
+    Four numbers, all read off the same window so they are comparable:
+      cagr  연평균 성장률
+      r2    log(종가)를 시간에 회귀했을 때의 결정계수 — 우상향이 '꾸준했는가'.
+            수익률이 아무리 커도 경로가 들쭉날쭉하면 낮게 나온다.
+      vol   연변동성
+      mdd   최대 낙폭
+      dcap  하락장 방어력 = 벤치마크가 내린 주들만 모아 (내 누적 / 벤치 누적).
+            1보다 작으면 시장이 빠질 때 덜 빠졌다는 뜻.
+
+    `bench` is SPY's close series when available: "하락장" means the broad risk
+    market falling, and the same yardstick has to apply to every asset or the
+    ratios are not comparable across markets.
+
+    Down-capture is measured WEEKLY, not daily. Seoul closes hours before New
+    York, so a KOSPI name's same-day return reflects a session that ended
+    before the US fell; weekly buckets absorb that offset and let one number
+    compare across three markets.
+    """
+    cut = dates[-1] - datetime.timedelta(days=365 * PROFILE_YEARS)
+    i0 = next((i for i, d in enumerate(dates) if d > cut), 0)
+    bench_wk = weekly_returns(dates, bench, i0) if bench else None
+    out = {}
+    for t in tickers:
+        px = [(i, v) for i, v in enumerate(closes[t][i0:], start=i0) if v is not None]
+        if len(px) < 120:                      # under ~6 months there is no "character"
+            continue
+        first, last = px[0][1], px[-1][1]
+        n = len(px)
+        years = (dates[px[-1][0]] - dates[px[0][0]]).days / 365.25
+        rec = {"n": n, "years": round(years, 2)}
+
+        if first > 0 and years >= 0.5:
+            rec["cagr"] = round(((last / first) ** (1 / years) - 1) * 100, 1)
+            # consistency of the climb, not its size
+            ys = [math.log(v) for _, v in px]
+            xs = list(range(n))
+            mx, my = sum(xs) / n, sum(ys) / n
+            sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+            sxx = sum((x - mx) ** 2 for x in xs)
+            syy = sum((y - my) ** 2 for y in ys)
+            rec["r2"] = round(sxy * sxy / (sxx * syy), 3) if sxx and syy else None
+
+        r = [v for v in rets[t][i0:] if v is not None]
+        if len(r) >= 60:
+            mu = sum(r) / len(r)
+            var = sum((x - mu) ** 2 for x in r) / (len(r) - 1)
+            rec["vol"] = round(var ** 0.5 * (252 ** 0.5) * 100, 1)
+
+        peak, mdd = None, 0.0
+        for _, v in px:
+            peak = v if peak is None else max(peak, v)
+            if peak: mdd = min(mdd, (v - peak) / peak)
+        rec["mdd"] = round(mdd * 100, 1)
+
+        if bench_wk:
+            mine_wk = weekly_returns(dates, closes[t], i0)
+            mine, theirs, weeks = 0.0, 0.0, 0
+            for k, b in bench_wk.items():
+                m = mine_wk.get(k)
+                if b >= 0 or m is None: continue
+                mine += m; theirs += b; weeks += 1
+            if weeks >= 20 and theirs < -0.05:      # need a real down-market sample
+                rec["dcap"] = round(mine / theirs, 2)
+                rec["dweeks"] = weeks
+        out[t] = rec
+    return out
+
+
 def analyse(series, members, themes, index_date, nasdaq_tickers, factors=None, bls=None):
     dates = sorted({d for rows in series.values() for d in rows})
     di = {d: i for i, d in enumerate(dates)}
@@ -884,6 +983,10 @@ def analyse(series, members, themes, index_date, nasdaq_tickers, factors=None, b
         "closeOnly": [t for t in tickers if all(
             (row is None or (row[0] == row[1] == row[2] == row[3])) for row in ohlc[t] if row)],
     }
+
+    profiles = compute_profiles(dates, closes, rets5y, tickers, closes.get("SPY"))
+    log(f"profiles: {len(profiles)} assets characterised over {PROFILE_YEARS}y")
+    corr["profile"] = profiles
 
     # 지수/주도주 stays Nasdaq-100-only — see module docstring
     nd_scope = [t for t in tickers if t in nasdaq_tickers]
@@ -1090,12 +1193,22 @@ def render(corr, px, oh, cycle, leaders, fund, macro, members, themes, index_dat
     engine = open(os.path.join(ROOT, "build", "candle_engine.js")).read()
     cfg = load_theme_config()
 
+    def div_yield(t):
+        """US names carry it as a string on the fundamentals record ("0.45%");
+        KOSPI names get it from the Naver page the industry lookup already reads."""
+        v = ((fund or {}).get(t) or {}).get("yield")
+        if isinstance(v, str):
+            m = re.search(r"([\d.]+)", v)
+            if m: return float(m.group(1))
+        return members[t].get("div_yield")
+
     nodes = []
     for t in corr["tickers"]:
         m = members[t]
         nodes.append({"id": t, "name": m["name"], "group": themes.get(t, 9),
                       "cap": m["market_cap"], "currency": m.get("currency", "USD"),
-                      "assetClass": m.get("asset_class", "us_stock")})
+                      "assetClass": m.get("asset_class", "us_stock"),
+                      "yield": div_yield(t)})
     meta = {
         "built": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "index_date": index_date,

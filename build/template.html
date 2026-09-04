@@ -21,6 +21,7 @@
     --g5:#d55181; --g6:#3fae3f; --g7:#9085e9; --g8:#e66767;
     --g10:#2dd4bf; --g11:#94a3b8; --g12:#f7931a; --g13:#d4af37;
     --m1:#3987e5; --m2:#e0457b; --m3:#94a3b8; --m4:#f7931a; --m5:#d4af37;
+    --p1:#3ddc84; --p2:#5fd0ff; --p3:#ff8f4a; --p4:#8a8f98;   /* 종목 성격 */
     color-scheme: dark;
   }
   *{box-sizing:border-box;}
@@ -108,7 +109,7 @@
   .seg-wrap button{ flex:1 1 auto; white-space:nowrap; }   /* CJK는 단어 중간에서 줄바꿈된다 */
   .ctl-note{ font-size:10px; color:var(--text-muted); line-height:1.5; margin:-2px 0 8px; }
   .legend-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-  .legend-head h3{ margin:0 !important; flex:1 1 auto; }
+  .legend-head h3{ margin:0 !important; flex:1 1 auto; white-space:nowrap; }
   #group-mode{ margin:0; flex:0 0 auto; }
   #group-mode button{ padding:3px 9px; }
   .legend h3{ margin:0 0 9px; font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); font-weight:600; }
@@ -140,6 +141,19 @@
 
   .drawer{ right:16px; top:16px; width:330px; padding:16px; display:none; max-height:calc(100% - 32px); overflow-y:auto; }
   .drawer.show{ display:block; }
+  .drawer .wide-btn{ right:34px; font-size:13px; }
+  .drawer .wide-btn.on{ color:var(--accent); }
+  /* Wide mode packs the sections into two columns. `columns` rather than a
+     grid: the sections differ wildly in height, and a two-column grid would
+     leave a ragged gap beside every short one. */
+  .drawer.wide{ width:min(820px, calc(100vw - 300px)); }
+  .drawer.wide #drawer-body{ columns:2; column-gap:22px; }
+  .drawer.wide #drawer-body > div{ break-inside:avoid; margin-bottom:4px; }
+  .drawer.wide #drawer-body > #fundcmp-block{ column-span:all; }   /* 5열 표는 반 폭에 안 들어간다 */
+  @media (max-width: 980px){
+    .drawer.wide{ width:min(360px, 90vw); }
+    .drawer.wide #drawer-body{ columns:1; }
+  }
   .drawer .close{ position:absolute; right:10px; top:10px; background:none; border:none; color:var(--text-muted); font-size:15px; cursor:pointer; padding:4px; line-height:1; }
   .drawer .tk{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:21px; }
   .drawer .nm{ color:var(--text-secondary); font-size:12.5px; margin-top:2px; }
@@ -306,6 +320,14 @@
   .lead-breadth{ margin-top:9px; padding-top:8px; border-top:1px solid var(--border);
                  font-size:10.5px; color:var(--text-muted); line-height:1.5; }
   .lead-breadth b{ font-family:'JetBrains Mono',monospace; }
+  /* collapse: the header is the only thing that survives */
+  .panel.collapsed > *:not(.legend-head):not(.fav-head){ display:none !important; }
+  .panel.collapsed .legend-head, .panel.collapsed .fav-head{ margin-bottom:0; }
+  .collapse-btn{ flex:0 0 auto; margin-left:4px; background:none; border:none; cursor:pointer;
+    color:var(--text-muted); font-size:11px; line-height:1; padding:3px 4px; border-radius:5px;
+    transition:transform .15s ease; }
+  .collapse-btn:hover{ color:var(--text-primary); background:rgba(255,255,255,0.07); }
+  .panel.collapsed .collapse-btn{ transform:rotate(-90deg); }
 
   /* ---- fundamentals ---- */
   .fund-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:7px; margin:4px 0 2px; }
@@ -385,8 +407,17 @@
   .cmp-table tr.grp td{ padding:9px 0 3px; border-bottom:none; font-size:10px; letter-spacing:0.06em;
     text-transform:uppercase; color:var(--text-muted); }
   .cmp-table td.na{ color:var(--text-muted); }
+  .cmp-table td.best{ font-weight:700; background:rgba(255,255,255,0.07); }
+  .cmp-table td.best::after{ content:''; }
   .cmp-legend{ display:flex; flex-wrap:wrap; gap:11px; margin-top:5px; font-size:10.5px; color:var(--text-secondary); }
   .cmp-legend i{ display:inline-block; width:13px; height:2px; border-radius:1px; vertical-align:middle; margin-right:4px; }
+  .pf-grid{ display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .pf-cell{ background:rgba(255,255,255,0.035); border:1px solid var(--border); border-radius:8px; padding:7px 9px; }
+  .pf-cell .l{ font-size:9.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); }
+  .pf-cell .v{ font-family:'JetBrains Mono',monospace; font-size:14px; margin-top:2px; }
+  .pf-cell .s{ font-size:10px; color:var(--text-secondary); margin-top:1px; }
+  .pf-tag{ display:inline-flex; align-items:center; gap:4px; font-size:10px; padding:2px 7px;
+    border-radius:999px; border:1px solid var(--border-strong); margin-left:4px; }
   .fund-note{ font-size:10px; color:var(--text-muted); line-height:1.45; margin-top:6px; }
 
   /* ---- watchlist ---- */
@@ -412,6 +443,25 @@
   .fav-row .drop{ border:none; background:none; color:var(--text-muted); cursor:pointer; font-size:13px;
                   padding:0 2px; line-height:1; }
   .fav-row .drop:hover{ color:var(--fav); }
+  .fav-sec{ display:flex; align-items:center; gap:6px; margin:9px 0 2px; padding-top:7px;
+    border-top:1px solid var(--border); font-size:9.5px; text-transform:uppercase;
+    letter-spacing:0.07em; color:var(--text-muted); }
+  .fav-sec:first-child{ margin-top:2px; padding-top:0; border-top:none; }
+  .fav-sec .nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fav-sec .cnt{ font-family:'JetBrains Mono',monospace; color:var(--fav); margin-right:auto; }
+  .sec-btn{ background:none; border:none; color:var(--text-muted); cursor:pointer;
+    font-size:10px; padding:1px 3px; line-height:1; border-radius:4px; }
+  .sec-btn:hover{ color:var(--text-primary); background:rgba(255,255,255,0.08); }
+  .fav-move option{ background:var(--panel-solid); color:var(--text-primary); }
+  .fav-head h3, .fav-only{ white-space:nowrap; }
+  .fav-actions{ display:flex; gap:5px; margin-bottom:6px; }
+  .fav-actions .fav-only{ margin-left:0; flex:1 1 auto; text-align:center; }
+  /* a bare <select> renders its selected label; the section is already the row's
+     heading, so only the caret is wanted — the select sits invisible on top */
+  .fav-move-wrap{ position:relative; display:inline-flex; align-items:center; justify-content:center;
+    flex:0 0 14px; width:14px; height:16px; color:var(--text-muted); font-size:11px; cursor:pointer; }
+  .fav-move-wrap:hover{ color:var(--text-primary); }
+  .fav-move-wrap select{ position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
   .fav-empty{ font-size:11px; color:var(--text-muted); line-height:1.55; }
   .fav-sync{ margin-top:9px; padding-top:8px; border-top:1px solid var(--border);
              font-size:10px; color:var(--text-muted); line-height:1.45; }
@@ -509,17 +559,18 @@
   </div>
 
   <div class="left-stack graph-only">
-  <div class="panel legend">
+  <div class="panel legend" data-panel="theme">
     <div class="legend-head">
-      <h3 id="legend-title">테마 (클릭하여 강조/숨김)</h3>
+      <h3 id="legend-title">테마</h3>
       <span class="seg-mini" id="group-mode">
-        <button data-mode="theme" class="on">테마</button><button data-mode="market">시장</button>
+        <button data-mode="theme" class="on">테마</button><button data-mode="market">시장</button><button data-mode="profile">성격</button>
       </span>
     </div>
+    <div class="ctl-note" id="legend-note"></div>
     <div id="legend-rows"></div>
   </div>
 
-  <div class="panel legend relation-panel">
+  <div class="panel legend relation-panel" data-panel="relation">
     <div class="legend-head">
       <h3>연결 기준 (선의 의미)</h3>
     </div>
@@ -535,7 +586,7 @@
     <div class="edge-key"><span class="edge-line" style="border-color:var(--down); border-top-style:dashed;"></span>음(−) · 반대 방향</div>
   </div>
 
-  <div class="panel lead-panel" id="lead-panel">
+  <div class="panel lead-panel" id="lead-panel" data-panel="lead">
     <div class="fav-head">
       <h3>주도주</h3><span class="cnt mono" id="lead-date">—</span>
       <button class="fav-only" id="lead-only">주도주만</button>
@@ -556,9 +607,12 @@
     <div class="lead-breadth" id="lead-breadth"></div>
   </div>
 
-  <div class="panel fav-panel" id="fav-panel">
+  <div class="panel fav-panel" id="fav-panel" data-panel="fav">
     <div class="fav-head">
       <h3>★ 즐겨찾기</h3><span class="cnt" id="fav-count">0</span>
+    </div>
+    <div class="fav-actions">
+      <button class="fav-only" id="fav-add-sec" title="섹션 추가">＋ 섹션</button>
       <button class="fav-only" id="fav-only">즐겨찾기만</button>
     </div>
     <div id="fav-list"></div>
@@ -579,6 +633,7 @@
 
   <div class="panel drawer graph-only" id="drawer">
     <button class="close" id="drawer-close">✕</button>
+    <button class="close wide-btn" id="drawer-wide" title="넓게 보기">⤢</button>
     <div style="display:flex;align-items:center;gap:6px">
       <div class="tk" id="d-tk">—</div>
       <button class="star" id="fav-toggle" title="즐겨찾기 추가/해제" aria-pressed="false">☆</button>
@@ -593,11 +648,14 @@
       <div class="metric"><div class="l">데이터 일수</div><div class="v" id="d-days">–</div></div>
     </div>
 
-    <div class="sec-title"><span id="chart-title">1년 주가 추이</span>
-      <span><span class="mono" id="chart-scale"></span>
-      <button class="expand-btn" id="open-candle">⤢ 봉차트</button></span></div>
-    <div id="chart-host"><svg id="pricechart" viewBox="0 0 298 116" width="100%" height="116"></svg></div>
-    <div id="chart-readout" class="readout">—</div>
+    <div id="drawer-body">
+    <div id="price-block">
+      <div class="sec-title"><span id="chart-title">1년 주가 추이</span>
+        <span><span class="mono" id="chart-scale"></span>
+        <button class="expand-btn" id="open-candle">⤢ 봉차트</button></span></div>
+      <div id="chart-host"><svg id="pricechart" viewBox="0 0 298 116" width="100%" height="116"></svg></div>
+      <div id="chart-readout" class="readout">—</div>
+    </div>
 
     <div id="season-block">
       <div class="perf-head" style="margin-top:14px">
@@ -608,6 +666,12 @@
         </span>
       </div>
       <div class="fin-chart" id="season-chart"></div>
+    </div>
+
+    <div id="profile-block">
+      <div class="sec-title"><span>종목 성격 (최근 3년)</span><span class="mono" id="profile-tags"></span></div>
+      <div class="pf-grid" id="profile-grid"></div>
+      <div class="cap" id="profile-cap"></div>
     </div>
 
     <div id="macro-block">
@@ -631,6 +695,7 @@
     <div id="fundcmp-block" hidden>
       <div class="sec-title"><span>펀더멘털 비교</span><span class="mono" id="fundcmp-period"></span></div>
       <div class="cmp-scroll"><table class="cmp-table" id="fundcmp-table"></table></div>
+      <div class="cap" id="fundcmp-note"></div>
       <div class="perf-head" style="margin-top:14px">
         <span class="ttl">실적 성장 (지수화)</span>
         <span class="perf-seg" id="fundcmp-metric">
@@ -663,10 +728,13 @@
       <div class="fund-note" id="fund-src"></div>
     </div>
 
-    <div class="sec-title"><span>같이 오르내리는 종목 (+)</span><span class="mono" id="d-poscount"></span></div>
-    <div id="d-pos"></div>
-    <div class="sec-title"><span>반대로 움직이는 종목 (−)</span><span class="mono" id="d-negcount"></span></div>
-    <div id="d-neg"></div>
+    <div id="corr-block">
+      <div class="sec-title"><span>같이 오르내리는 종목 (+)</span><span class="mono" id="d-poscount"></span></div>
+      <div id="d-pos"></div>
+      <div class="sec-title"><span>반대로 움직이는 종목 (−)</span><span class="mono" id="d-negcount"></span></div>
+      <div id="d-neg"></div>
+    </div>
+    </div>
   </div>
 </div>
 
@@ -746,6 +814,44 @@ const MARKETS = MARKET_DEFS.map(m => ({
 const marketOf = new Map();
 MARKETS.forEach(m => m.tickers.forEach(([tk]) => marketOf.set(tk, m)));
 
+/* Third way to colour the graph: by long-run CHARACTER, from the 3-year
+   profile stats the pipeline computes (cagr / r2 / vol / mdd / dcap).
+
+   The classes overlap in reality — a low-volatility utility can be both a
+   steady riser and a defensive holding — so one class is assigned for the
+   colour and the drawer prints the raw numbers underneath, where a case like
+   삼성전자 (CAGR +54% but r²=0.49) is legible as "많이 올랐지만 경로가 거칠다". */
+const PROFILE_DEFS = [
+  { id: 1, key: 'grow',     label: '꾸준한 우상향',  color: 'var(--p1)' },
+  { id: 2, key: 'defense',  label: '방어형 · 인컴',  color: 'var(--p2)' },
+  { id: 3, key: 'volatile', label: '고변동성',       color: 'var(--p3)' },
+  { id: 4, key: 'other',    label: '기타 · 성격 불분명', color: 'var(--p4)' },
+];
+const PF = CORR.profile || {};
+const yieldOf = new Map(NODES.map(n => [n.id, n.yield ?? null]));
+const PF_CUT = (() => {
+  const vols = Object.values(PF).map(p => p.vol).filter(v => v != null).sort((a, b) => a - b);
+  const q = f => vols.length ? vols[Math.min(vols.length - 1, Math.floor(vols.length * f))] : Infinity;
+  return { volMid: q(0.5), volHigh: q(0.75) };
+})();
+function profileIdOf(tk){
+  const p = PF[tk];
+  if(!p) return 4;
+  const y = yieldOf.get(tk);
+  // 방어형은 "하락장에 안전"이 조건이다: 덜 빠지고, 평소 변동성도 낮고,
+  // 3년 안에 크게 무너진 적이 없어야 한다 (mdd 조건이 없으면 비트코인이 들어온다).
+  if(p.dcap != null && p.dcap <= 0.5 && p.vol != null && p.vol <= PF_CUT.volMid
+     && p.mdd > -35 && ((y != null && y >= 2) || p.dcap <= 0.2)) return 2;
+  if(p.r2 != null && p.r2 >= 0.75 && p.cagr != null && p.cagr >= 10) return 1;
+  if((p.vol != null && p.vol >= PF_CUT.volHigh) || p.mdd <= -50) return 3;
+  return 4;
+}
+const PROFILES = PROFILE_DEFS.map(d => ({
+  ...d, tickers: NODES.filter(n => profileIdOf(n.id) === d.id).map(n => [n.id, n.name])
+})).filter(d => d.tickers.length);
+const profileOf = new Map();
+PROFILES.forEach(p => p.tickers.forEach(([tk]) => profileOf.set(tk, p)));
+
 function latestCloseRaw(tk){
   const a = (OH.data || {})[tk] || [];
   for(let i = a.length-1; i >= 0; i--) if(a[i]) return { px: a[i][3], date: OH.dates[i] };
@@ -770,6 +876,8 @@ GROUPS.forEach(g => g.tickers.forEach(([tk,name]) => {
   const n = { id:tk, name, r,
               themeId: g.id, themeColor: g.color,
               marketId: mk ? mk.id : 0, marketColor: mk ? mk.color : 'var(--g9)',
+              profileId: (profileOf.get(tk) || {}).id || 4,
+              profileColor: (profileOf.get(tk) || {}).color || 'var(--p4)',
               group: g.id, color: g.color,          // active grouping (see applyGroupMode)
               tier: r >= 17 ? 'A' : r >= 12 ? 'B' : 'C',   // controls label density only
               currency: currencyOf.get(tk) || 'USD', assetClass: assetClassOf.get(tk) || 'us_stock',
@@ -1091,12 +1199,13 @@ function hideTooltip(){ tooltipEl.style.opacity = 0; }
 /* =====================================================================
    LEGEND + THRESHOLD
    ===================================================================== */
-let groupMode = 'theme';                       // 'theme' | 'market'
-const currentGroups = () => groupMode === 'theme' ? GROUPS : MARKETS;
+let groupMode = 'theme';                       // 'theme' | 'market' | 'profile'
+const currentGroups = () => groupMode === 'theme' ? GROUPS : groupMode === 'market' ? MARKETS : PROFILES;
 // filter state is kept per mode, so switching back restores what was hidden
 const activeByMode = {
-  theme:  new Set(GROUPS.map(g=>g.id)),
-  market: new Set(MARKETS.map(g=>g.id)),
+  theme:   new Set(GROUPS.map(g=>g.id)),
+  market:  new Set(MARKETS.map(g=>g.id)),
+  profile: new Set(PROFILES.map(g=>g.id)),
 };
 let activeGroups = activeByMode.theme;
 
@@ -1122,12 +1231,15 @@ function applyGroupMode(mode){
   groupMode = mode;
   activeGroups = activeByMode[mode];
   nodes.forEach(n => {
-    n.group = mode === 'theme' ? n.themeId : n.marketId;
-    n.color = mode === 'theme' ? n.themeColor : n.marketColor;
+    n.group = mode === 'theme' ? n.themeId : mode === 'market' ? n.marketId : n.profileId;
+    n.color = mode === 'theme' ? n.themeColor : mode === 'market' ? n.marketColor : n.profileColor;
   });
   nodeSel.attr('fill', d=>d.color);
   document.getElementById('legend-title').textContent =
-    (mode === 'theme' ? '테마' : '시장 · 자산군') + ' (클릭하여 강조/숨김)';
+    mode === 'theme' ? '테마' : mode === 'market' ? '시장 · 자산군' : '종목 성격';
+  document.getElementById('legend-note').textContent = mode === 'profile'
+    ? `최근 3년 기준. 줄을 클릭하면 강조/숨김. 연변동성 중앙값 ${PF_CUT.volMid}% 이하를 '낮음', 상위 25%(${PF_CUT.volHigh}%) 이상을 '높음'으로 봅니다.`
+    : '줄을 클릭하면 강조/숨김';
   document.querySelectorAll('#group-mode button')
     .forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
   renderLegend();
@@ -1314,8 +1426,8 @@ function clearSelHalo(){ selLayer.selectAll('*').remove(); selHalo = null; }
 /* ---- 비교 선택 (최대 3종목) ----
    compareSet[0] 이 기준 종목이다. 한 종목만 있으면 기존 단일 상세 화면,
    둘 이상이면 주가·계절성·매크로·펀더멘털이 모두 비교 형태로 바뀐다. */
-const CMP_MAX = 3;
-const CMP_COLORS = ['#5fd0ff', '#ffb703', '#f072b6'];
+const CMP_MAX = 5;
+const CMP_COLORS = ['#5fd0ff', '#ffb703', '#f072b6', '#7ef0a8', '#b388ff'];
 const MOD_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl';
 let compareSet = [], cmpWarn = '';
 const cmpColor = tk => CMP_COLORS[Math.max(0, compareSet.indexOf(tk))];
@@ -2066,47 +2178,71 @@ function toggleFinChart(rowEl, hostEl, drawFn){
    ===================================================================== */
 let fundCmpMetric = 'revenue';
 
+/* Index of the single most favourable value in a row, or -1.
+   A tie is not highlighted — two equal numbers have no winner — and neither is
+   a row where only one ticker has data, since there was nothing to compare. */
+function bestIndex(vals, dir){
+  if(!dir) return -1;
+  const have = vals.filter(v => v != null && isFinite(v));
+  if(have.length < 2) return -1;
+  const target = dir === 'high' ? Math.max(...have) : Math.min(...have);
+  if(have.filter(v => v === target).length > 1) return -1;
+  return vals.findIndex(v => v === target);
+}
+
 function fundCmpRows(list){
   const F = list.map(t => FUND[t] || {});
   const N = list.map(t => nodeIndex.get(t) || {});
-  const px = list.map(t => (latestClose(t) || {}).px);
-  const num = (v, dp = 1, suf = '') => v == null || !isFinite(v) ? null : v.toFixed(dp) + suf;
-  const signed = v => v == null || !isFinite(v) ? null : (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+  const P = list.map(t => (latestClose(t) || {}).px);
 
-  const val = (get) => list.map((t, k) => get(F[k], N[k], px[k], t, k));
-  const pct = (get) => list.map((t, k) => { const v = get(F[k], N[k], px[k]); return v == null ? null : { txt: signed(v), col: v >= 0 ? 'var(--up)' : 'var(--down)' }; });
+  /* num(): the comparable number, used for both the display and the winner.
+     txt(): a label with no ordering (a fiscal year, a target price in another
+     currency, a date) — shown, never highlighted. */
+  const num = (lab, get, fmt, best, signed) => {
+    const nums = list.map((t, k) => {
+      const v = get(F[k], N[k], P[k], t);
+      return (v == null || !isFinite(v)) ? null : v;
+    });
+    return { lab, best, cells: nums.map(v => v == null ? null
+      : { txt: fmt(v), col: signed ? (v >= 0 ? 'var(--up)' : 'var(--down)') : null }), nums };
+  };
+  const txt = (lab, get) => ({ lab, best: null, nums: list.map(() => null),
+    cells: list.map((t, k) => { const v = get(F[k], N[k], P[k], t); return v == null ? null : { txt: v }; }) });
+
+  const pct  = v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+  const pct0 = v => v.toFixed(0) + '%';
+  const money = v => fmtMoney(v);
 
   return [
     { grp: '시세' },
-    { lab: '최근 종가', cells: val((f, nd, p, t) => p == null ? null : fmtPx(p, nd.currency)) },
-    { lab: '1년 수익률', cells: pct((f, nd) => nd.stats ? nd.stats.ret_1y : null) },
-    { lab: '연변동성', cells: val((f, nd) => nd.stats ? nd.stats.vol + '%' : null) },
+    txt('최근 종가', (f, n, p) => p == null ? null : fmtPx(p, n.currency)),
+    num('1년 수익률', (f, n) => n.stats ? n.stats.ret_1y : null, pct, 'high', true),
+    num('연변동성', (f, n) => n.stats ? n.stats.vol : null, pct0, 'low'),
     { grp: '밸류에이션' },
-    { lab: 'PER (TTM)', cells: val((f, nd, p) => (f.eps_ttm && f.eps_ttm > 0 && p) ? num(p / f.eps_ttm) : null) },
-    { lab: 'EPS (TTM)', cells: val(f => f.eps_ttm == null ? null : String(f.eps_ttm)) },
-    { lab: '목표주가', cells: val(f => f.target ? '$' + f.target : null) },
-    { lab: '상승여력', cells: pct((f, nd, p) => (f.target && p) ? (f.target - p) / p * 100 : null) },
-    { lab: '배당수익률', cells: val(f => (f['yield'] && f['yield'] !== 'N/A') ? f['yield'] : null) },
+    num('PER (TTM)', (f, n, p) => (f.eps_ttm > 0 && p) ? p / f.eps_ttm : null, v => v.toFixed(1), 'low'),
+    txt('EPS (TTM)', f => f.eps_ttm == null ? null : String(f.eps_ttm)),
+    txt('목표주가', f => f.target ? '$' + f.target : null),
+    num('상승여력', (f, n, p) => (f.target && p) ? (f.target - p) / p * 100 : null, pct, 'high', true),
+    num('배당수익률', (f, n, p, t) => yieldOf.get(t), v => v.toFixed(2) + '%', 'high'),
     { grp: '실적 (최근 회계연도)' },
-    { lab: '회계연도', cells: val(f => f.periods && f.periods[0] ? fyLabel(f.periods[0]) : null) },
-    { lab: '매출', cells: val(f => f.revenue ? fmtMoney(f.revenue[0]) : null) },
-    { lab: '매출 YoY', cells: pct(f => yoy(f.revenue)) },
-    { lab: '영업이익', cells: val(f => f.op_income ? fmtMoney(f.op_income[0]) : null) },
-    { lab: '영업이익률', cells: val(f => (f.op_income && f.revenue && f.revenue[0]) ? num(f.op_income[0] / f.revenue[0] * 100, 0, '%') : null) },
-    { lab: '순이익', cells: val(f => f.net_income ? fmtMoney(f.net_income[0]) : null) },
-    { lab: '순이익률', cells: val(f => (f.net_income && f.revenue && f.revenue[0]) ? num(f.net_income[0] / f.revenue[0] * 100, 0, '%') : null) },
-    { lab: '순이익 YoY', cells: pct(f => yoy(f.net_income)) },
+    txt('회계연도', f => f.periods && f.periods[0] ? fyLabel(f.periods[0]) : null),
+    num('매출', f => f.revenue ? f.revenue[0] : null, money, 'high'),
+    num('매출 YoY', f => yoy(f.revenue), pct, 'high', true),
+    num('영업이익', f => f.op_income ? f.op_income[0] : null, money, 'high'),
+    num('영업이익률', f => (f.op_income && f.revenue && f.revenue[0]) ? f.op_income[0] / f.revenue[0] * 100 : null, pct0, 'high'),
+    num('순이익', f => f.net_income ? f.net_income[0] : null, money, 'high'),
+    num('순이익률', f => (f.net_income && f.revenue && f.revenue[0]) ? f.net_income[0] / f.revenue[0] * 100 : null, pct0, 'high'),
+    num('순이익 YoY', f => yoy(f.net_income), pct, 'high', true),
     { grp: '재무구조' },
-    { lab: '현금성자산', cells: val(f => f.cash ? fmtMoney(f.cash[0]) : null) },
-    { lab: '총부채', cells: val(f => f.liabilities ? fmtMoney(f.liabilities[0]) : null) },
-    { lab: '부채/자본', cells: val(f => (f.liabilities && f.equity && f.equity[0]) ? num(f.liabilities[0] / f.equity[0], 2) : null) },
+    num('현금성자산', f => f.cash ? f.cash[0] : null, money, 'high'),
+    num('총부채', f => f.liabilities ? f.liabilities[0] : null, money, 'low'),
+    num('부채/자본', f => (f.liabilities && f.equity && f.equity[0]) ? f.liabilities[0] / f.equity[0] : null, v => v.toFixed(2), 'low'),
     { grp: '어닝' },
-    { lab: '최근 4분기 상회', cells: val(f => {
-        const prev = (f.eps || []).filter(e => e.t === 'P').slice(-4);
-        if(!prev.length) return null;
-        return `${prev.filter(e => e.a != null && e.c != null && e.a > e.c).length}/${prev.length}회`;
-      }) },
-    { lab: '다음 발표', cells: val(f => ((f.fc_qtr || [])[0] || {}).p || null) },
+    num('최근 4분기 상회', f => {
+      const prev = (f.eps || []).filter(e => e.t === 'P').slice(-4);
+      return prev.length ? prev.filter(e => e.a != null && e.c != null && e.a > e.c).length : null;
+    }, v => v.toFixed(0) + '회', 'high'),
+    txt('다음 발표', f => ((f.fc_qtr || [])[0] || {}).p || null),
   ];
 }
 
@@ -2117,14 +2253,17 @@ function renderFundCompare(list){
     `<th style="color:${CMP_COLORS[k]}">${t}</th>`).join('')}</tr>`;
   const body = fundCmpRows(list).map(r => {
     if(r.grp) return `<tr class="grp"><td colspan="${list.length + 1}">${r.grp}</td></tr>`;
-    const tds = r.cells.map(c => {
+    const win = bestIndex(r.nums, r.best);
+    const tds = r.cells.map((c, k) => {
       if(c == null) return '<td class="na">—</td>';
-      if(typeof c === 'object') return `<td style="color:${c.col}">${c.txt}</td>`;
-      return `<td>${c}</td>`;
+      const cls = k === win ? ' class="best"' : '';
+      return `<td${cls}${c.col ? ` style="color:${c.col}"` : ''}>${c.txt}</td>`;
     }).join('');
     return `<tr><td>${r.lab}</td>${tds}</tr>`;
   }).join('');
   document.getElementById('fundcmp-table').innerHTML = `<thead>${head}</thead><tbody>${body}</tbody>`;
+  document.getElementById('fundcmp-note').textContent =
+    '굵게 강조된 값이 그 줄에서 가장 유리한 값입니다. 매출·이익 같은 규모 지표는 큰 쪽, PER·부채·변동성은 낮은 쪽을 유리하게 봤습니다. 값이 같거나 비교 대상이 하나뿐이면 강조하지 않습니다.';
 
   document.querySelectorAll('#fundcmp-metric button').forEach(b => {
     b.classList.toggle('on', b.dataset.k === fundCmpMetric);
@@ -2369,6 +2508,7 @@ function openDrawer(d, peers, keepScroll){
   document.getElementById('chart-scale').textContent = multi ? '시작일 = 100' : '';
   drawPriceChart(compareSet);
   drawSeasonality(compareSet);
+  renderProfile(compareSet);
   renderMacro(compareSet);
   renderFundamentals(compareSet);
   renderFavorites();
@@ -2441,6 +2581,87 @@ function renderMacroCompare(list){
       `<div class="cmp-scroll"><table class="cmp-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>` +
       `<div class="cap">지표 발표는 전월치를 담으므로 한 달 뒤 수익률과 맞췄습니다. 표본이 수십 개월뿐이라 회색 값은 우연 범위입니다.</div>`;
   } else mhost.innerHTML = '';
+}
+
+/* Character panel: the four numbers behind the 성격 grouping, plus every tag
+   the asset qualifies for (the grouping picks one; reality often has two). */
+function renderProfile(tks){
+  const block = document.getElementById('profile-block');
+  const list = Array.isArray(tks) ? tks : [tks];
+  if(list.length > 1){ renderProfileCompare(list); return; }
+  const tk = list[0], p = PF[tk];
+  if(!p){ block.style.display = 'none'; return; }
+  block.style.display = '';
+  const y = yieldOf.get(tk);
+  const cls = PROFILE_DEFS.find(d => d.id === profileIdOf(tk));
+
+  const tags = [];
+  if(p.r2 != null && p.r2 >= 0.75 && p.cagr >= 10) tags.push(PROFILE_DEFS[0]);
+  if(p.dcap != null && p.dcap <= 0.5 && p.vol <= PF_CUT.volMid && p.mdd > -35) tags.push(PROFILE_DEFS[1]);
+  if((p.vol != null && p.vol >= PF_CUT.volHigh) || p.mdd <= -50) tags.push(PROFILE_DEFS[2]);
+  document.getElementById('profile-tags').innerHTML = (tags.length ? tags : [cls])
+    .map(t => `<span class="pf-tag" style="color:${t.color};border-color:${t.color}">${t.label}</span>`).join('');
+
+  const cell = (l, v, sub, col) => `<div class="pf-cell"><div class="l">${l}</div>
+      <div class="v"${col ? ` style="color:${col}"` : ''}>${v}</div>
+      <div class="s">${sub}</div></div>`;
+  const sgn = v => (v >= 0 ? '+' : '') + v;
+  const trendWord = p.r2 == null ? '—' : p.r2 >= 0.85 ? '매우 일관' : p.r2 >= 0.75 ? '일관' : p.r2 >= 0.5 ? '들쭉날쭉' : '방향성 약함';
+  const dcapWord = p.dcap == null ? '표본 부족'
+    : p.dcap <= 0 ? '하락장에 오히려 상승' : p.dcap <= 0.5 ? '시장보다 훨씬 덜 하락'
+    : p.dcap <= 0.9 ? '시장보다 덜 하락' : p.dcap <= 1.1 ? '시장과 비슷' : '시장보다 더 하락';
+
+  document.getElementById('profile-grid').innerHTML =
+    cell('연평균 성장률', p.cagr == null ? '—' : sgn(p.cagr) + '%',
+         `${p.years}년 기준`, p.cagr >= 0 ? 'var(--up)' : 'var(--down)') +
+    cell('추세 일관성 R²', p.r2 == null ? '—' : p.r2.toFixed(2), trendWord) +
+    cell('연변동성', p.vol == null ? '—' : p.vol + '%',
+         p.vol == null ? '' : (p.vol >= PF_CUT.volHigh ? '상위 25% (높음)' : p.vol <= PF_CUT.volMid ? '중앙값 이하 (낮음)' : '보통')) +
+    cell('최대 낙폭', p.mdd + '%', '3년 내 고점 대비', 'var(--down)') +
+    cell('하락장 방어력', p.dcap == null ? '—' : p.dcap.toFixed(2), dcapWord,
+         p.dcap == null ? null : p.dcap <= 0.9 ? 'var(--up)' : p.dcap >= 1.1 ? 'var(--down)' : null) +
+    cell('배당수익률', y == null ? '—' : y + '%', y == null ? '데이터 없음' : y >= 2 ? '인컴 기여 있음' : '낮음');
+
+  document.getElementById('profile-cap').textContent =
+    'R²는 로그 주가를 시간에 회귀한 결정계수 — 많이 올랐어도 경로가 거칠면 낮게 나옵니다. ' +
+    `하락장 방어력은 SPY가 하락한 주(${p.dweeks || 0}주)만 모아 누적 수익률을 비교한 값으로, 1보다 작을수록 덜 빠졌다는 뜻입니다.`;
+}
+
+function renderProfileCompare(list){
+  const block = document.getElementById('profile-block');
+  if(!list.some(t => PF[t])){ block.style.display = 'none'; return; }
+  block.style.display = '';
+  document.getElementById('profile-tags').innerHTML = '';
+  const head = `<tr><th>지표</th>${list.map((t, k) =>
+    `<th style="color:${CMP_COLORS[k]}">${t}</th>`).join('')}</tr>`;
+  const rows = [
+    ['성격', t => { const d = PROFILE_DEFS.find(x => x.id === profileIdOf(t));
+                    return PF[t] ? `<span style="color:${d.color}">${d.label}</span>` : null; }, null],
+    ['연평균 성장률', t => PF[t]?.cagr != null ? (PF[t].cagr >= 0 ? '+' : '') + PF[t].cagr + '%' : null, 'high'],
+    ['추세 일관성 R²', t => PF[t]?.r2 != null ? PF[t].r2.toFixed(2) : null, 'high'],
+    ['연변동성', t => PF[t]?.vol != null ? PF[t].vol + '%' : null, 'low'],
+    ['최대 낙폭', t => PF[t]?.mdd != null ? PF[t].mdd + '%' : null, 'high'],
+    ['하락장 방어력', t => PF[t]?.dcap != null ? PF[t].dcap.toFixed(2) : null, 'low'],
+    ['배당수익률', t => yieldOf.get(t) != null ? yieldOf.get(t) + '%' : null, 'high'],
+  ];
+  const nums = {
+    '연평균 성장률': t => PF[t]?.cagr, '추세 일관성 R²': t => PF[t]?.r2,
+    '연변동성': t => PF[t]?.vol, '최대 낙폭': t => PF[t]?.mdd,
+    '하락장 방어력': t => PF[t]?.dcap, '배당수익률': t => yieldOf.get(t),
+  };
+  const body = rows.map(([lab, get, best]) => {
+    const vals = list.map(t => nums[lab] ? nums[lab](t) : null);
+    const win = bestIndex(vals, best);
+    return `<tr><td>${lab}</td>` + list.map((t, k) => {
+      const v = get(t);
+      if(v == null) return '<td class="na">—</td>';
+      return `<td${k === win ? ' class="best"' : ''}>${v}</td>`;
+    }).join('') + '</tr>';
+  }).join('');
+  document.getElementById('profile-grid').innerHTML =
+    `<div class="cmp-scroll" style="grid-column:1/-1"><table class="cmp-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+  document.getElementById('profile-cap').textContent =
+    '굵게 표시된 값이 그 줄에서 가장 유리한 값입니다. 최대 낙폭은 0에 가까울수록, 하락장 방어력과 변동성은 낮을수록 유리한 것으로 봤습니다.';
 }
 
 function renderMacro(tk){
@@ -3117,7 +3338,11 @@ document.getElementById('mode-reset').addEventListener('click', clearAll);
 const FAV_KEY = 'money-connection.favorites';
 const FAV_KEY_LEGACY = 'nasdaq100-graph.favorites';   // pre-rename key
 const FAV_PATH = 'watchlist/main';
+const SEC_KEY = 'money-connection.favSections';
+const DEFAULT_SEC = 'default';
 let favorites = new Set();
+let favSections = [{ id: DEFAULT_SEC, name: '기본' }];
+let favAssign = {};                       // ticker -> section id
 let favDoc = null, favApplying = false;
 
 function loadLocalFavorites(){
@@ -3129,11 +3354,40 @@ function loadLocalFavorites(){
     }
     if(raw) favorites = new Set(JSON.parse(raw).filter(t => nodeIndex.has(t)));
   } catch(e){ /* private mode / blocked storage: stay in memory */ }
+  try {
+    const sraw = localStorage.getItem(SEC_KEY);
+    if(sraw) applyFavGroups(JSON.parse(sraw));
+  } catch(e){}
 }
+
+/* Sections travel as one object so local storage and the cloud doc agree.
+   The default section is always present and never stored as an assignment. */
+function applyFavGroups(g){
+  if(!g) return;
+  if(Array.isArray(g.sections)){
+    const custom = g.sections.filter(s => s && s.id && s.id !== DEFAULT_SEC && s.name);
+    favSections = [{ id: DEFAULT_SEC, name: '기본' },
+                   ...custom.map(s => ({ id: s.id, name: String(s.name).slice(0, 24) }))];
+  }
+  if(g.assign && typeof g.assign === 'object'){
+    const ids = new Set(favSections.map(s => s.id));
+    favAssign = {};
+    for(const [tk, sid] of Object.entries(g.assign)){
+      if(ids.has(sid) && sid !== DEFAULT_SEC) favAssign[tk] = sid;
+    }
+  }
+}
+const favGroupPayload = () => ({
+  sections: favSections.filter(s => s.id !== DEFAULT_SEC),
+  assign: favAssign,
+});
 function saveFavorites(){
-  try { localStorage.setItem(FAV_KEY, JSON.stringify([...favorites])); } catch(e){}
+  try {
+    localStorage.setItem(FAV_KEY, JSON.stringify([...favorites]));
+    localStorage.setItem(SEC_KEY, JSON.stringify(favGroupPayload()));
+  } catch(e){}
   if(favDoc && !favApplying){
-    favDoc.set({ tickers: [...favorites], updatedAt: new Date().toISOString() })
+    favDoc.set({ tickers: [...favorites], ...favGroupPayload(), updatedAt: new Date().toISOString() })
       .catch(()=>{ setSyncNote('저장소에 쓸 수 없어 이 브라우저에만 저장됩니다.'); });
   }
 }
@@ -3142,7 +3396,8 @@ function setSyncNote(text){ document.getElementById('fav-sync').textContent = te
 function isFav(tk){ return favorites.has(tk); }
 function toggleFav(tk){
   if(!tk) return;
-  favorites.has(tk) ? favorites.delete(tk) : favorites.add(tk);
+  if(favorites.has(tk)){ favorites.delete(tk); delete favAssign[tk]; }
+  else favorites.add(tk);
   saveFavorites();
   renderFavorites();
 }
@@ -3163,7 +3418,11 @@ async function initFavSync(){
       if(!Array.isArray(t)) return;
       favApplying = true;                      // remote echo must not write back
       favorites = new Set(t.filter(x => nodeIndex.has(x)));
-      try { localStorage.setItem(FAV_KEY, JSON.stringify([...favorites])); } catch(e){}
+      applyFavGroups(snap.data());
+      try {
+        localStorage.setItem(FAV_KEY, JSON.stringify([...favorites]));
+        localStorage.setItem(SEC_KEY, JSON.stringify(favGroupPayload()));
+      } catch(e){}
       favApplying = false;
       renderFavorites();
     }, ()=> setSyncNote('동기화가 끊겨 이 브라우저에만 저장됩니다.'));
@@ -3190,22 +3449,56 @@ function renderFavorites(){
   const list = document.getElementById('fav-list');
   const items = [...favorites].map(tk => nodeIndex.get(tk)).filter(Boolean)
     .sort((a,b) => (b.stats.ret_1y ?? 0) - (a.stats.ret_1y ?? 0));
-  list.innerHTML = items.length ? items.map(n => {
-    const r = n.stats.ret_1y ?? 0;
-    return `<div class="fav-row" data-tk="${n.id}">
-      <span class="dot" style="width:7px;height:7px;background:${n.color};box-shadow:none"></span>
-      <span class="tk3">${n.id}</span>
-      <span class="ret" style="color:${r>=0?'var(--up)':'var(--down)'}">${r>=0?'+':''}${r}%</span>
-      <button class="drop" data-drop="${n.id}" title="즐겨찾기 해제">★</button>
-    </div>`;
-  }).join('') : '<div class="fav-empty">종목을 클릭한 뒤 상세 패널의 ☆ 를 누르면 여기에 모입니다.</div>';
+
+  if(!items.length){
+    list.innerHTML = '<div class="fav-empty">종목을 클릭한 뒤 상세 패널의 ☆ 를 누르면 여기에 모입니다.</div>';
+  } else {
+    // group by section, keeping the return sort inside each
+    const bySec = new Map(favSections.map(sec => [sec.id, []]));
+    items.forEach(n => {
+      const sid = favAssign[n.id] && bySec.has(favAssign[n.id]) ? favAssign[n.id] : DEFAULT_SEC;
+      bySec.get(sid).push(n);
+    });
+    const opts = tk => favSections.map(sec =>
+        `<option value="${sec.id}"${(favAssign[tk] || DEFAULT_SEC) === sec.id ? ' selected' : ''}>${esc(sec.name)}</option>`
+      ).join('') + '<option value="__new__">＋ 새 섹션…</option>';
+
+    list.innerHTML = favSections.map(sec => {
+      const rows = bySec.get(sec.id) || [];
+      // an empty custom section still shows, so it can be renamed or removed
+      if(!rows.length && sec.id === DEFAULT_SEC) return '';
+      return `<div class="fav-sec" data-sec="${sec.id}">
+          <span class="nm">${esc(sec.name)}</span><span class="cnt">${rows.length}</span>
+          ${sec.id === DEFAULT_SEC ? '' :
+            `<button class="sec-btn" data-ren="${sec.id}" title="이름 변경">✎</button>
+             <button class="sec-btn" data-del="${sec.id}" title="섹션 삭제">✕</button>`}
+        </div>` + (rows.length ? rows.map(favRowHTML(opts)).join('')
+                               : '<div class="fav-empty" style="padding:3px 4px">비어 있음 — 아래 종목의 ⌄ 로 옮기세요.</div>');
+    }).join('');
+  }
 
   list.querySelectorAll('.fav-row').forEach(row=>{
-    row.addEventListener('click', ()=>{ const n = nodeIndex.get(row.dataset.tk); if(n) focusNode(n); });
+    row.addEventListener('click', ev => {
+      if(ev.target.closest('.drop, .fav-move')) return;
+      const n = nodeIndex.get(row.dataset.tk); if(n) focusNode(n);
+    });
   });
   list.querySelectorAll('.drop').forEach(btn=>{
     btn.addEventListener('click', ev=>{ ev.stopPropagation(); toggleFav(btn.dataset.drop); });
   });
+  list.querySelectorAll('.fav-move').forEach(sel=>{
+    sel.addEventListener('click', ev => ev.stopPropagation());
+    sel.addEventListener('change', ev => {
+      ev.stopPropagation();
+      moveFavTo(sel.dataset.tk, sel.value);
+    });
+  });
+  list.querySelectorAll('[data-ren]').forEach(b => b.addEventListener('click', ev => {
+    ev.stopPropagation(); renameFavSection(b.dataset.ren);
+  }));
+  list.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', ev => {
+    ev.stopPropagation(); deleteFavSection(b.dataset.del);
+  }));
 
   // stars in the two detail panels
   const dStar = document.getElementById('fav-toggle');
@@ -3220,6 +3513,69 @@ function renderFavorites(){
   renderFavRings();
   if(favOnly) resetOpacities();
 }
+
+const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const favRowHTML = opts => n => {
+  const r = n.stats.ret_1y ?? 0;
+  return `<div class="fav-row" data-tk="${n.id}">
+      <span class="dot" style="width:7px;height:7px;background:${n.color};box-shadow:none"></span>
+      <span class="tk3" title="${esc(n.name)}">${n.assetClass === 'kr_stock' ? esc(n.name) : n.id}</span>
+      <span class="ret" style="color:${r>=0?'var(--up)':'var(--down)'}">${r>=0?'+':''}${r}%</span>
+      <span class="fav-move-wrap" title="섹션 이동">⌄<select class="fav-move" data-tk="${n.id}">${opts(n.id)}</select></span>
+      <button class="drop" data-drop="${n.id}" title="즐겨찾기 해제">★</button>
+    </div>`;
+};
+
+/* ---------- sections ---------- */
+function newSectionId(){ return 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+
+function addFavSection(name){
+  const nm = (name || '').trim();
+  if(!nm) return null;
+  if(favSections.some(s => s.name === nm)){
+    return favSections.find(s => s.name === nm).id;      // reuse rather than duplicate
+  }
+  const id = newSectionId();
+  favSections.push({ id, name: nm.slice(0, 24) });
+  saveFavorites();
+  renderFavorites();
+  return id;
+}
+function moveFavTo(tk, sid){
+  if(sid === '__new__'){
+    const name = prompt('새 섹션 이름');
+    const id = addFavSection(name);
+    if(!id){ renderFavorites(); return; }               // cancelled: put the select back
+    sid = id;
+  }
+  if(sid === DEFAULT_SEC) delete favAssign[tk];
+  else favAssign[tk] = sid;
+  saveFavorites();
+  renderFavorites();
+}
+function renameFavSection(sid){
+  const sec = favSections.find(s => s.id === sid);
+  if(!sec) return;
+  const nm = prompt('섹션 이름', sec.name);
+  if(nm == null || !nm.trim()) return;
+  sec.name = nm.trim().slice(0, 24);
+  saveFavorites();
+  renderFavorites();
+}
+function deleteFavSection(sid){
+  const sec = favSections.find(s => s.id === sid);
+  if(!sec) return;
+  const n = Object.values(favAssign).filter(v => v === sid).length;
+  if(n && !confirm(`'${sec.name}' 섹션을 지우면 ${n}개 종목이 기본으로 돌아갑니다. 계속할까요?`)) return;
+  favSections = favSections.filter(s => s.id !== sid);
+  Object.keys(favAssign).forEach(tk => { if(favAssign[tk] === sid) delete favAssign[tk]; });
+  saveFavorites();
+  renderFavorites();
+}
+document.getElementById('fav-add-sec').addEventListener('click', () => {
+  const name = prompt('새 섹션 이름 (예: 장기보유, 관심, 매도검토)');
+  addFavSection(name);
+});
 
 /* gold ring around favourited nodes in the network */
 function renderFavRings(){
@@ -3572,6 +3928,66 @@ function renderCycle(){
 window.addEventListener('resize', ()=>{ if(document.body.classList.contains('view-cycle')) renderCycle(); });
 
 renderLeaders();
+/* =====================================================================
+   DRAWER WIDTH — the detail panel can take over half the window when the
+   comparison table or the fundamentals section needs the room.
+   ===================================================================== */
+const WIDE_KEY = 'money-connection.drawerWide';
+function setDrawerWide(on, persist){
+  drawer.classList.toggle('wide', on);
+  const b = document.getElementById('drawer-wide');
+  b.classList.toggle('on', on);
+  b.title = on ? '좁게 보기' : '넓게 보기';
+  b.textContent = on ? '⤡' : '⤢';
+  if(persist){ try { localStorage.setItem(WIDE_KEY, on ? '1' : '0'); } catch(e){} }
+  // charts measure their host on draw; re-run them at the new width
+  if(drawer.classList.contains('show') && compareSet.length){
+    const n = nodeIndex.get(compareSet[0]);
+    if(n) focusNode(n, true);
+  }
+}
+document.getElementById('drawer-wide').addEventListener('click', ev => {
+  ev.stopPropagation();
+  setDrawerWide(!drawer.classList.contains('wide'), true);
+});
+try { if(localStorage.getItem(WIDE_KEY) === '1') setDrawerWide(true, false); } catch(e){}
+
+/* =====================================================================
+   COLLAPSIBLE LEFT PANELS
+   ===================================================================== */
+const PANEL_KEY = 'money-connection.collapsed';
+let collapsedPanels = new Set();
+try { collapsedPanels = new Set(JSON.parse(localStorage.getItem(PANEL_KEY) || '[]')); } catch(e){}
+document.querySelectorAll('.left-stack > .panel[data-panel]').forEach(panel => {
+  const head = panel.querySelector('.legend-head, .fav-head');
+  if(!head) return;
+  const key = panel.dataset.panel;
+  const btn = document.createElement('button');
+  btn.className = 'collapse-btn';
+  btn.type = 'button';
+  btn.textContent = '▾';
+  btn.setAttribute('aria-expanded', 'true');
+  head.appendChild(btn);
+  const apply = on => {
+    panel.classList.toggle('collapsed', on);
+    btn.setAttribute('aria-expanded', String(!on));
+    btn.title = on ? '펼치기' : '접기';
+  };
+  apply(collapsedPanels.has(key));
+  btn.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const on = !panel.classList.contains('collapsed');
+    apply(on);
+    on ? collapsedPanels.add(key) : collapsedPanels.delete(key);
+    try { localStorage.setItem(PANEL_KEY, JSON.stringify([...collapsedPanels])); } catch(e){}
+  });
+  // clicking the heading text toggles too — the chevron is a small target
+  head.querySelectorAll('h3').forEach(h => {
+    h.style.cursor = 'pointer';
+    h.addEventListener('click', () => btn.click());
+  });
+});
+
 initFavSync();   // last: every section's state exists by now
 
 </script>
