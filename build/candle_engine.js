@@ -42,7 +42,7 @@ function copySelected(){
 document.getElementById('sel-copy').addEventListener('click', ev=>{ ev.stopPropagation(); copySelected(); });
 document.getElementById('sel-del').addEventListener('click', ev=>{ ev.stopPropagation(); deleteSelected(); });
 document.addEventListener('keydown', ev=>{
-  if(modal.hidden) return;
+  if(!document.body.classList.contains('view-trade')) return;
   if((ev.key === 'Delete' || ev.key === 'Backspace') && cSel){ ev.preventDefault(); deleteSelected(); }
   if((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'd' && cSel){ ev.preventDefault(); copySelected(); }
 });
@@ -105,10 +105,10 @@ function onDragMove(ev){
 
 /* ---- render ---- */
 function drawCandle(){
-  if(!cTk || modal.hidden) return;
-  const host = document.querySelector('.modal-body');
+  if(!cTk) return;
+  const host = document.getElementById('tv-chart');
   const W = host.clientWidth, H = host.clientHeight;
-  if(W < 40 || H < 40) return;
+  if(W < 40 || H < 40) return;      // 다른 탭에 있으면 0px 이다
   bigSvg.attr('viewBox', `0 0 ${W} ${H}`);
   bigSvg.selectAll('*').remove();
 
@@ -119,7 +119,11 @@ function drawCandle(){
   if(!vis.length) return;
 
   const plotW = W - CM.l - CM.r;
-  const plotH = H - CM.t - CM.b, volH = plotH*CM.volH, priceH = plotH - volH - CM.gap;
+  const plotH = H - CM.t - CM.b;
+  const subOn = IND.sub !== 'none';
+  const volH = plotH * CM.volH;
+  const subH = subOn ? plotH * 0.20 : 0;
+  const priceH = plotH - volH - subH - CM.gap * (subOn ? 2 : 1);
   let lo, hi;
   if(yManual){ lo = yManual.lo; hi = yManual.hi; }
   else {
@@ -135,8 +139,10 @@ function drawCandle(){
   geom = { x, y, invX, invY, i0, i1, W, H, plotW, priceH, lo, hi, step,
            py0: CM.t + priceH/2, rect: bigSvg.node().getBoundingClientRect() };
 
+  const volTop = CM.t + priceH + CM.gap;
+  const subTop = volTop + volH + CM.gap;
   const maxVol = Math.max(1, ...vis.map(v=>v.d[4]));
-  const vy = v => CM.t + priceH + CM.gap + volH - (v/maxVol)*volH;
+  const vy = v => volTop + volH - (v/maxVol)*volH;
   const bw = Math.max(1, Math.min(14, step*0.7));
   const UP = '#3ddc84', DOWN = '#ff5c72';
 
@@ -185,9 +191,11 @@ function drawCandle(){
     });
   }
 
+  drawIndicators({ rows, vis, i0, i1, x, y, bigSvg, W, plotW, volTop, volH, subTop, subH, maxVol, bw });
+
   /* crosshair */
   const cross = bigSvg.append('g').style('display','none').style('pointer-events','none');
-  const chX = cross.append('line').attr('y1',CM.t).attr('y2',CM.t+priceH+CM.gap+volH)
+  const chX = cross.append('line').attr('y1',CM.t).attr('y2',subTop + subH)
     .attr('stroke','rgba(255,255,255,0.3)').attr('stroke-dasharray','3,3');
   const chY = cross.append('line').attr('x1',CM.l).attr('x2',W-CM.r)
     .attr('stroke','rgba(255,255,255,0.3)').attr('stroke-dasharray','3,3');
@@ -352,4 +360,182 @@ function drawUserLines(x, y, W){
   });
 }
 
-window.addEventListener('resize', ()=>{ if(!modal.hidden) drawCandle(); });
+// resize is handled by the trading view, which knows when the pane is visible
+
+/* =====================================================================
+   INDICATORS
+
+   Every series is computed over the FULL history and then sliced to the
+   visible window, not computed on the visible slice — a 120-day moving
+   average that restarts when you zoom in is not a 120-day moving average.
+   ===================================================================== */
+const IND_KEY = 'money-connection.indicators';
+const MA_DEFS = [
+  { n: 5,   c: '#5fd0ff' }, { n: 20,  c: '#ffb703' },
+  { n: 60,  c: '#f072b6' }, { n: 120, c: '#7ef0a8' },
+];
+let IND = { ma: [20], bb: false, vma: false, sub: 'none' };
+try { IND = { ...IND, ...JSON.parse(localStorage.getItem(IND_KEY) || '{}') }; } catch(e){}
+const saveInd = () => { try { localStorage.setItem(IND_KEY, JSON.stringify(IND)); } catch(e){} };
+
+function smaSeries(vals, n){
+  const out = new Array(vals.length).fill(null);
+  let sum = 0, count = 0;
+  for(let i = 0; i < vals.length; i++){
+    const v = vals[i];
+    if(v == null){ sum = 0; count = 0; continue; }   // 결측이 나오면 창을 다시 채운다
+    sum += v; count++;
+    if(count > n) sum -= vals[i - n], count = n;
+    if(count === n) out[i] = sum / n;
+  }
+  return out;
+}
+function stdevSeries(vals, n, mean){
+  const out = new Array(vals.length).fill(null);
+  for(let i = n - 1; i < vals.length; i++){
+    if(mean[i] == null) continue;
+    let s = 0, ok = true;
+    for(let k = 0; k < n; k++){
+      const v = vals[i - k];
+      if(v == null){ ok = false; break; }
+      s += (v - mean[i]) ** 2;
+    }
+    if(ok) out[i] = Math.sqrt(s / n);
+  }
+  return out;
+}
+function emaSeries(vals, n){
+  const out = new Array(vals.length).fill(null);
+  const k = 2 / (n + 1);
+  let prev = null;
+  for(let i = 0; i < vals.length; i++){
+    const v = vals[i];
+    if(v == null) continue;
+    prev = prev == null ? v : v * k + prev * (1 - k);
+    out[i] = prev;
+  }
+  return out;
+}
+function rsiSeries(vals, n){
+  const out = new Array(vals.length).fill(null);
+  let ag = null, al = null, prev = null;
+  let gains = [], losses = [];
+  for(let i = 0; i < vals.length; i++){
+    const v = vals[i];
+    if(v == null) continue;
+    if(prev != null){
+      const ch = v - prev;
+      const g = Math.max(0, ch), l = Math.max(0, -ch);
+      if(ag == null){
+        gains.push(g); losses.push(l);
+        if(gains.length === n){
+          ag = gains.reduce((a, b) => a + b, 0) / n;
+          al = losses.reduce((a, b) => a + b, 0) / n;
+        }
+      } else {                                        // Wilder smoothing
+        ag = (ag * (n - 1) + g) / n;
+        al = (al * (n - 1) + l) / n;
+      }
+      if(ag != null) out[i] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
+    }
+    prev = v;
+  }
+  return out;
+}
+
+/* cache per ticker: the whole-history maths only changes when the symbol does */
+let _indCache = { tk: null };
+function indicatorsFor(tk){
+  if(_indCache.tk === tk) return _indCache;
+  const rows = ohlcOf(tk);
+  const close = rows.map(r => r ? r[3] : null);
+  const vol = rows.map(r => r ? r[4] : null);
+  const ma = {};
+  MA_DEFS.forEach(d => { ma[d.n] = smaSeries(close, d.n); });
+  const bbMid = ma[20] || smaSeries(close, 20);
+  const sd = stdevSeries(close, 20, bbMid);
+  const e12 = emaSeries(close, 12), e26 = emaSeries(close, 26);
+  const macd = close.map((_, i) => (e12[i] == null || e26[i] == null) ? null : e12[i] - e26[i]);
+  const signal = emaSeries(macd, 9);
+  _indCache = { tk, close, ma,
+    bbUp: bbMid.map((m, i) => (m == null || sd[i] == null) ? null : m + 2 * sd[i]),
+    bbLo: bbMid.map((m, i) => (m == null || sd[i] == null) ? null : m - 2 * sd[i]),
+    bbMid, vma: smaSeries(vol, 20), rsi: rsiSeries(close, 14), macd, signal,
+    hist: macd.map((m, i) => (m == null || signal[i] == null) ? null : m - signal[i]) };
+  return _indCache;
+}
+
+function drawIndicators(g){
+  const { vis, i0, i1, x, y, bigSvg, W, volTop, volH, subTop, subH, maxVol, bw } = g;
+  const I = indicatorsFor(cTk);
+  const line = ser => d3.line().defined(d => ser[d.i] != null).x(d => x(d.i)).y(d => y(ser[d.i]));
+  const put = (ser, col, w, dash) => {
+    if(!ser) return;
+    bigSvg.append('path').datum(vis).attr('d', line(ser)).attr('fill', 'none')
+      .attr('stroke', col).attr('stroke-width', w).attr('opacity', 0.85)
+      .attr('pointer-events', 'none')
+      .attr('stroke-dasharray', dash || null);
+  };
+
+  if(IND.bb){
+    put(I.bbUp, '#8a8f98', 1, '3,3');
+    put(I.bbLo, '#8a8f98', 1, '3,3');
+    put(I.bbMid, '#8a8f98', 1);
+  }
+  MA_DEFS.filter(d => IND.ma.includes(d.n)).forEach(d => put(I.ma[d.n], d.c, 1.3));
+
+  if(IND.vma && I.vma){
+    const vy = v => volTop + volH - (v / maxVol) * volH;
+    bigSvg.append('path').datum(vis)
+      .attr('d', d3.line().defined(d => I.vma[d.i] != null).x(d => x(d.i)).y(d => vy(I.vma[d.i])))
+      .attr('fill', 'none').attr('stroke', '#ffb703').attr('stroke-width', 1).attr('opacity', 0.8)
+      .attr('pointer-events', 'none');
+  }
+
+  if(IND.sub === 'none' || !subH) return;
+  bigSvg.append('line').attr('x1', CM.l).attr('x2', W - CM.r).attr('y1', subTop).attr('y2', subTop)
+    .attr('stroke', 'rgba(255,255,255,0.08)');
+
+  if(IND.sub === 'rsi'){
+    const sy = v => subTop + subH - (Math.max(0, Math.min(100, v)) / 100) * subH;
+    [30, 50, 70].forEach(t => {
+      bigSvg.append('line').attr('x1', CM.l).attr('x2', W - CM.r).attr('y1', sy(t)).attr('y2', sy(t))
+        .attr('stroke', t === 50 ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.13)')
+        .attr('stroke-dasharray', t === 50 ? null : '3,3');
+      bigSvg.append('text').attr('x', W - CM.r + 7).attr('y', sy(t) + 3.5).attr('font-size', 9)
+        .attr('fill', '#6b7380').attr('font-family', "'JetBrains Mono',monospace").text(t);
+    });
+    bigSvg.append('path').datum(vis)
+      .attr('d', d3.line().defined(d => I.rsi[d.i] != null).x(d => x(d.i)).y(d => sy(I.rsi[d.i])))
+      .attr('fill', 'none').attr('stroke', '#c77dff').attr('stroke-width', 1.4).attr('pointer-events', 'none');
+    const last = [...vis].reverse().find(v => I.rsi[v.i] != null);
+    if(last) bigSvg.append('text').attr('x', CM.l + 4).attr('y', subTop + 12).attr('font-size', 10)
+      .attr('fill', '#c77dff').attr('font-family', "'JetBrains Mono',monospace")
+      .text(`RSI(14) ${I.rsi[last.i].toFixed(1)}`);
+  } else if(IND.sub === 'macd'){
+    const vals = vis.flatMap(v => [I.macd[v.i], I.signal[v.i], I.hist[v.i]]).filter(v => v != null);
+    if(!vals.length) return;
+    const m = Math.max(...vals.map(Math.abs)) || 1;
+    const sy = v => subTop + subH / 2 - (v / m) * (subH / 2 - 3);
+    bigSvg.append('line').attr('x1', CM.l).attr('x2', W - CM.r).attr('y1', sy(0)).attr('y2', sy(0))
+      .attr('stroke', 'rgba(255,255,255,0.12)');
+    vis.forEach(v => {
+      const h = I.hist[v.i];
+      if(h == null) return;
+      const top = Math.min(sy(0), sy(h));
+      bigSvg.append('rect').attr('x', x(v.i) - bw / 2).attr('width', bw)
+        .attr('y', top).attr('height', Math.max(0.5, Math.abs(sy(h) - sy(0))))
+        .attr('fill', h >= 0 ? '#3ddc84' : '#ff5c72').attr('opacity', 0.45)
+        .attr('pointer-events', 'none');
+    });
+    bigSvg.append('path').datum(vis)
+      .attr('d', d3.line().defined(d => I.macd[d.i] != null).x(d => x(d.i)).y(d => sy(I.macd[d.i])))
+      .attr('fill', 'none').attr('stroke', '#5fd0ff').attr('stroke-width', 1.4).attr('pointer-events', 'none');
+    bigSvg.append('path').datum(vis)
+      .attr('d', d3.line().defined(d => I.signal[d.i] != null).x(d => x(d.i)).y(d => sy(I.signal[d.i])))
+      .attr('fill', 'none').attr('stroke', '#ffb703').attr('stroke-width', 1.2).attr('pointer-events', 'none');
+    bigSvg.append('text').attr('x', CM.l + 4).attr('y', subTop + 12).attr('font-size', 10)
+      .attr('fill', '#6b7380').attr('font-family', "'JetBrains Mono',monospace")
+      .text('MACD(12,26,9)');
+  }
+}

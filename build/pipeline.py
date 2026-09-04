@@ -654,6 +654,7 @@ def build_returns(dates, closes):
 
 
 PERIODS = [
+    {"key": "1m", "label": "1개월", "days": 31},
     {"key": "3m", "label": "3개월", "days": 92},
     {"key": "6m", "label": "6개월", "days": 183},
     {"key": "1y", "label": "1년",   "days": 365},
