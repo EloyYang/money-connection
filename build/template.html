@@ -406,6 +406,18 @@
   .btn.tk-go.buy{ border-color:var(--up); color:var(--up); }
   .btn.tk-go.sell{ border-color:var(--down); color:var(--down); }
   .btn.tk-go[disabled]{ opacity:0.45; cursor:not-allowed; }
+  .mini-ticket{ display:flex; gap:8px; align-items:flex-end; }
+  .mini-btns{ display:flex; gap:6px; flex:1 1 auto; }
+  .mini-btns .btn{ flex:1 1 0; justify-content:center; font-weight:600; padding:7px 0; }
+  .mini-buy{ border-color:var(--up); color:var(--up); }
+  .mini-sell{ border-color:var(--down); color:var(--down); }
+  .mini-btns .btn[disabled]{ opacity:0.4; cursor:not-allowed; }
+  /* the stock detail as an overlay, for the trading tab */
+  .drawer.overlay{ position:fixed; right:auto; left:50%; top:50%; transform:translate(-50%,-50%);
+    z-index:71; max-height:calc(100vh - 60px); box-shadow:0 30px 80px rgba(0,0,0,0.65); }
+  body.view-trade .drawer.overlay, body.view-folio .drawer.overlay{ display:block !important; }
+  #detail-backdrop{ position:fixed; inset:0; z-index:70; background:rgba(6,8,11,0.72); backdrop-filter:blur(3px); }
+  #detail-backdrop[hidden]{ display:none; }
   #tk-side .buy.on{ color:var(--up); }
   #tk-side .sell.on{ color:var(--down); }
   .live-warn{ border:1px solid var(--down); background:rgba(255,92,114,0.10); color:var(--down);
@@ -840,6 +852,7 @@
 
   <div class="panel hint graph-only">스크롤 확대/축소 · 드래그 이동 · 노드 드래그 재배치 · 빈 곳 클릭 시 해제</div>
 
+  <div id="detail-backdrop" hidden></div>
   <div id="tooltip" class="graph-only"></div>
 
   <div class="panel drawer graph-only" id="drawer">
@@ -863,13 +876,24 @@
     <div id="price-block">
       <div class="sec-title"><span><span id="chart-title">1년 주가 추이</span><button class="help" data-h="priceChart">?</button></span>
         <span><span class="mono" id="chart-scale"></span>
-        <button class="expand-btn" id="open-candle">⤢ 봉차트</button></span></div>
+        <button class="expand-btn" id="open-candle">⤢ 트레이딩 차트</button></span></div>
       <div id="chart-host"><svg id="pricechart" viewBox="0 0 298 116" width="100%" height="116"></svg></div>
       <div id="chart-readout" class="readout">—</div>
     </div>
 
-    <div class="sec-title"><span>주문</span></div>
-    <button class="btn ghost" id="to-trading" style="width:100%;justify-content:center">⤢ 트레이딩에서 차트 · 주문</button>
+    <div id="mini-trade">
+      <div class="sec-title"><span>간편 주문<button class="help" data-h="miniTrade">?</button></span>
+        <span class="mono" id="dt-mode"></span></div>
+      <div class="mini-ticket">
+        <label class="tk-f">수량<input type="number" id="dt-qty" min="0" step="1" value="1"></label>
+        <div class="mini-btns">
+          <button class="btn mini-buy" id="dt-buy">매수</button>
+          <button class="btn mini-sell" id="dt-sell">매도</button>
+        </div>
+      </div>
+      <div class="tk-est" id="dt-est">—</div>
+      <button class="linkbtn" id="to-trading">⤢ 트레이딩에서 지정가 · 보조지표 →</button>
+    </div>
 
     <div id="season-block">
       <div class="perf-head" style="margin-top:14px">
@@ -1258,6 +1282,10 @@ const HELP = {
   groupMode: { t: '분류 기준', dir: null, d:
     '같은 그래프를 세 가지 방식으로 색칠합니다. 테마는 사업 성격, 시장은 나스닥·코스피·ETF·암호화폐·원자재, ' +
     '성격은 최근 3년 주가 움직임의 유형입니다. 노드의 위치는 어느 기준에서도 바뀌지 않습니다 — 위치는 오직 상관계수가 정합니다.' },
+  miniTrade: { t: '간편 주문', dir: null, d:
+    '최근 종가로 바로 체결되는 시장가 주문입니다. 수량만 넣고 매수 또는 매도를 누르면 됩니다.\n\n' +
+    '지정가, 보조지표, 확대·추세선이 필요하면 아래 링크로 트레이딩 탭에서 같은 종목을 열 수 있습니다. ' +
+    '모의/실거래 전환은 포트폴리오 탭 상단에서 합니다.' },
   trade: { t: '주문', dir: null, d:
     '모의는 이 브라우저 안에서만 기록되는 가상 거래입니다. 시장가는 최근 종가로, 지정가는 입력한 가격에 즉시 체결된 것으로 가정합니다 — ' +
     '실제 지정가 주문은 체결되지 않을 수도 있으므로 시나리오 계산으로만 보세요.\n\n' +
@@ -1447,7 +1475,7 @@ const HELP = {
   /* ---- 차트 ---- */
   priceChart: { t: '주가 추이', dir: null, d:
     '선택한 1년 구간의 일별 종가입니다. 두 종목 이상을 비교하면 모두가 거래된 첫날을 100으로 맞춘 지수로 바뀝니다 — ' +
-    '$700짜리와 $30짜리를 한 축에 놓는 유일한 방법입니다. ⤢ 봉차트에서 OHLC·확대·추세선을 쓸 수 있습니다.' },
+    '$700짜리와 $30짜리를 한 축에 놓는 유일한 방법입니다. ⤢ 트레이딩 차트에서 봉·보조지표·확대·추세선을 쓸 수 있습니다.' },
   season: { t: '계절성', dir: null, d:
     '각 연도의 1월 1일 종가를 0%로 놓고 그 해의 누적 수익률을 하나의 1~12월 축에 겹쳐 그립니다. 해마다 되풀이되는 모양이 있는지 보는 용도입니다.\n\n' +
     '평균 경로는 완결된 연도만으로 계산합니다 — 진행 중인 해를 섞으면 연말 구간이 0 쪽으로 끌려가 없던 계절성이 생깁니다. ' +
@@ -1540,7 +1568,9 @@ svg.call(zoom);
 function fitToView(duration = 0, subset = null){
   const list = (subset && subset.length > 1) ? subset : nodes;
   if(!list.length) return;
-  if(!(W > 0) || !(H > 0)) return;      // 포트폴리오 뷰에서는 캔버스가 0px 이다
+  if(!(W > 0) || !(H > 0)) return;      // 다른 탭에서는 캔버스가 0px 이다
+  if(document.body.classList.contains('view-trade')
+     || document.body.classList.contains('view-folio')) return;
   const drawerOpen = document.getElementById('drawer').classList.contains('show');
   const padL = W > 700 ? 290 : 40;
   const padR = (drawerOpen && W > 700) ? 320 : 60;
@@ -2064,6 +2094,7 @@ function focusNode(d, keepCompare){
 const drawer = document.getElementById('drawer');
 document.getElementById('drawer-close').addEventListener('click', ()=>{
   drawer.classList.remove('show'); compareSet = []; cmpWarn = '';
+  closeDetailOverlay();
   clearFocus(); resetOpacities(); syncSelectionHighlight();
 });
 
@@ -3157,6 +3188,7 @@ function openDrawer(d, peers, keepScroll){
   drawSeasonality(compareSet);
   renderProfile(compareSet);
   updateTicket();
+  updateMiniTicket();
   renderMacro(compareSet);
   renderFundamentals(compareSet);
   renderFavorites();
@@ -4410,6 +4442,7 @@ function setView(v){
     sub.textContent = '차트 · 보조지표 · 주문';
     renderTrading();
   } else {
+    closeDetailOverlay();
     sub.textContent = graphSubtitle();
     hideTooltip();
     // the canvas was display:none a moment ago — read its size back first
@@ -4795,47 +4828,103 @@ function updateTicket(){
   }
 }
 
-async function submitTicket(){
-  const tk = selectedTk;
+/* One order path for both tickets — the full one in the trading tab and the
+   market-only one in the stock detail. */
+async function placeOrder({ tk, side, qty, px, type }){
   const n = nodeIndex.get(tk);
   const cur = n?.currency || 'USD';
-  const qty = parseFloat(document.getElementById('tk-qty').value);
-  const px = tkPrice();
-  if(!tk || !(qty > 0) || !(px > 0)) return;
+  if(!tk || !(qty > 0) || !(px > 0)) return false;
   const live = folioMode === 'live';
-  const gross = px * qty, c = costs(tk, tkSide, gross);
-  const net = tkSide === 'BUY' ? gross + c.total : gross - c.total;
+  if(live && !tradable(tk)){ alert('이 자산은 토스증권 주식 API 대상이 아닙니다. 모의로만 거래할 수 있습니다.'); return false; }
+  if(live && !bridgeOk){ alert('실거래 브리지가 연결되지 않았습니다. 포트폴리오 → 설정에서 연결하세요.'); return false; }
+  const gross = px * qty, c = costs(tk, side, gross);
+  const net = side === 'BUY' ? gross + c.total : gross - c.total;
 
-  const label = `${isKr(tk) ? n.name : tk} ${qty}주 ${tkSide === 'BUY' ? '매수' : '매도'}` +
-    ` · ${tkType === 'LIMIT' ? '지정가 ' + fmtPx(px, cur) : '시장가'}` +
-    ` · ${tkSide === 'BUY' ? '필요' : '수령'} ${fmtPx(net, cur)}`;
-  if(!confirm((live ? '[실제 주문] 토스증권 계좌로 전송됩니다.\n\n' : '[모의 거래]\n\n') + label + '\n\n진행할까요?')) return;
+  const label = `${isKr(tk) ? n.name : tk} ${qty}주 ${side === 'BUY' ? '매수' : '매도'}` +
+    ` · ${type === 'LIMIT' ? '지정가 ' + fmtPx(px, cur) : '시장가 ' + fmtPx(px, cur)}` +
+    ` · ${side === 'BUY' ? '필요' : '수령'} ${fmtPx(net, cur)}`;
+  if(!confirm((live ? '[실제 주문] 토스증권 계좌로 전송됩니다.\n\n' : '[모의 거래]\n\n') + label + '\n\n진행할까요?')) return false;
 
   if(live){
-    const btn = document.getElementById('tk-submit');
-    btn.disabled = true; btn.textContent = '전송 중…';
     try {
       const r = await bridge('/order', { method: 'POST', body: JSON.stringify({
-        symbol: tk, side: tkSide, orderType: tkType,
-        quantity: String(qty), ...(tkType === 'LIMIT' ? { price: String(px) } : {}),
+        symbol: tk, side, orderType: type,
+        quantity: String(qty), ...(type === 'LIMIT' ? { price: String(px) } : {}),
       }) });
       // The book records the fill we asked for; the broker is the authority on
       // what actually filled, so the order id is kept for reconciliation.
-      applyFill({ tk, side: tkSide, qty, px, mode: 'live' });
+      applyFill({ tk, side, qty, px, mode: 'live' });
       folio.trades[0].orderId = r.orderId || null;
       saveFolio();
       alert(`주문이 접수되었습니다.\n주문번호 ${r.orderId || '(없음)'}\n\n실제 체결 수량·가격은 토스증권 앱에서 확인하세요. 설정의 "보유 종목 가져오기"로 장부를 맞출 수 있습니다.`);
     } catch(e){
       alert('주문 실패: ' + e.message);
+      return false;
     }
   } else {
-    const r = applyFill({ tk, side: tkSide, qty, px, mode: 'paper' });
-    if(!r.ok){ alert(r.msg); return; }
+    const r = applyFill({ tk, side, qty, px, mode: 'paper' });
+    if(!r.ok){ alert(r.msg); return false; }
   }
   updateTicket();
+  updateMiniTicket();
   renderFavorites();
   if(document.body.classList.contains('view-folio')) renderFolio();
+  if(document.body.classList.contains('view-trade')) renderTvSummary();
+  return true;
 }
+
+async function submitTicket(){
+  const btn = document.getElementById('tk-submit');
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = '처리 중…';
+  await placeOrder({ tk: selectedTk, side: tkSide, qty: parseFloat(document.getElementById('tk-qty').value),
+                     px: tkPrice(), type: tkType });
+  btn.textContent = label;
+  updateTicket();
+}
+
+/* ---- 간편 주문: 종목 상세의 시장가 전용 티켓 ---- */
+function updateMiniTicket(){
+  const block = document.getElementById('mini-trade');
+  const tk = selectedTk;
+  if(!tk || compareSet.length > 1){ block.style.display = 'none'; return; }
+  block.style.display = '';
+  const n = nodeIndex.get(tk), cur = n?.currency || 'USD';
+  const px = (latestClose(tk) || {}).px;
+  const qty = Math.max(0, parseFloat(document.getElementById('dt-qty').value) || 0);
+  const pos = posOf(tk);
+  const live = folioMode === 'live';
+  document.getElementById('dt-mode').textContent = live ? '실거래 · 시장가' : '모의 · 시장가';
+
+  const buy = document.getElementById('dt-buy'), sell = document.getElementById('dt-sell');
+  const est = document.getElementById('dt-est');
+  if(!px || !qty){
+    est.textContent = '수량을 입력하세요.';
+    buy.disabled = sell.disabled = true;
+    return;
+  }
+  const gross = px * qty;
+  const cb = costs(tk, 'BUY', gross), cs = costs(tk, 'SELL', gross);
+  const need = gross + cb.total, get = gross - cs.total;
+  const short = !live && toKrw(need, cur) > folio.cash;
+  const over = qty > pos.qty;
+  buy.disabled = short || (live && (!bridgeOk || !tradable(tk)));
+  sell.disabled = over || (live && (!bridgeOk || !tradable(tk)));
+  est.innerHTML =
+    `매수 <b>${fmtPx(need, cur)}</b> · 매도 <b>${fmtPx(get, cur)}</b>` +
+    `<br><span style="color:var(--text-muted)">최근 종가 ${fmtPx(px, cur)} · 보유 ${(+pos.qty.toFixed(6)) || 0}주${
+      avgCost(tk) != null ? ` · 평균 ${fmtPx(avgCost(tk), cur)}` : ''}</span>` +
+    (short ? '<br><span style="color:var(--down)">모의 현금 부족</span>' : '') +
+    (live && !bridgeOk ? '<br><span style="color:var(--down)">브리지 미연결</span>' : '');
+}
+async function miniOrder(side){
+  await placeOrder({ tk: selectedTk, side, type: 'MARKET',
+                     qty: parseFloat(document.getElementById('dt-qty').value),
+                     px: (latestClose(selectedTk) || {}).px });
+}
+document.getElementById('dt-qty').addEventListener('input', updateMiniTicket);
+document.getElementById('dt-buy').addEventListener('click', () => miniOrder('BUY'));
+document.getElementById('dt-sell').addEventListener('click', () => miniOrder('SELL'));
 
 /* ---- wiring ---- */
 document.querySelectorAll('#tk-side button').forEach(b => b.addEventListener('click', () => {
@@ -5025,6 +5114,30 @@ function renderTvList(){
     el.addEventListener('click', () => selectTrading(el.dataset.tk)));
 }
 
+/* The same stock detail the network shows, floated over whatever tab you are
+   on. focusNode() builds it; the overlay classes just make it visible here. */
+function openDetailOverlay(tk){
+  const n = nodeIndex.get(tk);
+  if(!n) return;
+  focusNode(n);
+  drawer.classList.add('overlay');
+  document.getElementById('detail-backdrop').hidden = false;
+}
+function closeDetailOverlay(){
+  drawer.classList.remove('overlay');
+  document.getElementById('detail-backdrop').hidden = true;
+}
+document.getElementById('detail-backdrop').addEventListener('click', () => {
+  closeDetailOverlay();
+  drawer.classList.remove('show');
+});
+document.addEventListener('keydown', ev => {
+  if(ev.key === 'Escape' && drawer.classList.contains('overlay')){
+    closeDetailOverlay();
+    drawer.classList.remove('show');
+  }
+});
+
 function renderTvSummary(){
   const tk = cTk, n = nodeIndex.get(tk);
   const host = document.getElementById('tv-summary');
@@ -5058,12 +5171,8 @@ function renderTvSummary(){
             yoy(f.revenue) >= 0 ? 'var(--up)' : 'var(--down)')}
       ${pos.qty ? row('보유', `${+pos.qty.toFixed(6)}주 @ ${fmtPx(pos.cost / pos.qty, cur)}`) : ''}
     </div>
-    <button class="linkbtn" id="tv-to-graph" style="margin-top:9px">네트워크에서 상관 종목 보기 →</button>`;
-  document.getElementById('tv-to-graph').addEventListener('click', () => {
-    const nd = nodeIndex.get(cTk);
-    setView('graph');
-    if(nd) setTimeout(() => focusNode(nd), 120);
-  });
+    <button class="linkbtn" id="tv-to-graph" style="margin-top:9px">종목 상세 · 상관 종목 열기 →</button>`;
+  document.getElementById('tv-to-graph').addEventListener('click', () => openDetailOverlay(cTk));
 }
 
 function renderIndButtons(){
