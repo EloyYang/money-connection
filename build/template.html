@@ -4498,7 +4498,8 @@ function saveFolio(){
 }
 const fxRate = () => folio.fx || (META.fx || {}).KRW || 1350;
 const toKrw = (v, cur) => cur === 'KRW' ? v : v * fxRate();
-const fmtKrw = v => '₩' + Math.round(v).toLocaleString('ko-KR');
+// a residual -0.0000001 rendered as "₩-0"; snap anything under a won to zero
+const fmtKrw = v => '₩' + (Math.abs(v) < 0.5 ? 0 : Math.round(v)).toLocaleString('ko-KR');
 const isKr = tk => (nodeIndex.get(tk)?.currency || 'USD') === 'KRW';
 /* Toss trades stocks and ETFs; crypto and spot gold are not on that API */
 const tradable = tk => ['us_stock', 'kr_stock', 'etf'].includes(nodeIndex.get(tk)?.assetClass);
@@ -4575,7 +4576,7 @@ function renderFolio(){
   document.getElementById('folio-kpis').innerHTML =
     kpi('총 자산', fmtKrw(total),
         `평가 ${fmtKrw(value)} + 현금 ${fmtKrw(folio.cash)}`) +
-    kpi('평가손익', (unreal >= 0 ? '+' : '') + fmtKrw(unreal),
+    kpi('평가손익', (unreal >= -0.5 ? '+' : '') + fmtKrw(unreal),
         invested ? `투자원금 대비 ${(unreal / invested * 100).toFixed(2)}%` : '보유 없음', col(unreal)) +
     kpi('실현손익', (folio.realized >= 0 ? '+' : '') + fmtKrw(folio.realized),
         `${folio.trades.filter(t => t.side === 'SELL').length}회 매도`, col(folio.realized)) +
