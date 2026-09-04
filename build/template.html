@@ -277,13 +277,29 @@
   .modal-close{ margin-left:auto; background:none; border:none; color:var(--text-muted); font-size:17px;
                 cursor:pointer; padding:5px 8px; line-height:1; }
   .modal-close:hover{ color:var(--text-primary); }
-  .modal-body{ position:relative; flex:1 1 auto; min-height:0; }
-  #big-chart{ display:block; width:100%; height:100%; touch-action:none; }
-  .modal-foot{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:9px 16px;
+  .modal-body{ position:relative; flex:1 1 auto; min-height:0; display:grid; gap:6px; padding:2px; }
+  .modal-body.n1{ grid-template-columns:1fr; grid-template-rows:1fr; }
+  .modal-body.n2{ grid-template-columns:1fr 1fr; grid-template-rows:1fr; }
+  .modal-body.n3{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; }
+  .modal-body.n4{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; }
+  .modal-body.n3 .cpane:first-child{ grid-row:span 2; }
+  .cpane{ position:relative; min-width:0; min-height:0; border-radius:8px;
+    border:1px solid transparent; overflow:hidden; }
+  .cpane.active{ border-color:rgba(199,125,255,0.5); }
+  .cpane svg{ display:block; width:100%; height:100%; touch-action:none; }
+  .tv-main:fullscreen{ background:var(--panel-solid); border-radius:0; }
+  /* fallback when the Fullscreen API is unavailable: the chart takes the tab */
+  #trade-view.chart-max .tv-grid{ grid-template-columns:minmax(0,1fr); }
+  #trade-view.chart-max .tv-side, #trade-view.chart-max .tv-right{ display:none; }
+  /* fixed height and no wrapping: the readout changes on every mouse move, and
+     a foot that grows a line steals height from the chart — that was the flicker */
+  .modal-foot{ display:flex; align-items:center; gap:16px; flex-wrap:nowrap; height:34px;
+               flex:0 0 34px; overflow:hidden; padding:0 16px;
                border-top:1px solid var(--border); font-size:11px; color:var(--text-muted); }
-  .ohlc-readout{ font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--text-secondary); }
+  .ohlc-readout{ font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--text-secondary);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:0 1 auto; }
   .ohlc-readout b{ font-weight:600; }
-  .modal-note{ margin-left:auto; }
+  .modal-note{ margin-left:auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:0 1 auto; }
   #sel-bar{ position:absolute; z-index:5; display:flex; gap:4px; background:#181c24;
             border:1px solid var(--border-strong); border-radius:8px; padding:4px;
             box-shadow:0 8px 24px rgba(0,0,0,0.5); }
@@ -332,6 +348,7 @@
   .tv-row{ display:flex; align-items:center; gap:7px; padding:5px 4px; border-radius:6px; cursor:pointer; font-size:12px; }
   .tv-row:hover{ background:rgba(255,255,255,0.05); }
   .tv-row.on{ background:rgba(199,125,255,0.14); box-shadow:inset 0 0 0 1px rgba(199,125,255,0.45); }
+  .tv-row.cmp{ background:rgba(95,208,255,0.14); box-shadow:inset 0 0 0 1px rgba(95,208,255,0.5); }
   .tv-row .nm{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
     font-family:'JetBrains Mono',monospace; font-weight:600; }
   .tv-row .rt{ font-family:'JetBrains Mono',monospace; font-size:11px; }
@@ -401,8 +418,14 @@
   .tk-row .seg-mini{ margin:0; flex:1 1 auto; }
   .tk-f{ display:flex; flex-direction:column; gap:3px; font-size:9.5px; color:var(--text-muted);
     text-transform:uppercase; letter-spacing:0.06em; flex:1 1 0; }
-  .tk-f input{ background:rgba(255,255,255,0.05); border:1px solid var(--border-strong); border-radius:7px;
-    padding:6px 8px; color:var(--text-primary); font-family:'JetBrains Mono',monospace; font-size:13px; width:100%; }
+  .tk-f input, .tk-f textarea{ background:rgba(255,255,255,0.05); border:1px solid var(--border-strong);
+    border-radius:7px; padding:6px 8px; color:var(--text-primary); font-size:13px; width:100%;
+    font-family:'JetBrains Mono',monospace; }
+  .tk-f textarea{ font-family:inherit; font-size:12px; resize:vertical; line-height:1.45; }
+  .memo-cell{ max-width:220px; white-space:normal !important; color:var(--text-secondary);
+    font-family:inherit !important; cursor:text; }
+  .memo-cell:hover{ color:var(--text-primary); }
+  .memo-cell.empty{ color:var(--text-muted); font-style:italic; }
   .tk-est{ font-size:11.5px; color:var(--text-secondary); margin:2px 0 8px; line-height:1.5; }
   .tk-est b{ font-family:'JetBrains Mono',monospace; color:var(--text-primary); }
   .btn.tk-go{ width:100%; justify-content:center; font-weight:600; }
@@ -658,6 +681,7 @@
         <div class="seg-mini seg-wrap" id="tv-list-mode">
           <button data-l="fav" class="on">즐겨찾기</button><button data-l="hold">보유</button><button data-l="lead">주도주</button>
         </div>
+        <div class="ctl-note" style="margin:-2px 0 6px">클릭 = 차트 · ⌘/Ctrl+클릭 = 비교<button class="help" data-h="tvCompare">?</button></div>
         <div id="tv-list"></div>
       </aside>
 
@@ -674,6 +698,11 @@
           <button class="tool" id="tool-undo">↶ 직전 선</button>
           <button class="tool" id="tool-clear">↺ 전체</button>
           <button class="tool" id="m-yfit">⇕ 가격축 자동</button>
+          <span class="ind-lab" style="margin-left:2px">분할<button class="help" data-h="chartSplit">?</button></span>
+          <span class="seg" id="split-sel" title="차트 분할">
+            <button data-n="1" class="on">1</button><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button>
+          </span>
+          <button class="tool" id="m-full" title="전체화면 (F)">⛶ 전체화면</button>
         </div>
         <div class="tv-ind">
           <span class="ind-lab">보조지표<button class="help" data-h="indicators">?</button></span>
@@ -685,7 +714,7 @@
             <button data-s="none" class="on">보조창 없음</button><button data-s="rsi">RSI(14)</button><button data-s="macd">MACD</button>
           </span>
         </div>
-        <div class="modal-body" id="tv-chart"><svg id="big-chart"></svg>
+        <div class="modal-body" id="tv-chart">
           <div id="sel-bar" hidden>
             <button id="sel-copy">⧉ 복사</button><button id="sel-del">🗑 삭제</button>
           </div>
@@ -712,6 +741,8 @@
           <label class="tk-f" id="tk-price-wrap" hidden>가격<input type="number" id="tk-price" min="0" step="0.01"></label>
         </div>
         <div class="tk-est" id="tk-est">—</div>
+        <label class="tk-f" style="margin-bottom:8px">매매 근거 메모
+          <textarea id="tk-memo" rows="2" placeholder="예: 20일선 지지 확인 · 실적 서프라이즈"></textarea></label>
         <button class="btn tk-go" id="tk-submit">매수</button>
         <div class="cap" id="tk-note"></div>
       </div>
@@ -892,6 +923,8 @@
         </div>
       </div>
       <div class="tk-est" id="dt-est">—</div>
+      <label class="tk-f" style="margin-bottom:8px">매매 근거 메모
+        <input type="text" id="dt-memo" placeholder="예: 20일선 지지 확인"></label>
       <button class="linkbtn" id="to-trading">⤢ 트레이딩에서 지정가 · 보조지표 →</button>
     </div>
 
@@ -1282,6 +1315,16 @@ const HELP = {
   groupMode: { t: '분류 기준', dir: null, d:
     '같은 그래프를 세 가지 방식으로 색칠합니다. 테마는 사업 성격, 시장은 나스닥·코스피·ETF·암호화폐·원자재, ' +
     '성격은 최근 3년 주가 움직임의 유형입니다. 노드의 위치는 어느 기준에서도 바뀌지 않습니다 — 위치는 오직 상관계수가 정합니다.' },
+  tvCompare: { t: '목록에서 비교', dir: null, d:
+    '종목을 클릭하면 그 종목 차트로 바뀝니다. ⌘(맥) 또는 Ctrl·Shift를 누른 채 클릭하면 비교 대상에 담기고, ' +
+    '둘 이상이 담기면 종목 네트워크와 같은 비교 화면이 오른쪽에 열립니다 — 주가·계절성·성격·펀더멘털을 나란히 볼 수 있습니다. 최대 5종목.' },
+  tradeMemo: { t: '매매 근거 메모', dir: null, d:
+    '주문할 때 적은 근거가 거래와 함께 저장됩니다. 나중에 이 칸을 클릭하면 수정할 수 있고, CSV 내보내기에도 포함됩니다.\n\n' +
+    '수익이 난 이유와 손실이 난 이유를 나중에 구분할 수 있는 유일한 기록입니다 — 체결가만 남으면 왜 샀는지는 사라집니다.' },
+  chartSplit: { t: '차트 분할 · 전체화면', dir: null, d:
+    '차트를 최대 4개까지 나눠 서로 다른 종목을 동시에 볼 수 있습니다. 각 패널은 종목·기간·확대 상태를 따로 가집니다.\n\n' +
+    '패널을 클릭하면 활성 패널(보라색 테두리)이 되고, 왼쪽 목록에서 종목을 고르거나 보조지표·추세선을 쓰면 활성 패널에 적용됩니다. ' +
+    '⛶ 또는 F 키로 전체화면을 켜고 끕니다.' },
   miniTrade: { t: '간편 주문', dir: null, d:
     '최근 종가로 바로 체결되는 시장가 주문입니다. 수량만 넣고 매수 또는 매도를 누르면 됩니다.\n\n' +
     '지정가, 보조지표, 확대·추세선이 필요하면 아래 링크로 트레이딩 탭에서 같은 종목을 열 수 있습니다. ' +
@@ -4366,7 +4409,7 @@ function renderFavRings(){
    CANDLESTICK MODAL — OHLC + volume, wheel zoom, drag pan, drawn lines
    OH[tk][i] = [open, high, low, close, volume(천주)] on the OH.dates index
    ===================================================================== */
-const bigSvg = d3.select('#big-chart');
+let bigSvg = null;      // 활성 패널의 svg (focusPane 이 갈아끼운다)
 const CM = { t:16, r:64, b:26, l:12, volH:0.20, gap:12 };
 let cTk = null, cI0 = 0, cI1 = 0, cTool = null, cPending = null;
 const drawings = new Map();   // ticker -> [{type,x1,y1,x2,y2} | {type:'hline',y}]
@@ -4578,7 +4621,7 @@ function costs(tk, side, gross){
 }
 
 /* One place where a fill changes the book, whichever venue produced it. */
-function applyFill({ tk, side, qty, px, mode }){
+function applyFill({ tk, side, qty, px, mode, memo }){
   const cur = nodeIndex.get(tk)?.currency || 'USD';
   const gross = qty * px;
   const c = costs(tk, side, gross);
@@ -4607,6 +4650,7 @@ function applyFill({ tk, side, qty, px, mode }){
     id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
     ts: new Date().toISOString(), tk, side, qty, px, cur, mode,
     fee: c.fee, tax: c.tax, realized: side === 'SELL' ? realized : null,
+    memo: (memo || '').slice(0, 300),
   });
   if(folio.trades.length > 500) folio.trades.length = 500;
   saveFolio();
@@ -4704,7 +4748,7 @@ function renderTrades(){
     return;
   }
   t.innerHTML = `<thead><tr><th>시각</th><th>종목</th><th>구분</th><th>수량</th><th>체결가</th>
-      <th>수수료·세금</th><th>실현손익</th></tr></thead><tbody>` +
+      <th>수수료·세금</th><th>실현손익</th><th>매매 근거<button class="help" data-h="tradeMemo">?</button></th></tr></thead><tbody>` +
     folio.trades.slice(0, 60).map(x => `<tr>
       <td>${x.ts.slice(2, 16).replace('T', ' ')}</td>
       <td class="tk">${isKr(x.tk) ? (nodeIndex.get(x.tk)?.name || x.tk) : x.tk}</td>
@@ -4714,7 +4758,17 @@ function renderTrades(){
       <td>${fmtPx(x.px, x.cur)}</td>
       <td>${fmtPx(x.fee + x.tax, x.cur)}</td>
       <td${x.realized != null ? ` style="color:${x.realized >= 0 ? 'var(--up)' : 'var(--down)'}"` : ''}>${
-        x.realized == null ? '—' : (x.realized >= 0 ? '+' : '') + fmtKrw(x.realized)}</td></tr>`).join('') + '</tbody>';
+        x.realized == null ? '—' : (x.realized >= 0 ? '+' : '') + fmtKrw(x.realized)}</td>
+      <td class="memo-cell${x.memo ? '' : ' empty'}" data-memo="${x.id}" title="클릭해서 수정">${
+        x.memo ? esc(x.memo) : '메모 없음'}</td></tr>`).join('') + '</tbody>';
+  t.querySelectorAll('[data-memo]').forEach(cell => cell.addEventListener('click', () => {
+    const tr = folio.trades.find(y => y.id === cell.dataset.memo);
+    if(!tr) return;
+    const v = prompt(`${tr.tk} ${tr.side === 'BUY' ? '매수' : '매도'} 근거`, tr.memo || '');
+    if(v == null) return;
+    tr.memo = v.slice(0, 300);
+    saveFolio(); renderTrades();
+  }));
 }
 
 /* =====================================================================
@@ -4830,7 +4884,7 @@ function updateTicket(){
 
 /* One order path for both tickets — the full one in the trading tab and the
    market-only one in the stock detail. */
-async function placeOrder({ tk, side, qty, px, type }){
+async function placeOrder({ tk, side, qty, px, type, memo }){
   const n = nodeIndex.get(tk);
   const cur = n?.currency || 'USD';
   if(!tk || !(qty > 0) || !(px > 0)) return false;
@@ -4853,7 +4907,7 @@ async function placeOrder({ tk, side, qty, px, type }){
       }) });
       // The book records the fill we asked for; the broker is the authority on
       // what actually filled, so the order id is kept for reconciliation.
-      applyFill({ tk, side, qty, px, mode: 'live' });
+      applyFill({ tk, side, qty, px, mode: 'live', memo });
       folio.trades[0].orderId = r.orderId || null;
       saveFolio();
       alert(`주문이 접수되었습니다.\n주문번호 ${r.orderId || '(없음)'}\n\n실제 체결 수량·가격은 토스증권 앱에서 확인하세요. 설정의 "보유 종목 가져오기"로 장부를 맞출 수 있습니다.`);
@@ -4862,7 +4916,7 @@ async function placeOrder({ tk, side, qty, px, type }){
       return false;
     }
   } else {
-    const r = applyFill({ tk, side, qty, px, mode: 'paper' });
+    const r = applyFill({ tk, side, qty, px, mode: 'paper', memo });
     if(!r.ok){ alert(r.msg); return false; }
   }
   updateTicket();
@@ -4877,8 +4931,10 @@ async function submitTicket(){
   const btn = document.getElementById('tk-submit');
   const label = btn.textContent;
   btn.disabled = true; btn.textContent = '처리 중…';
-  await placeOrder({ tk: selectedTk, side: tkSide, qty: parseFloat(document.getElementById('tk-qty').value),
-                     px: tkPrice(), type: tkType });
+  const memoEl = document.getElementById('tk-memo');
+  const ok = await placeOrder({ tk: selectedTk, side: tkSide, qty: parseFloat(document.getElementById('tk-qty').value),
+                     px: tkPrice(), type: tkType, memo: memoEl.value });
+  if(ok) memoEl.value = '';
   btn.textContent = label;
   updateTicket();
 }
@@ -4918,9 +4974,11 @@ function updateMiniTicket(){
     (live && !bridgeOk ? '<br><span style="color:var(--down)">브리지 미연결</span>' : '');
 }
 async function miniOrder(side){
-  await placeOrder({ tk: selectedTk, side, type: 'MARKET',
+  const memoEl = document.getElementById('dt-memo');
+  const ok = await placeOrder({ tk: selectedTk, side, type: 'MARKET',
                      qty: parseFloat(document.getElementById('dt-qty').value),
-                     px: (latestClose(selectedTk) || {}).px });
+                     px: (latestClose(selectedTk) || {}).px, memo: memoEl.value });
+  if(ok) memoEl.value = '';
 }
 document.getElementById('dt-qty').addEventListener('input', updateMiniTicket);
 document.getElementById('dt-buy').addEventListener('click', () => miniOrder('BUY'));
@@ -5011,9 +5069,11 @@ document.getElementById('bridge-sync').addEventListener('click', async () => {
   } catch(e){ st.textContent = '가져오기 실패: ' + e.message; }
 });
 document.getElementById('folio-export').addEventListener('click', () => {
-  const head = 'time,ticker,side,quantity,price,currency,fee,tax,realized_krw,mode,orderId';
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const head = 'time,ticker,side,quantity,price,currency,fee,tax,realized_krw,mode,orderId,memo';
   const body = folio.trades.map(t => [t.ts, t.tk, t.side, t.qty, t.px, t.cur,
-    t.fee.toFixed(4), t.tax.toFixed(4), t.realized ?? '', t.mode, t.orderId || ''].join(',')).join('\n');
+    t.fee.toFixed(4), t.tax.toFixed(4), t.realized ?? '', t.mode, t.orderId || '',
+    q(t.memo)].join(',')).join('\n');
   const blob = new Blob(['﻿' + head + '\n' + body], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -5038,10 +5098,36 @@ function openTrading(tk){
   setView('trade');
 }
 
+const SPLIT_KEY = 'money-connection.split';
+let splitN = 1;
+try { splitN = Math.min(4, Math.max(1, +localStorage.getItem(SPLIT_KEY) || 1)); } catch(e){}
+
+/* Build (or rebuild) the pane grid. Panes keep whatever symbol they had; new
+   ones start on the active symbol so a fresh split shows something at once. */
+function buildPanes(n){
+  const body = document.getElementById('tv-chart');
+  const prev = PANES.map(p => p.tk);
+  body.className = 'modal-body n' + n;
+  [...body.querySelectorAll('.cpane')].forEach(el => el.remove());
+  PANES.length = 0;
+  for(let i = 0; i < n; i++){
+    const host = document.createElement('div');
+    host.className = 'cpane';
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    host.appendChild(svg);
+    body.appendChild(host);
+    PANES.push({ tk: prev[i] || cTk, i0: 0, i1: 0, yManual: null, host, sel: d3.select(svg) });
+  }
+  activeP = 0;
+  loadPane(0);
+  markActivePane();
+}
+
 function renderTrading(){
   if(!cTk){
     cTk = selectedTk || [...favorites][0] || (leadData().up[0] || {}).t || CORR.tickers[0];
   }
+  document.querySelectorAll('#split-sel button').forEach(b => b.classList.toggle('on', +b.dataset.n === splitN));
   renderTvList();
   renderTvSummary();
   renderIndButtons();
@@ -5049,14 +5135,65 @@ function renderTrading(){
   // the pane was display:none a moment ago; wait until it actually has a size
   // rather than drawing into a 0x0 box and giving up
   const tryDraw = (n = 0) => {
-    const host = document.getElementById('tv-chart');
-    if(host && host.clientWidth > 40 && host.clientHeight > 40){ loadChart(cTk); return; }
+    const body = document.getElementById('tv-chart');
+    if(body && body.clientWidth > 40 && body.clientHeight > 40){
+      buildPanes(splitN);
+      PANES.forEach((p, i) => { loadPane(i); setRange(rangeDays()); });
+      loadPane(0); markActivePane(); syncChartHeader();
+      return;
+    }
     if(n < 30) requestAnimationFrame(() => tryDraw(n + 1));
   };
   tryDraw();
 }
+const rangeDays = () => { const b = document.querySelector('#m-range button.on'); return b ? +b.dataset.d : 252; };
+
+document.querySelectorAll('#split-sel button').forEach(b => b.addEventListener('click', () => {
+  splitN = +b.dataset.n;
+  try { localStorage.setItem(SPLIT_KEY, String(splitN)); } catch(e){}
+  document.querySelectorAll('#split-sel button').forEach(x => x.classList.toggle('on', x === b));
+  buildPanes(splitN);
+  PANES.forEach((p, i) => { loadPane(i); setRange(rangeDays()); });
+  loadPane(0); markActivePane(); syncChartHeader();
+}));
+
+/* ---- 전체화면 ---- */
+/* Embedded contexts (an iframe without allow="fullscreen") reject the API
+   outright, so fall back to expanding the chart over the whole tab. */
+function setMaximised(on){
+  document.getElementById('trade-view').classList.toggle('chart-max', on);
+  document.getElementById('m-full').classList.toggle('on', on);
+  document.getElementById('m-full').textContent = on ? '⛶ 창 모드' : '⛶ 전체화면';
+  setTimeout(drawAllPanes, 60);
+}
+function toggleChartFullscreen(){
+  const main = document.querySelector('.tv-main');
+  const maxed = document.getElementById('trade-view').classList.contains('chart-max');
+  if(document.fullscreenElement){ document.exitFullscreen(); return; }
+  if(maxed){ setMaximised(false); return; }
+  const req = main.requestFullscreen?.();
+  if(req) req.catch(() => setMaximised(true));
+  else setMaximised(true);
+}
+document.getElementById('m-full').addEventListener('click', toggleChartFullscreen);
+document.addEventListener('fullscreenchange', () => {
+  const on = !!document.fullscreenElement;
+  document.getElementById('m-full').classList.toggle('on', on);
+  document.getElementById('m-full').textContent = on ? '⛶ 창 모드' : '⛶ 전체화면';
+  setTimeout(drawAllPanes, 80);
+});
+document.addEventListener('keydown', ev => {
+  if(!document.body.classList.contains('view-trade')) return;
+  if(/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
+  if(ev.key === 'Escape' && document.getElementById('trade-view').classList.contains('chart-max')){
+    ev.preventDefault(); setMaximised(false); return;
+  }
+  if(ev.key.toLowerCase() !== 'f' || ev.metaKey || ev.ctrlKey) return;
+  ev.preventDefault(); toggleChartFullscreen();
+});
 
 function loadChart(tk){
+  if(PANES[activeP]) PANES[activeP].tk = tk;
   cTk = tk; cTool = null; cPending = null; cSel = null; yManual = null;
   document.getElementById('sel-bar').hidden = true;
   ['tool-trend', 'tool-hline'].forEach(id => document.getElementById(id).classList.remove('on'));
@@ -5111,19 +5248,43 @@ function renderTvList(){
     </div>`;
   }).join('');
   host.querySelectorAll('.tv-row').forEach(el =>
-    el.addEventListener('click', () => selectTrading(el.dataset.tk)));
+    el.addEventListener('click', ev => {
+      const tk = el.dataset.tk;
+      // same gesture as the network: modifier adds to the comparison
+      if(ev.metaKey || ev.ctrlKey || ev.shiftKey){
+        if(!compareSet.length) compareSet = [cTk];
+        toggleCompare(tk);
+        if(compareSet.length > 1) openDetailOverlay(compareSet[0], true);
+        renderTvList();
+        return;
+      }
+      selectTrading(tk);
+    }));
+  host.querySelectorAll('.tv-row').forEach(el =>
+    el.classList.toggle('cmp', compareSet.length > 1 && compareSet.includes(el.dataset.tk)));
 }
 
 /* The same stock detail the network shows, floated over whatever tab you are
    on. focusNode() builds it; the overlay classes just make it visible here. */
-function openDetailOverlay(tk){
+function openDetailOverlay(tk, keepCompare){
   const n = nodeIndex.get(tk);
   if(!n) return;
-  focusNode(n);
+  // without keepCompare, focusNode() resets the selection to this one ticker —
+  // which would undo the very comparison the caller just built
+  focusNode(n, keepCompare);
   drawer.classList.add('overlay');
   drawer.scrollTop = 0;
 }
-function closeDetailOverlay(){ drawer.classList.remove('overlay'); }
+function closeDetailOverlay(){
+  drawer.classList.remove('overlay');
+  // the ticket hides itself while comparing; give the trading tab its symbol back
+  if(document.body.classList.contains('view-trade') && cTk){
+    selectedTk = cTk;
+    compareSet = [cTk];
+    updateTicket();
+    renderTvList();
+  }
+}
 document.addEventListener('keydown', ev => {
   if(ev.key === 'Escape' && drawer.classList.contains('overlay')){
     closeDetailOverlay();

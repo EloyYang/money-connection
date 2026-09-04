@@ -1,8 +1,57 @@
 /* ---------------------------------------------------------------------
    Chart geometry from the last render — drag handlers convert pixels back
    into (index, price) through this, so drawings stay anchored to the data.
+
+   The chart can be split into up to four panes. Rather than thread a context
+   object through 350 lines, each pane OWNS its {tk, i0, i1, yManual, svg} and
+   the working globals below are the active pane's copy; focusPane() swaps them.
+   Every handler is created inside drawCandle(), so it closes over the index of
+   the pane it belongs to and focuses it before doing anything.
    --------------------------------------------------------------------- */
 let geom = null, cSel = null, yManual = null, activeDrag = null;
+const PANES = [];              // { tk, i0, i1, yManual, host, sel }
+let activeP = 0;
+
+function stashPane(){
+  const p = PANES[activeP];
+  if(p){ p.tk = cTk; p.i0 = cI0; p.i1 = cI1; p.yManual = yManual; }
+}
+function loadPane(i){
+  const p = PANES[i];
+  if(!p) return;
+  activeP = i;
+  cTk = p.tk; cI0 = p.i0; cI1 = p.i1; yManual = p.yManual;
+  bigSvg = p.sel;
+}
+function focusPane(i){
+  if(i === activeP || !PANES[i]) return;
+  stashPane();
+  cSel = null; selBar.hidden = true;
+  loadPane(i);
+  markActivePane();
+  syncChartHeader();
+}
+function markActivePane(){
+  PANES.forEach((p, i) => p.host.classList.toggle('active', i === activeP && PANES.length > 1));
+}
+/* draw every pane; the header only ever reflects the active one */
+function drawAllPanes(){
+  stashPane();
+  const keep = activeP;
+  PANES.forEach((_, i) => { loadPane(i); drawCandle(true); });
+  loadPane(keep);
+  markActivePane();
+  syncChartHeader();
+}
+
+function syncChartHeader(){
+  const tk = cTk, node = nodeIndex.get(tk);
+  if(!tk) return;
+  document.getElementById('m-tk').textContent = tk;
+  document.getElementById('m-tk').style.color = node ? node.color : 'var(--text-primary)';
+  document.getElementById('m-nm').textContent = node ? node.name : '';
+  if(typeof renderTvList === 'function') renderTvList();
+}
 
 function updateToolButtons(){
   document.getElementById('tool-trend').classList.toggle('on', cTool === 'trend');
@@ -104,9 +153,13 @@ function onDragMove(ev){
 }
 
 /* ---- render ---- */
-function drawCandle(){
-  if(!cTk) return;
-  const host = document.getElementById('tv-chart');
+function drawCandle(silent){
+  if(!cTk || !PANES[activeP]) return;
+  // the globals ARE the active pane's state; write them back on every render so
+  // switching panes never loses a range someone just zoomed into
+  stashPane();
+  const myPane = activeP;
+  const host = PANES[activeP].host;
   const W = host.clientWidth, H = host.clientHeight;
   if(W < 40 || H < 40) return;      // 다른 탭에 있으면 0px 이다
   bigSvg.attr('viewBox', `0 0 ${W} ${H}`);
@@ -212,6 +265,7 @@ function drawCandle(){
     .style('cursor', cTool ? 'crosshair' : 'grab')
     .on('mouseleave', ()=> cross.style('display','none'))
     .on('mousemove', function(ev){
+      focusPane(myPane);
       const [mx,my] = d3.pointer(ev, this);
       let idx = idxAt(mx); while(idx > i0 && !rows[idx]) idx--;
       const r = rows[idx]; if(!r) return;
@@ -227,6 +281,7 @@ function drawCandle(){
       if(cPending && cTool === 'trend'){ cPending.x2 = idxAt(mx); cPending.y2 = invY(my); drawCandle(); }
     })
     .on('mousedown', function(ev){
+      focusPane(myPane);
       const [mx,my] = d3.pointer(ev, this);
       if(cTool === 'hline'){ pushDrawing({ type:'hline', y: invY(my) }); cTool = null; updateToolButtons(); drawCandle(); return; }
       if(cTool === 'trend'){
@@ -244,6 +299,7 @@ function drawCandle(){
     })
     .on('wheel', function(ev){
       ev.preventDefault();
+      focusPane(myPane);
       const [mx] = d3.pointer(ev, this);
       const maxSpan = rows.length - 1, minSpan = 12;
 
@@ -280,19 +336,27 @@ function drawCandle(){
   /* axis drag zones */
   bigSvg.append('rect').attr('x',CM.l).attr('y',H-CM.b-6).attr('width',plotW).attr('height',CM.b+6)
     .attr('fill','transparent').style('cursor','ew-resize')
-    .on('mousedown', ev => beginDrag('zoomx', ev, { i0:cI0, i1:cI1 }))
+    .on('mousedown', ev => { focusPane(myPane); beginDrag('zoomx', ev, { i0:cI0, i1:cI1 }); })
     .on('dblclick', ()=>{ setRange(252); document.querySelectorAll('#m-range button')
         .forEach(b=>b.classList.toggle('on', b.dataset.d==='252')); })
     .append('title').text('좌우로 드래그하면 기간 확대/축소 · 더블클릭 = 1년');
   bigSvg.append('rect').attr('x',W-CM.r).attr('y',CM.t).attr('width',CM.r).attr('height',priceH)
     .attr('fill','transparent').style('cursor','ns-resize')
-    .on('mousedown', ev => beginDrag('zoomy', ev, { lo, hi }))
+    .on('mousedown', ev => { focusPane(myPane); beginDrag('zoomy', ev, { lo, hi }); })
     .on('dblclick', ()=>{ yManual = null; drawCandle(); })
     .append('title').text('위아래로 드래그하면 가격축 확대/축소 · 더블클릭 = 자동 맞춤');
 
   positionSelBar();
 
   const last = vis[vis.length-1].d, prev = vis.length > 1 ? vis[vis.length-2].d : null;
+  // a pane label, so a split chart says which symbol is which
+  if(PANES.length > 1){
+    bigSvg.append('text').attr('x', CM.l + 4).attr('y', CM.t + 12).attr('font-size', 11)
+      .attr('font-weight', 600).attr('fill', nodeIndex.get(cTk)?.color || 'var(--text-primary)')
+      .attr('font-family', "'JetBrains Mono',monospace").style('pointer-events', 'none')
+      .text(nodeIndex.get(cTk)?.assetClass === 'kr_stock' ? nodeIndex.get(cTk).name : cTk);
+  }
+  if(silent) return;
   document.getElementById('m-px').textContent = fmtPx(last[3], nodeIndex.get(cTk)?.currency || 'USD');
   const dChg = prev ? (last[3]-prev[3])/prev[3]*100 : 0;
   const chgEl = document.getElementById('m-chg');
