@@ -303,8 +303,14 @@
   .cpane.drop-swap{ border-color:var(--sel); box-shadow:inset 0 0 0 2px rgba(199,125,255,0.3); }
   .cpane .drop-hint{ position:absolute; inset:auto 0 8px 0; text-align:center; z-index:9;
     font-size:11px; color:var(--text-primary); pointer-events:none; }
-  .tv-row[draggable="true"]{ cursor:grab; }
-  .tv-row.dragging{ opacity:0.45; }
+  .tv-row{ cursor:grab; }
+  .tv-row.dragging, .pane-chip.dragging{ opacity:0.4; }
+  body.dragging-sym{ cursor:grabbing; user-select:none; }
+  body.dragging-sym .cpane{ transition:border-color .1s ease; }
+  .drag-ghost{ position:fixed; z-index:200; pointer-events:none; padding:3px 8px; border-radius:6px;
+    background:var(--panel-solid); border:1px solid var(--accent); color:var(--text-primary);
+    font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600;
+    box-shadow:0 6px 18px rgba(0,0,0,0.5); }
   .cpane svg{ display:block; width:100%; height:100%; touch-action:none; }
   .tv-main:fullscreen{ background:var(--panel-solid); border-radius:0; }
   /* fallback when the Fullscreen API is unavailable: the chart takes the tab */
@@ -5159,18 +5165,16 @@ function paneChip(i, tk, total){
   const n = nodeIndex.get(tk);
   const chip = document.createElement('div');
   chip.className = 'pane-chip';
-  chip.draggable = true;
   chip.title = '끌어서 위치 변경';
   chip.innerHTML = `<span class="grip">⠿</span><span style="color:${n?.color || 'inherit'}">${
     n?.assetClass === 'kr_stock' ? esc(n.name) : tk}</span>` +
     (total > 1 ? '<button class="x" title="이 패널 닫기">✕</button>' : '');
-  chip.addEventListener('mousedown', ev => { ev.stopPropagation(); focusPane(i); });
-  chip.addEventListener('dragstart', ev => {
-    ev.dataTransfer.effectAllowed = 'move';
-    try { ev.dataTransfer.setData('text/plain', 'pane:' + i); } catch(e){}
-    dragPayload = { kind: 'pane', from: i };
+  chip.addEventListener('mousedown', ev => {
+    if(ev.target.closest('.x')) return;
+    ev.stopPropagation();
+    focusPane(i);
+    if(ev.button === 0) beginSymbolDrag({ kind: 'pane', from: i, tk }, ev, chip);
   });
-  chip.addEventListener('dragend', clearDropMarks);
   chip.querySelector('.x')?.addEventListener('click', ev => { ev.stopPropagation(); removePane(i); });
   return chip;
 }
@@ -5207,46 +5211,86 @@ function swapPanes(a, b){
   rebuild(list, b);
 }
 
-/* ---- drag and drop ---- */
-let dragPayload = null;
+/* ---- drag and drop ----
+   Pointer-based, not HTML5 drag-and-drop. The native API needs the browser to
+   promote a mousedown into a drag, which it declines to do inside some embedded
+   contexts, and it gives nothing back on touch. Tracking the pointer ourselves
+   works everywhere and lets the drop indicator follow the cursor exactly. */
+let dragPayload = null, dragGhost = null, dragStart = null, dragMoved = false;
+const DRAG_SLOP = 5;          // px before a press counts as a drag, so clicks still work
+
 function clearDropMarks(){
   document.querySelectorAll('.cpane').forEach(el =>
     el.classList.remove('drop-replace', 'drop-split', 'drop-swap'));
-  document.querySelectorAll('.tv-row.dragging').forEach(el => el.classList.remove('dragging'));
-  dragPayload = null;
+  document.querySelectorAll('.tv-row.dragging, .pane-chip.dragging')
+    .forEach(el => el.classList.remove('dragging'));
+  if(dragGhost){ dragGhost.remove(); dragGhost = null; }
+  dragPayload = null; dragStart = null;
+  document.body.classList.remove('dragging-sym');
 }
+
 /* centre = 교체, 가장자리 = 새 패널. A pane chip always swaps. */
-function dropIntent(host, ev){
+function dropIntent(host, x, y){
   if(dragPayload?.kind === 'pane') return 'swap';
   const r = host.getBoundingClientRect();
-  const fx = (ev.clientX - r.left) / r.width, fy = (ev.clientY - r.top) / r.height;
+  const fx = (x - r.left) / r.width, fy = (y - r.top) / r.height;
   const edge = fx < 0.22 || fx > 0.78 || fy < 0.22 || fy > 0.78;
   return (edge && PANES.length < MAX_PANES) ? 'split' : 'replace';
 }
-function wirePaneDnD(host, i){
-  host.addEventListener('dragover', ev => {
-    if(!dragPayload) return;
-    ev.preventDefault();
-    ev.dataTransfer.dropEffect = 'move';
-    const intent = dropIntent(host, ev);
-    host.classList.toggle('drop-replace', intent === 'replace');
-    host.classList.toggle('drop-split', intent === 'split');
-    host.classList.toggle('drop-swap', intent === 'swap');
-  });
-  host.addEventListener('dragleave', ev => {
-    if(!host.contains(ev.relatedTarget)) host.classList.remove('drop-replace', 'drop-split', 'drop-swap');
-  });
-  host.addEventListener('drop', ev => {
-    ev.preventDefault();
-    const intent = dropIntent(host, ev);
-    const pl = dragPayload;
-    clearDropMarks();
-    if(!pl) return;
-    if(pl.kind === 'pane') swapPanes(pl.from, i);
-    else if(intent === 'split') addPane(pl.tk);
-    else replacePane(i, pl.tk);
-  });
+function paneAt(x, y){
+  const el = document.elementFromPoint(x, y);
+  return el ? el.closest('.cpane') : null;
 }
+
+function beginSymbolDrag(payload, ev, srcEl){
+  dragPayload = payload;
+  dragStart = { x: ev.clientX, y: ev.clientY, srcEl };
+  dragMoved = false;
+  window.addEventListener('mousemove', onSymbolDragMove, true);
+  window.addEventListener('mouseup', onSymbolDragEnd, true);
+}
+function onSymbolDragMove(ev){
+  if(!dragPayload || !dragStart) return;
+  if(!dragMoved){
+    if(Math.hypot(ev.clientX - dragStart.x, ev.clientY - dragStart.y) < DRAG_SLOP) return;
+    dragMoved = true;
+    dragStart.srcEl?.classList.add('dragging');
+    document.body.classList.add('dragging-sym');
+    dragGhost = document.createElement('div');
+    dragGhost.className = 'drag-ghost';
+    const n = nodeIndex.get(dragPayload.tk);
+    dragGhost.textContent = n?.assetClass === 'kr_stock' ? n.name : dragPayload.tk;
+    document.body.appendChild(dragGhost);
+  }
+  ev.preventDefault();
+  dragGhost.style.left = (ev.clientX + 12) + 'px';
+  dragGhost.style.top = (ev.clientY + 12) + 'px';
+
+  document.querySelectorAll('.cpane').forEach(el =>
+    el.classList.remove('drop-replace', 'drop-split', 'drop-swap'));
+  const host = paneAt(ev.clientX, ev.clientY);
+  if(!host) return;
+  const intent = dropIntent(host, ev.clientX, ev.clientY);
+  host.classList.add('drop-' + intent);
+}
+function onSymbolDragEnd(ev){
+  window.removeEventListener('mousemove', onSymbolDragMove, true);
+  window.removeEventListener('mouseup', onSymbolDragEnd, true);
+  const pl = dragPayload, moved = dragMoved;
+  const host = moved ? paneAt(ev.clientX, ev.clientY) : null;
+  const intent = host ? dropIntent(host, ev.clientX, ev.clientY) : null;
+  clearDropMarks();
+  dragMoved = false;
+  if(!moved || !pl || !host) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const i = +host.dataset.i;
+  if(pl.kind === 'pane') swapPanes(pl.from, i);
+  else if(intent === 'split') addPane(pl.tk);
+  else replacePane(i, pl.tk);
+}
+/* panes need no listeners of their own: the pointer is hit-tested against them */
+function wirePaneDnD(){}
 
 function renderTrading(){
   if(!cTk){
@@ -5354,7 +5398,7 @@ function renderTvList(){
   }
   host.innerHTML = list.map(t => {
     const n = nodeIndex.get(t), r = n.stats.ret_1y ?? 0;
-    return `<div class="tv-row ${t === cTk ? 'on' : ''}" data-tk="${t}" draggable="true">
+    return `<div class="tv-row ${t === cTk ? 'on' : ''}" data-tk="${t}">
       <span class="dot" style="width:7px;height:7px;background:${n.color};box-shadow:none"></span>
       <span class="nm">${n.assetClass === 'kr_stock' ? n.name : t}</span>
       <span class="rt" style="color:${r >= 0 ? 'var(--up)' : 'var(--down)'}">${r >= 0 ? '+' : ''}${r}%</span>
@@ -5362,6 +5406,7 @@ function renderTvList(){
   }).join('');
   host.querySelectorAll('.tv-row').forEach(el =>
     el.addEventListener('click', ev => {
+      if(dragMoved) return;               // the press turned into a drag
       const tk = el.dataset.tk;
       // same gesture as the network: modifier adds to the comparison
       if(ev.metaKey || ev.ctrlKey || ev.shiftKey){
@@ -5375,13 +5420,10 @@ function renderTvList(){
     }));
   host.querySelectorAll('.tv-row').forEach(el => {
     el.classList.toggle('cmp', compareSet.length > 1 && compareSet.includes(el.dataset.tk));
-    el.addEventListener('dragstart', ev => {
-      dragPayload = { kind: 'ticker', tk: el.dataset.tk };
-      el.classList.add('dragging');
-      ev.dataTransfer.effectAllowed = 'copy';
-      try { ev.dataTransfer.setData('text/plain', el.dataset.tk); } catch(e){}
+    el.addEventListener('mousedown', ev => {
+      if(ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
+      beginSymbolDrag({ kind: 'ticker', tk: el.dataset.tk }, ev, el);
     });
-    el.addEventListener('dragend', clearDropMarks);
   });
 }
 
