@@ -62,6 +62,109 @@ async function call(method, path, body, withAccount = true){
   }
 }
 
+
+/* =====================================================================
+   실시간 스트림 (웹소켓)
+   토스는 handshake 에 Authorization 헤더를 요구하는데 WebSocket 생성자로는
+   헤더를 붙일 수 없다. 그래서 declarativeNetRequest 로 그 요청에만 헤더를
+   덧붙인 뒤 연결한다 — 확장이기에 가능한 일이다.
+
+   구독은 선언형 full-replace 다. 지금 화면에 열린 종목 배열을 그대로 보내면
+   빠진 종목은 자동 해제된다. 그래서 "보고 있는 것만" 이 자연스럽다.
+   ===================================================================== */
+const WS_URL = 'wss://openapi-ws.tossinvest.com/ws/v1';
+const DNR_RULE_ID = 8931;
+let ws = null, wsSubs = [], wsBackoff = 1000, wsPingTimer = null, wsRetryTimer = null;
+
+/* 이 확장이 여는 웹소켓 요청에만 Authorization 헤더를 붙인다 */
+async function armWsHeader(){
+  const t = await token();
+  await chrome.declarativeNetRequest.updateSessionRules({
+    removeRuleIds: [DNR_RULE_ID],
+    addRules: [{
+      id: DNR_RULE_ID,
+      priority: 1,
+      action: { type: 'modifyHeaders',
+                requestHeaders: [{ header: 'Authorization', operation: 'set', value: 'Bearer ' + t }] },
+      condition: { urlFilter: '||openapi-ws.tossinvest.com/', resourceTypes: ['websocket'] },
+    }],
+  });
+}
+async function disarmWsHeader(){
+  try { await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [DNR_RULE_ID] }); }
+  catch(e){}
+}
+
+/* 대시보드 탭들이 열어 둔 포트. tabs 권한 없이 푸시하려는 목적이다. */
+const streamPorts = new Set();
+chrome.runtime.onConnect.addListener(port => {
+  if(port.name !== 'mc-stream') return;
+  streamPorts.add(port);
+  port.onDisconnect.addListener(() => {
+    streamPorts.delete(port);
+    if(!streamPorts.size) wsSetSymbols([]);      // 아무도 안 보면 연결을 놓는다
+  });
+});
+function wsPush(msg){
+  for(const p of streamPorts){
+    try { p.postMessage({ __stream: true, ...msg }); } catch(e){ streamPorts.delete(p); }
+  }
+}
+
+async function wsConnect(){
+  if(ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+  clearTimeout(wsRetryTimer); wsRetryTimer = null;
+  await armWsHeader();
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => {
+    wsBackoff = 1000;
+    wsPush({ event: 'open' });
+    wsDeclare();
+    clearInterval(wsPingTimer);
+    // 서버는 클라이언트 수신이 180초 없으면 끊는다. 받는 중이어도 타이머는 안 준다.
+    wsPingTimer = setInterval(() => { try { ws.send('PING'); } catch(e){} }, 60000);
+  };
+  ws.onmessage = ev => {
+    let d; try { d = JSON.parse(ev.data); } catch(e){ return; }   // "pong" 등 비 JSON 무시
+    if(d.type === 'pong') return;
+    wsPush({ event: 'frame', frame: d });
+  };
+  ws.onclose = () => {
+    clearInterval(wsPingTimer); wsPingTimer = null;
+    ws = null;
+    wsPush({ event: 'close' });
+    if(wsSubs.length) wsRetryTimer = setTimeout(wsConnect, wsBackoff = Math.min(wsBackoff * 2, 30000));
+  };
+  ws.onerror = () => wsPush({ event: 'error' });
+}
+
+/* 배열이 곧 구독 전체 — 빠진 항목은 서버가 알아서 해제한다 */
+function wsDeclare(){
+  if(!ws || ws.readyState !== WebSocket.OPEN) return;
+  const kr = [], us = [];
+  wsSubs.forEach(tk => (/^\d{6}$/.test(tk) ? kr : us).push(tk));
+  const decl = [{ id: 'mc-' + Date.now() }];
+  if(kr.length) decl.push({ type: 'trade:kr', codes: kr });
+  if(us.length) decl.push({ type: 'trade:us', codes: us });
+  try { ws.send(JSON.stringify(decl)); } catch(e){}
+}
+
+async function wsSetSymbols(list){
+  const next = [...new Set((list || []).filter(Boolean))].slice(0, 40);
+  const same = next.length === wsSubs.length && next.every(t => wsSubs.includes(t));
+  wsSubs = next;
+  if(!next.length){                       // 볼 것이 없으면 연결을 놓아 준다
+    clearInterval(wsPingTimer); wsPingTimer = null;
+    clearTimeout(wsRetryTimer); wsRetryTimer = null;
+    if(ws){ try { ws.close(); } catch(e){} ws = null; }
+    await disarmWsHeader();
+    return { subscribed: [] };
+  }
+  if(!ws || ws.readyState !== WebSocket.OPEN) await wsConnect();
+  else if(!same) wsDeclare();
+  return { subscribed: next };
+}
+
 /* 설정이 끝났는지 — 배지와 자동 열기의 기준 */
 async function configured(){
   const c = await cfg();
@@ -125,6 +228,7 @@ async function handle(msg){
   }
   if(op === 'orderDetail') return await call('GET', `/api/v1/orders/${encodeURIComponent(body.orderId)}`);
   if(op === 'commissions') return await call('GET', '/api/v1/commissions', null, false);
+  if(op === 'stream') return await wsSetSymbols(body?.symbols);   // 화면에 열린 종목만
   if(op === 'order'){
     for(const k of ['symbol', 'side', 'orderType', 'quantity'])
       if(!body?.[k]) throw new Error(`${k} 가 필요합니다.`);

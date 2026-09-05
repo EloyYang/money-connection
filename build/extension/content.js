@@ -18,6 +18,19 @@ window.addEventListener('message', ev => {
   });
 });
 
+/* 실시간 프레임은 요청-응답이 아니라 푸시라 별도 포트로 받는다 */
+let streamPort = null;
+function openStream(){
+  try {
+    streamPort = chrome.runtime.connect({ name: 'mc-stream' });
+    streamPort.onMessage.addListener(m => {
+      if(m && m.__stream) window.postMessage({ source: TAG_OUT, stream: m }, window.location.origin);
+    });
+    streamPort.onDisconnect.addListener(() => { streamPort = null; setTimeout(openStream, 1500); });
+  } catch(e){ streamPort = null; }
+}
+openStream();
+
 /* 설치되어 있다는 사실을 페이지에 알린다 */
 function hello(){
   window.postMessage(

@@ -1,18 +1,33 @@
 {
   "manifest_version": 3,
   "name": "머니 커넥션 — 토스증권 브리지",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "머니 커넥션 대시보드가 토스증권 Open API로 주문할 수 있게 중계합니다. 키는 이 확장 안에만 저장됩니다.",
-  "permissions": ["storage"],
-  "host_permissions": ["https://openapi.tossinvest.com/*"],
-  "background": { "service_worker": "background.js" },
+  "permissions": [
+    "storage",
+    "declarativeNetRequestWithHostAccess"
+  ],
+  "host_permissions": [
+    "https://openapi.tossinvest.com/*",
+    "wss://openapi-ws.tossinvest.com/*",
+    "https://openapi-ws.tossinvest.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
-      "matches": ["https://eloyyang.github.io/money-connection/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://eloyyang.github.io/money-connection/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start"
     }
   ],
   "options_page": "options.html",
-  "action": { "default_title": "토스증권 브리지 설정" }
+  "action": {
+    "default_title": "토스증권 브리지 설정"
+  }
 }

@@ -460,6 +460,9 @@
   .acct-act:hover{ background:rgba(255,255,255,0.05); border-color:var(--line); }
   .acct-act.danger{ color:var(--down); }
   .acct-act .sub{ display:block; font-size:9.5px; color:var(--text-muted); margin-top:1px; }
+  #m-live.on{ color:var(--up); border-color:rgba(61,220,132,0.45); }
+  #m-px.tick{ animation:pxTick .45s ease; }
+  @keyframes pxTick{ from{ color:var(--accent); } to{ color:inherit; } }
   /* ---- 미체결 주문 · 알림 ---- */
   #open-orders{ margin-bottom:12px; }
   #open-orders[hidden]{ display:none; }
@@ -883,6 +886,7 @@
           <div class="seg" id="m-iv" title="봉 단위">
             <button data-iv="1d" class="on">일봉</button><button data-iv="1m">1분봉</button>
           </div><button class="help" data-h="barInterval">?</button>
+          <button class="tool" id="m-live" title="실시간 시세 (확장 프로그램 필요)">실시간</button><button class="help" data-h="liveQuotes">?</button>
           <div class="seg" id="m-range">
             <button data-d="21">1개월</button><button data-d="63">3개월</button><button data-d="126">6개월</button>
             <button data-d="252" class="on">1년</button><button data-d="0">5년</button>
@@ -1562,6 +1566,16 @@ const HELP = {
     '분할 화면에서는 **클릭한 차트에만** 적용됩니다 — 패널마다 다른 지표를 걸어 둘 수 있습니다. ' +
     '툴바 왼쪽에 지금 어느 종목에 적용 중인지 표시됩니다.\n\n' +
     '모든 지표는 전체 이력에서 계산한 뒤 보이는 구간만 잘라 그립니다. 확대할 때마다 다시 시작하는 120일 이동평균은 120일 이동평균이 아니기 때문입니다.' },
+  liveQuotes: { t: '실시간 시세', dir: null, d:
+    '토스증권 웹소켓에 연결해 <b>화면에 열어 둔 종목의 체결만</b> 받아 옵니다. ' +
+    '구독은 선언형이라 패널을 바꾸면 목록을 통째로 다시 보내고, 빠진 종목은 자동으로 해제됩니다.\n\n' +
+    '<b>확장 프로그램이 있어야 합니다.</b> 브라우저의 WebSocket 은 handshake 에 인증 헤더를 붙일 수 없어서, ' +
+    '확장이 대신 연결합니다. 파이썬 브리지만 쓰는 경우에는 이 기능이 동작하지 않습니다.\n\n' +
+    '받은 체결가는 마지막 봉의 종가·고가·저가에만 반영합니다. ' +
+    '<b>거래량은 갱신하지 않습니다</b> — 프레임에 누적 거래량이 없고 유실 가능성이 있어, ' +
+    '받은 것을 더해서 만들면 틀린 값이 되기 때문입니다. 거래량은 봉 데이터 기준입니다.\n\n' +
+    '연결이 끊기면 ● 가 ○ 로 바뀌고 자동으로 다시 붙습니다. ' +
+    '갑자기 끊긴다면 토스 WTS 의 <b>허용 IP</b> 목록을 확인하세요 — 가정용 IP 는 바뀝니다.' },
   openOrders: { t: '미체결 주문', dir: null, d:
     '실거래 모드에서 아직 체결되지 않은 주문을 <b>5초마다</b> 토스에 물어 보여 줍니다. ' +
     '주문을 넣고 토스 앱을 열어 확인하지 않아도 됩니다.\n\n' +
@@ -4897,6 +4911,16 @@ async function setInterval1(iv){
 }
 document.querySelectorAll('#m-iv button').forEach(b =>
   b.addEventListener('click', () => setInterval1(b.dataset.iv)));
+
+document.getElementById('m-live').addEventListener('click', () => {
+  if(!extReady){
+    alert('실시간 시세는 확장 프로그램이 있어야 합니다.\n'
+        + '브라우저는 웹소켓에 인증 헤더를 붙일 수 없어서, 확장이 대신 연결합니다.\n\n'
+        + '포트폴리오 → 연동하기에서 확장을 설치해 주세요.');
+    return;
+  }
+  setLive(!liveOn);
+});
 ['trend','hline'].forEach(t=>{
   document.getElementById('tool-'+t).addEventListener('click', ()=>{
     cTool = (cTool === t) ? null : t;
@@ -5779,6 +5803,7 @@ function paneChip(i, tk, total){
 function currentTickers(){ stashPane(); return PANES.map(p => p.tk); }
 function rebuild(tickers, focusIdx, rows){
   buildPanes(tickers, rows);
+  if(typeof declareLive === 'function') declareLive();   // 보는 종목이 바뀌면 구독도 바뀐다
   PANES.forEach((p, i) => { loadPane(i); setRange(rangeDays()); });
   loadPane(Math.min(focusIdx ?? 0, PANES.length - 1));
   activeP = Math.min(focusIdx ?? 0, PANES.length - 1);
@@ -6777,6 +6802,99 @@ function toast(text, kind){
   host.appendChild(el);
   setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, 6000);
 }
+
+
+/* =====================================================================
+   실시간 시세
+   확장이 웹소켓을 열고 체결 프레임을 포트로 밀어 준다. 여기서는 지금
+   화면에 열려 있는 종목만 구독 목록으로 넘긴다 — 구독이 선언형이라
+   목록을 통째로 다시 주면 나머지는 서버가 알아서 해제한다.
+   ===================================================================== */
+let liveOn = false;
+const LIVE = new Map();                  // tk -> { px, at }
+let declareTimer = null;
+
+/* 화면에 열려 있는 종목 = 분할 패널의 종목들 */
+const visibleTickers = () => [...new Set(PANES.map(p => p.tk).filter(Boolean))];
+
+/* 선언은 초당 5회 제한이 있다. 패널을 드래그하는 동안 몰아치지 않도록 묶는다. */
+function declareLive(){
+  clearTimeout(declareTimer);
+  declareTimer = setTimeout(async () => {
+    if(!extReady) return;
+    try { await extCall('stream', null, { symbols: liveOn ? visibleTickers() : [] }); }
+    catch(e){ setLive(false, '실시간을 시작하지 못했습니다: ' + e.message); }
+  }, 350);
+}
+
+function setLive(on, err){
+  liveOn = !!on && extReady;
+  const b = document.getElementById('m-live');
+  if(b){
+    b.classList.toggle('on', liveOn);
+    b.textContent = liveOn ? '실시간 ●' : '실시간';
+  }
+  if(!liveOn) LIVE.clear();
+  declareLive();
+  if(err) toast(err, 'down');
+}
+
+/* 확장이 밀어 준 프레임 */
+function onStreamFrame(m){
+  if(m.event === 'close'){ paintLiveDot(false); return; }
+  if(m.event === 'open'){ paintLiveDot(true); return; }
+  if(m.event !== 'frame') return;
+  const f = m.frame || {};
+  if(f.type === 'error'){ setLive(false, '실시간 오류: ' + (f.error?.code || '알 수 없음')); return; }
+  if(f.type === 'subscriptions'){
+    const rej = f.rejected || [];
+    if(rej.length) toast(`실시간 구독 거부: ${rej.map(r => r.code || r).join(', ')}`, 'down');
+    return;
+  }
+  if(f.type !== 'message') return;
+  const body = f.data || f.body || f.payload || {};
+  const tk = body.symbol || body.code || (String(f.topic || '').split(':').pop());
+  const px = parseFloat(body.price ?? body.lastPrice ?? body.tradePrice);
+  if(!tk || !isFinite(px)) return;
+  LIVE.set(tk, { px, at: Date.now() });
+  applyLivePrice(tk, px);
+}
+
+/* 받은 체결가를 화면에 반영한다.
+   누적 거래량은 프레임 합산으로 만들 수 없다고 스펙이 명시하므로 값을 만들지 않는다.
+   마지막 봉의 종가만 갱신한다 — 그것만이 프레임으로 알 수 있는 사실이다. */
+function applyLivePrice(tk, px){
+  const set = MIN.get(tk);
+  if(set && set.rows.length){
+    const last = set.rows[set.rows.length - 1];
+    last[3] = px;
+    if(px > last[1]) last[1] = px;
+    if(px < last[2]) last[2] = px;
+  }
+  if(PANES.some(p => p.tk === tk)) drawCandle(true);
+  if(tk === selectedTk) paintLiveQuote(tk, px);
+}
+
+function paintLiveQuote(tk, px){
+  const el = document.getElementById('m-px');
+  if(!el) return;
+  const n = nodeIndex.get(tk);
+  el.textContent = (n?.currency === 'KRW' ? '₩' : '$') + px.toLocaleString();
+  el.classList.remove('tick');
+  void el.offsetWidth;                    // 애니메이션 재시작
+  el.classList.add('tick');
+}
+function paintLiveDot(open){
+  const b = document.getElementById('m-live');
+  if(b && liveOn) b.textContent = open ? '실시간 ●' : '실시간 ○';
+}
+
+/* 확장에서 오는 스트림 메시지 받기 */
+window.addEventListener('message', ev => {
+  if(ev.source !== window) return;
+  const d = ev.data;
+  if(d && d.source === 'mc-ext' && d.stream) onStreamFrame(d.stream);
+});
 
 const WIZ = ['ask', 'issue', 'how', 'keys', 'install', 'connect', 'done'];
 let wizStep = 'ask';
