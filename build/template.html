@@ -1588,9 +1588,10 @@ const HELP = {
     '<code>~/.money-connection/toss.json</code> 파일을 만들고 아래를 넣습니다.\n' +
     '<code>{"client_id": "발급받은ID", "client_secret": "발급받은시크릿"}</code>\n' +
     '계좌가 여러 개면 <code>"account_seq": 1</code> 을 추가하세요. 없으면 첫 종합매매 계좌를 씁니다.\n' +
-    '<span class="step">3. 브리지 실행</span>' +
-    '저장소를 내려받은 폴더에서 터미널에 입력합니다.\n' +
-    '<code>python3 build/toss_bridge.py</code>\n' +
+    '<span class="step">3. 브리지 내려받아 실행</span>' +
+    '<b>[토스증권 연동하기]</b> 마법사의 3단계에서 <code>toss_bridge.py</code> 를 바로 내려받을 수 있습니다 ' +
+    '(저장소를 clone 하지 않아도 됩니다). 그다음 터미널에서 실행합니다.\n' +
+    '<code>python3 ~/Downloads/toss_bridge.py</code>\n' +
     '실행되면 화면에 <b>브리지 주소</b>가 그대로 표시됩니다 — 보통 ' +
     '<code>http://localhost:8787</code> 입니다. <b>이 창은 거래하는 동안 켜 두어야 합니다.</b>\n' +
     '<span class="step">4. 주소 입력 후 연결 확인</span>' +
@@ -6386,6 +6387,7 @@ function renderAcctMenu(){
    데만 쓰이고 창을 닫으면 사라진다 — 애초에 브라우저가 토스 API 를 직접
    부를 수도 없다(CORS 로 막혀 있다). 그래서 키는 내 PC 의 브리지에만 있다.
    ===================================================================== */
+const BRIDGE_SRC = /*__BRIDGE__*/;      // 빌드 시 build/toss_bridge.py 가 그대로 들어온다
 const WIZ = ['ask', 'issue', 'keys', 'install', 'connect', 'done'];
 let wizStep = 'ask';
 let wizKeys = { id: '', secret: '' };      // 메모리에만 — 저장도 전송도 하지 않는다
@@ -6467,18 +6469,26 @@ function renderWizard(){
   }
 
   else if(wizStep === 'install'){
-    sub.textContent = '3단계 · 파일을 옮기고 브리지 실행';
+    sub.textContent = '3단계 · 브리지 내려받아 실행하기';
     const mv = 'mkdir -p ~/.money-connection && mv ~/Downloads/toss.json ~/.money-connection/';
     body.innerHTML = `<div class="wiz-step">
-      <b>toss.json</b> 이 내려받아졌습니다. 아래 두 줄을 터미널에 차례로 붙여 넣으세요.</div>
+      <b>toss.json</b> 을 내려받았습니다. 이제 브리지 프로그램도 받으세요 — 파이썬 파일 하나이고,
+      추가 설치 없이 돌아갑니다.</div>
       <ol class="wiz-ol">
-        <li>파일을 제자리로 옮깁니다 ${wizCmd(mv, 'wiz-c1')}</li>
-        <li>이 저장소를 내려받은 폴더에서 브리지를 실행합니다 ${wizCmd('python3 build/toss_bridge.py', 'wiz-c2')}
+        <li><b>브리지 내려받기</b>
+          <div style="margin:7px 0"><button class="btn" data-w="dl-bridge">toss_bridge.py 내려받기</button></div>
+          <span style="color:var(--text-muted)">받은 코드를 먼저 열어 봐도 좋습니다 — 250줄이고 외부 라이브러리를 쓰지 않습니다.</span></li>
+        <li><b>설정 파일을 제자리로</b> 옮깁니다 ${wizCmd(mv, 'wiz-c1')}</li>
+        <li><b>브리지 실행</b> ${wizCmd('python3 ~/Downloads/toss_bridge.py', 'wiz-c2')}
           <span style="color:var(--text-muted)">거래하는 동안 이 터미널 창은 켜 두어야 합니다.</span></li>
       </ol>
-      <div class="wiz-note">실행하면 터미널에 <b>브리지 주소</b>가 표시됩니다 — 다음 단계에서 씁니다.</div>`;
+      <div class="wiz-note">실행하면 터미널에 <b>브리지 주소</b>가 표시됩니다 — 다음 단계에서 씁니다.<br>
+        <code>python3: command not found</code> 가 나오면 맥에서
+        <code>xcode-select --install</code> 을 먼저 실행하세요.<br>
+        저장소를 <code>git clone</code> 해 두셨다면 그 폴더에서
+        <code>python3 build/toss_bridge.py</code> 로 실행해도 같습니다.</div>`;
     acts.innerHTML = `<button class="btn ghost back" data-w="keys">← 뒤로</button>
-      <button class="btn ghost" data-w="dl">다시 내려받기</button>
+      <button class="btn ghost" data-w="dl">toss.json 다시</button>
       <button class="btn" data-w="connect">실행했어요 →</button>`;
   }
 
@@ -6529,6 +6539,7 @@ document.getElementById('wiz').addEventListener('click', async ev => {
   const w = b.dataset.w;
   if(w === 'close'){ closeWizard(); return; }
   if(w === 'dl'){ wizDownload(); return; }
+  if(w === 'dl-bridge'){ downloadBridge(b); return; }
   if(w === 'install'){ wizDownload(); gotoWiz('install'); return; }
   if(w === 'sync'){ closeWizard(); openBrokerSettings();
     setTimeout(() => document.getElementById('bridge-sync')?.click(), 400); return; }
@@ -6547,6 +6558,18 @@ document.getElementById('wiz').addEventListener('click', async ev => {
   }
   gotoWiz(w);
 });
+
+/* 브리지 스크립트는 페이지에 함께 실려 있다 — 저장소를 받지 않아도 된다 */
+function downloadBridge(btn){
+  const blob = new Blob([BRIDGE_SRC], { type: 'text/x-python;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'toss_bridge.py';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  if(btn){ const t = btn.textContent; btn.textContent = '내려받았습니다 ✓';
+    setTimeout(() => { btn.textContent = t; }, 1600); }
+}
 
 /* 입력받은 키로 toss.json 을 만들어 내려준다. 값은 이 함수 밖으로 나가지 않는다. */
 function wizDownload(){

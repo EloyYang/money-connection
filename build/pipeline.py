@@ -1053,6 +1053,9 @@ def latest_session_leaders(dates, ohlc, tickers, members, top=6):
 def render(corr, px, oh, leaders, fund, macro, members, themes, index_date, problems, out_dir, usdkrw=None):
     tpl = open(os.path.join(ROOT, "build", "template.html")).read()
     engine = open(os.path.join(ROOT, "build", "candle_engine.js")).read()
+    # 브리지 스크립트를 페이지에 함께 싣는다. 사용자가 저장소를 clone 하지
+    # 않아도 연동 마법사가 파일을 그대로 내려줄 수 있어야 한다.
+    bridge_src = open(os.path.join(ROOT, "build", "toss_bridge.py")).read()
     cfg = load_theme_config()
 
     def div_yield(t):
@@ -1086,6 +1089,7 @@ def render(corr, px, oh, leaders, fund, macro, members, themes, index_date, prob
     have = [k for k, v in auth.items() if isinstance(v, dict) and any(
         vv for kk, vv in v.items() if not kk.startswith("_"))]
     log(f"auth providers configured: {', '.join(have) if have else '(none — 비회원 모드만)'}")
+    log(f"bridge script embedded: {len(bridge_src):,} bytes")
 
     blob = lambda o: json.dumps(o, separators=(",", ":"), ensure_ascii=False)
     body = (tpl.replace("/*__CANDLE_ENGINE__*/", engine, 1)
@@ -1096,7 +1100,8 @@ def render(corr, px, oh, leaders, fund, macro, members, themes, index_date, prob
                .replace("/*__FUND__*/", blob(fund))
                .replace("/*__MACRO__*/", blob(macro))
                .replace("/*__META__*/", blob(meta))
-               .replace("/*__AUTH__*/", blob(auth)))
+               .replace("/*__AUTH__*/", blob(auth))
+               .replace("/*__BRIDGE__*/", blob(bridge_src), 1))
 
     # The template is written for the Artifact wrapper, which supplies the
     # document head. A standalone site has to bring its own — without the
