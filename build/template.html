@@ -946,9 +946,9 @@
           <button class="tool" id="m-more" hidden title="과거 봉을 더 받아 옵니다">← 과거 더</button>
           <span class="modal-note mono" id="m-span" hidden style="font-size:10px"></span><button class="help" data-h="todayBar" id="m-span-help" hidden>?</button>
           <button class="tool" id="m-live" title="실시간 시세 (확장 프로그램 필요)">실시간</button><button class="help" data-h="liveQuotes">?</button>
-          <div class="seg" id="m-range">
-            <button data-d="21">1개월</button><button data-d="63">3개월</button><button data-d="126">6개월</button>
-            <button data-d="252" class="on">1년</button><button data-d="0">5년</button>
+          <span class="modal-note" id="m-range-note">기간은 상단에서</span>
+          <div class="seg" id="m-range" hidden>
+            <button data-d="252" class="on">1년</button>
           </div>
           <button class="tool" id="tool-trend">╱ 추세선</button>
           <button class="tool" id="tool-hline">— 수평선</button>
@@ -1141,6 +1141,9 @@
       <h3>주도주</h3><button class="help" data-h="leadCriteria">?</button><span class="cnt mono" id="lead-date">—</span>
       <button class="fav-only" id="lead-only">주도주만</button>
     </div>
+    <div class="ctl-label"><span id="lead-period-label">기간</span><button class="help" data-h="leadPeriod">?</button>
+      <button class="mini-btn" id="lead-period-sync" style="flex:0 0 auto;padding:1px 6px;margin-left:auto" hidden>전체 기간 따라가기</button></div>
+    <span class="seg-mini seg-wrap" id="lead-period"></span>
     <div class="ctl-label">기준 (여러 개 선택 시 종합 순위) <button class="mini-btn" id="lead-reset" style="flex:0 0 auto;padding:1px 6px;margin-left:4px">초기화</button></div>
     <div class="ctl-label" style="margin-top:2px">시세</div>
     <span class="seg-mini seg-wrap" id="lead-mode">
@@ -1471,7 +1474,27 @@ const PERIODS = [
 ].filter(p => (CORR.period_matrix || {})[p.corr]);
 let period = PERIODS.find(p => p.key === '1y') || PERIODS[PERIODS.length - 1];
 const periodKey = () => period.corr;
-const leadDays = () => period.days;
+/* 주도주는 자기 기간을 따로 쓴다 — 전체 기간과 별개로 움직인다.
+   처음에는 전체 기간과 같은 값에서 출발한다. */
+let leadPeriod = null;                    // null = 아직 따로 고르지 않음 → 전체 기간을 따른다
+const leadP = () => leadPeriod || period;
+const leadDays = () => leadP().days;
+
+/* OH.dates 는 223종목의 날짜 합집합이라 365일 거래하는 암호화폐 때문에
+   달력일에 가깝다. 그래서 "252칸" 을 자르면 1년이 아니라 8개월이 된다.
+   그 종목이 실제로 거래한 봉을 세어 되짚어야 맞다. */
+function sliceStart(tks, sessions){
+  const list = (Array.isArray(tks) ? tks : [tks]).filter(t => (OH.data[t] || []).length);
+  if(!list.length || !sessions) return 0;
+  let best = OH.dates.length;
+  for(const t of list){
+    const a = OH.data[t];
+    let n = 0, i = a.length - 1;
+    for(; i >= 0; i--){ if(a[i] && ++n >= sessions) break; }
+    best = Math.min(best, Math.max(0, i));
+  }
+  return best;
+}
 const activeMatrix = () => (CORR.period_matrix && CORR.period_matrix[period.corr]) || CORR.matrix;
 
 function zScoreVectors(raw){
@@ -1810,9 +1833,18 @@ const HELP = {
   threshold: { t: '상관계수 임계값 |r|', dir: null, d:
     '이 값보다 약한 관계는 선을 그리지 않습니다. 낮출수록 선이 많아져 약한 관계까지 보이고, 높일수록 강한 관계만 남습니다. ' +
     '0.35 부근이 의미 있는 동조와 잡음이 갈리는 지점입니다.' },
+  leadPeriod: { t: '주도주 기간 (따로 설정)', dir: null, d:
+    '주도주는 <b>자기 기간</b>을 따로 가질 수 있습니다. 네트워크는 1년으로 보면서 ' +
+    '주도주만 1주로 좁혀 보는 식입니다.\n\n' +
+    '건드리지 않으면 상단의 전체 기간을 그대로 따라갑니다. 한 번 고르면 그때부터 따로 움직이고, ' +
+    '<b>[전체 기간 따라가기]</b> 버튼으로 되돌릴 수 있습니다.\n\n' +
+    '기간은 <b>시세 기준</b>(등락률·지수 기여도·거래대금·거래량 급증)에만 적용됩니다. ' +
+    '펀더멘털 기준(매출성장·PER 등)은 최신 재무제표를 쓰므로 기간과 무관합니다.' },
   corrPeriod: { t: '기간 (전체 공통)', dir: null, d:
-    '이 하나가 화면 전체의 기간입니다. 바꾸면 <b>연결선(상관계수) · 주도주 순위 · 종목 상세의 주가 추이</b>가 ' +
-    '모두 같은 기간으로 함께 바뀝니다.\n\n' +
+    '이 하나가 화면 전체의 기간입니다. 바꾸면 <b>연결선(상관계수) · 종목 상세의 주가 추이 · ' +
+    '트레이딩 차트(일봉)</b>가 모두 같은 기간으로 함께 바뀝니다.\n\n' +
+    '<b>주도주만 예외</b>입니다 — 주도주 패널에 자기 기간이 따로 있어, 건드리지 않으면 이 값을 따라오지만 ' +
+    '한 번 고르면 그때부터 따로 움직입니다.\n\n' +
     '상관계수는 최소 1개월 관측이 필요해, 1일·1주를 골라도 계산은 1개월 창으로 합니다 ' +
     '— 그때는 연결 기준 아래에 그 사실이 표시됩니다.\n\n' +
     '<b>기간이 적용되지 않는 것</b>도 있습니다. 매크로 민감도·펀더멘털 연결은 1년 고정 회귀이고, ' +
@@ -2349,16 +2381,28 @@ const RELATION_INFO = {
    user clicks, the other moves with it. */
 function renderPeriodButtons(){
   const meta = Object.fromEntries((CORR.periods || []).map(p => [p.key, p]));
-  ['period-sel'].forEach(id => {
+  const draw = (id, cur, onPick) => {
     const host = document.getElementById(id);
     if(!host) return;
-    const m = meta[period.corr];
     host.innerHTML = PERIODS.map(p =>
-      `<button data-p="${p.key}" class="${p.key === period.key ? 'on' : ''}"` +
+      `<button data-p="${p.key}" class="${p.key === cur.key ? 'on' : ''}"` +
       ` title="${meta[p.corr] ? meta[p.corr].from + ' ~ ' + meta[p.corr].to : ''}">${p.label}</button>`).join('');
     host.querySelectorAll('button').forEach(b =>
-      b.addEventListener('click', () => setPeriod(b.dataset.p)));
-  });
+      b.addEventListener('click', () => onPick(b.dataset.p)));
+  };
+  draw('period-sel', period, setPeriod);
+  draw('lead-period', leadP(), setLeadPeriod);
+  const sync = document.getElementById('lead-period-sync');
+  if(sync) sync.hidden = !leadPeriod;      // 따로 골랐을 때만 되돌리기 버튼을 보여 준다
+}
+
+function setLeadPeriod(key){
+  const p = PERIODS.find(x => x.key === key);
+  if(!p) return;
+  leadPeriod = p;
+  _leadCache = null;
+  renderPeriodButtons();
+  renderLeaders();
 }
 function setPeriod(key){
   const p = PERIODS.find(x => x.key === key);
@@ -2367,7 +2411,8 @@ function setPeriod(key){
   renderPeriodButtons();
   applyRelation();          // network + correlation lists
   _leadCache = null;
-  renderLeaders();
+  renderLeaders();          // leadPeriod 가 null 이면 이 값을 따라온다
+  syncTradeRange();         // 트레이딩 차트의 보이는 구간도 함께
   // 상세가 열려 있으면 주가 추이도 새 기간으로
   if(compareSet.length && document.getElementById('drawer').classList.contains('show')){
     drawPriceChart(compareSet);
@@ -2614,9 +2659,7 @@ const chartSvg = d3.select('#pricechart');
 /* PX 는 1년치만 들고 있어 3년·5년을 그릴 수 없다. 5년치 일봉(OH)에서
    종가만 뽑아 쓰면 기간 선택이 실제로 의미를 갖는다. */
 function closeSeries(list){
-  const nAll = OH.dates.length;
-  const want = Math.min(nAll, Math.max(20, period.days || 252));
-  const from = nAll - want;
+  const from = sliceStart(list, Math.max(10, period.days || 252));
   return {
     dates: OH.dates.slice(from),
     raw: list.map(t => {
@@ -4388,7 +4431,7 @@ function percentiles(map){
 }
 
 function leadData(){
-  const key = leadModes.join('+') + '|' + period.key;
+  const key = leadModes.join('+') + '|' + leadP().key;
   if(_leadCache && _leadCache.key === key) return _leadCache;
   const metrics = leadModes.map(k => LEAD_METRICS[k]).filter(Boolean);
   if(!metrics.length) metrics.push(LEAD_METRICS.chg);
@@ -5252,20 +5295,37 @@ document.getElementById('chart-host').addEventListener('click', ()=> openTrading
 function setRange(days){
   yManual = null;                       // a new period re-fits the price axis
   const a = chartRows(cTk), n = a.length;
-  const s = paneIv() === '1m' ? 0 : firstIdx(cTk);
+  const s = isIntraday(paneIv()) ? 0 : firstIdx(cTk);
   cI1 = n-1;
-  cI0 = days ? Math.max(s, n-days) : s;
+  cI0 = isIntraday(paneIv())
+    ? (days ? Math.max(0, n - days) : 0)
+    : Math.max(s, sliceStart(cTk, days));
   if(cI1 - cI0 < 5) cI0 = Math.max(0, cI1-5);
   drawCandle();
 }
-document.querySelectorAll('#m-range button').forEach(b=>{
-  b.addEventListener('click', ()=>{
-    document.querySelectorAll('#m-range button').forEach(x=>x.classList.toggle('on', x===b));
-    setRange(+b.dataset.d);
-  });
-});
+
 
 /* 봉 단위는 패널마다 따로 기억한다 — 한 화면에 일봉과 분봉을 같이 둘 수 있다 */
+/* 전체 기간이 바뀌면 일봉을 보고 있는 패널의 구간을 다시 잡는다.
+   분봉·시간봉은 자기 규칙이 있으므로 건드리지 않는다. */
+function syncTradeRange(){
+  if(!PANES.length) return;
+  const note = document.getElementById('m-range-note');
+  if(note) note.textContent = `${period.label} · 기간은 상단에서`;
+  const cur = activeP;
+  PANES.forEach((p, i) => {
+    if(isIntraday(p.iv)) return;
+    const rows = OH.data[p.tk] || [];
+    if(!rows.length) return;
+    p.i1 = rows.length - 1;
+    p.i0 = Math.max(0, sliceStart(p.tk, period.days || 252));
+    p.yManual = null;
+  });
+  loadPane(cur);
+  if(document.body.classList.contains('view-trade')) drawCandle();
+  syncIvButtons();
+}
+
 function syncIvButtons(){
   const sel = document.getElementById('m-iv');
   if(!sel) return;
@@ -5273,8 +5333,11 @@ function syncIvButtons(){
     sel.innerHTML = IVS.map(v => `<option value="${v.k}">${v.label}</option>`).join('');
   const iv = paneIv();
   sel.value = iv;
-  const rng = document.getElementById('m-range');
-  if(rng) rng.style.display = isIntraday(iv) ? 'none' : '';
+  const note = document.getElementById('m-range-note');
+  if(note){
+    note.hidden = isIntraday(iv);
+    note.textContent = `${period.label} · 기간은 상단에서`;
+  }
   const more = document.getElementById('m-more');
   if(more){
     const st = MIN.get(cTk);
@@ -5340,6 +5403,13 @@ async function setInterval1(iv){
   declareLive();                          // 실시간 구독은 화면을 따라간다
 }
 document.getElementById('m-iv').addEventListener('change', e => setInterval1(e.target.value));
+
+document.getElementById('lead-period-sync')?.addEventListener('click', () => {
+  leadPeriod = null;                      // 전체 기간으로 되돌린다
+  _leadCache = null;
+  renderPeriodButtons();
+  renderLeaders();
+});
 
 /* 과거로 더 — 왼쪽 끝까지 밀었을 때도 같은 일을 한다 */
 let moreBusy = false;
@@ -6470,7 +6540,9 @@ function renderTrading(){
   };
   tryDraw();
 }
-const rangeDays = () => { const b = document.querySelector('#m-range button.on'); return b ? +b.dataset.d : 252; };
+/* 트레이딩 차트의 일봉 구간은 상단의 전체 기간을 따른다.
+   5년은 days=1260 이지만 심어 둔 일봉이 그보다 짧을 수 있어 그대로 넘긴다. */
+const rangeDays = () => period.days || 252;
 
 /* ---- 전체화면 ---- */
 /* Embedded contexts (an iframe without allow="fullscreen") reject the API
@@ -6532,8 +6604,7 @@ function loadChart(tk){
     cI0 = Math.max(0, rows.length - 120);
     drawCandle();
   } else {
-    const on = document.querySelector('#m-range button.on');
-    setRange(on ? +on.dataset.d : 252);
+    setRange(rangeDays());
   }
   if(typeof declareLive === 'function') declareLive();
 }
