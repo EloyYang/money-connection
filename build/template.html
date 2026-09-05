@@ -418,6 +418,37 @@
   .auth-btn img, .auth-btn .av{ width:19px; height:19px; border-radius:50%; object-fit:cover;
     background:var(--border-strong); }
   .auth-btn .nm{ max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #auth-box{ position:relative; }
+  .auth-btn .caret{ font-size:8px; color:var(--text-muted); }
+  .acct-menu{ position:absolute; right:0; top:calc(100% + 7px); z-index:130; width:272px;
+    background:var(--panel-solid); border:1px solid var(--border-strong); border-radius:12px;
+    box-shadow:0 22px 60px rgba(0,0,0,0.55); padding:14px; text-align:left; cursor:default;
+    max-height:calc(100vh - 74px); overflow-y:auto; }
+  .acct-menu[hidden]{ display:none; }
+  .acct-id{ display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .acct-id img, .acct-id .av{ width:34px; height:34px; border-radius:50%; object-fit:cover;
+    flex:0 0 auto; background:var(--border-strong); }
+  .acct-id .who{ min-width:0; }
+  .acct-id .n{ font-size:12.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .acct-id .e{ font-size:10.5px; color:var(--text-muted); overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; }
+  .acct-prov{ display:inline-block; margin-top:3px; padding:1px 6px; border-radius:20px;
+    font-size:9px; letter-spacing:0.03em; background:var(--border-strong); color:var(--text-secondary); }
+  .acct-stats{ display:grid; grid-template-columns:1fr 1fr; gap:1px; margin-bottom:11px;
+    background:var(--line); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .acct-stats div{ background:var(--panel-solid); padding:7px 9px; }
+  .acct-stats .l{ font-size:9.5px; color:var(--text-muted); }
+  .acct-stats .v{ font-size:13px; font-weight:600; font-family:'JetBrains Mono',monospace; }
+  .acct-sec{ font-size:9.5px; color:var(--text-muted); letter-spacing:0.04em;
+    margin:12px 0 6px; text-transform:uppercase; }
+  .acct-act{ display:block; width:100%; text-align:left; padding:7px 9px; margin-bottom:3px;
+    font-size:11.5px; border-radius:7px; border:1px solid transparent; background:none;
+    color:var(--text-primary); cursor:pointer; font-family:inherit; }
+  .acct-act:hover{ background:rgba(255,255,255,0.05); border-color:var(--line); }
+  .acct-act.danger{ color:var(--down); }
+  .acct-act .sub{ display:block; font-size:9.5px; color:var(--text-muted); margin-top:1px; }
+  .acct-note{ font-size:9.5px; color:var(--text-muted); line-height:1.6; margin-top:10px;
+    padding-top:9px; border-top:1px solid var(--line); }
   #login-modal{ position:fixed; inset:0; z-index:120; background:rgba(6,8,11,0.8); backdrop-filter:blur(4px);
     display:flex; align-items:center; justify-content:center; padding:20px; }
   #login-modal[hidden]{ display:none; }
@@ -4313,9 +4344,14 @@ let favAssign = {};                       // ticker -> section id
 let favDoc = null, favApplying = false;
 
 function loadLocalFavorites(){
+  // reset FIRST: this also runs when the scope changes, and an account with an
+  // empty store must show an empty list, not the previous account's
+  favorites = new Set();
+  favSections = [{ id: DEFAULT_SEC, name: '기본' }];
+  favAssign = {};
   try {
     let raw = localStorage.getItem(FAV_KEY);
-    if(!raw){                                   // migrate from the pre-rename key
+    if(!raw && FAV_KEY === FAV_KEY_BASE){       // migrate from the pre-rename key
       const legacy = localStorage.getItem(FAV_KEY_LEGACY);
       if(legacy){ raw = legacy; localStorage.setItem(FAV_KEY, legacy); }
     }
@@ -5931,6 +5967,16 @@ function popupToken(url, name){
   });
 }
 
+/* atob() returns one character per BYTE. A Korean name is multi-byte UTF-8,
+   so reading it straight out of atob() gives mojibake (홍길동 -> ??????).
+   Re-read the bytes through a UTF-8 decoder. */
+function decodeJwt(jwt){
+  const b64 = jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64 + '='.repeat((4 - b64.length % 4) % 4));
+  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+  return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+}
+
 async function loginGoogle(){
   await loadScript('https://accounts.google.com/gsi/client');
   return new Promise((resolve, reject) => {
@@ -5938,7 +5984,7 @@ async function loginGoogle(){
       client_id: AUTH.google.clientId,
       callback: res => {
         try {
-          const p = JSON.parse(atob(res.credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+          const p = decodeJwt(res.credential);
           resolve({ provider: 'google', id: p.sub, name: p.name || p.email, email: p.email, pic: p.picture });
         } catch(e){ reject(new Error('Google 응답을 읽지 못했습니다.')); }
       },
@@ -6033,15 +6079,142 @@ function switchScope(){
   updateMiniTicket();
 }
 
+const PROV_LABEL = { google: 'Google', kakao: '카카오', naver: '네이버' };
+
 function renderAuth(){
   const box = document.getElementById('auth-box');
   box.innerHTML = isLoggedIn()
-    ? `<button class="btn ghost auth-btn" id="auth-out" title="${esc(user.email || '')}">
-         ${user.pic ? `<img src="${user.pic}" alt="">` : '<span class="av"></span>'}
-         <span class="nm">${esc(user.name)}</span></button>`
+    ? `<button class="btn ghost auth-btn" id="auth-me" title="계정">
+         ${user.pic ? `<img src="${esc(user.pic)}" alt="" referrerpolicy="no-referrer">`
+                    : '<span class="av"></span>'}
+         <span class="nm">${esc(user.name)}</span><span class="caret">▾</span></button>
+       <div class="acct-menu" id="acct-menu" hidden></div>`
     : '<button class="btn ghost auth-btn" id="auth-in">로그인</button>';
   document.getElementById('auth-in')?.addEventListener('click', openLoginModal);
-  document.getElementById('auth-out')?.addEventListener('click', logout);
+  document.getElementById('auth-me')?.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const m = document.getElementById('acct-menu');
+    if(m.hidden) renderAcctMenu();
+    m.hidden = !m.hidden;
+  });
+}
+
+const closeAcctMenu = () => { const m = document.getElementById('acct-menu'); if(m) m.hidden = true; };
+document.addEventListener('click', ev => {
+  if(!ev.target.closest?.('#auth-box')) closeAcctMenu();
+});
+document.addEventListener('keydown', ev => { if(ev.key === 'Escape') closeAcctMenu(); });
+
+/* 계정 메뉴 — 이 계정에 무엇이 얼마나 쌓였는지 보여 주고, 서버가 없는
+   사이트에서 유일하게 기기를 옮길 수 있는 수단(내보내기/가져오기)을 준다 */
+function renderAcctMenu(){
+  const m = document.getElementById('acct-menu');
+  if(!m) return;
+  const p = folio.paper || {}, lv = folio.live || {};
+  const cnt = (l, v) => `<div><div class="l">${l}</div><div class="v">${v}</div></div>`;
+  m.innerHTML = `
+    <div class="acct-id">
+      ${user.pic ? `<img src="${esc(user.pic)}" alt="" referrerpolicy="no-referrer">`
+                 : '<span class="av"></span>'}
+      <div class="who">
+        <div class="n">${esc(user.name)}</div>
+        <div class="e">${esc(user.email || '이메일 없음')}</div>
+        <span class="acct-prov">${PROV_LABEL[user.provider] || user.provider}</span>
+      </div>
+    </div>
+    <div class="acct-sec">이 계정에 저장된 것</div>
+    <div class="acct-stats">
+      ${cnt('즐겨찾기', favorites.size + '종목')}
+      ${cnt('저장된 화면', savedViews.length + '개')}
+      ${cnt('보유 · 모의', Object.keys(p.positions || {}).length + '종목')}
+      ${cnt('보유 · 실거래', Object.keys(lv.positions || {}).length + '종목')}
+      ${cnt('모의 거래', (p.trades || []).length + '건')}
+      ${cnt('실거래', (lv.trades || []).length + '건')}
+    </div>
+    <div class="acct-sec">데이터</div>
+    <button class="acct-act" data-a="export">내 데이터 내보내기
+      <span class="sub">즐겨찾기 · 저장된 화면 · 장부를 JSON 파일 하나로</span></button>
+    <button class="acct-act" data-a="import">가져오기
+      <span class="sub">다른 기기에서 내보낸 파일로 이 계정을 덮어씁니다</span></button>
+    <button class="acct-act danger" data-a="wipe">이 브라우저에서 내 데이터 지우기
+      <span class="sub">되돌릴 수 없습니다 · 먼저 내보내기를 권합니다</span></button>
+    <div class="acct-sec">계정</div>
+    <button class="acct-act" data-a="logout">로그아웃
+      <span class="sub">데이터는 남고, 다시 로그인하면 그대로 보입니다</span></button>
+    <div class="acct-note">이 사이트는 서버가 없습니다. 위 데이터는 <b>이 브라우저</b>에만
+      있고 기기 간에 자동으로 동기화되지 않습니다 — 다른 기기로 옮기려면 내보내기를 쓰세요.</div>`;
+  m.querySelectorAll('.acct-act').forEach(b =>
+    b.addEventListener('click', () => acctAction(b.dataset.a)));
+}
+
+/* 이 계정의 저장소 전체를 한 덩어리로 다룬다 */
+const acctStores = () => ({ favorites: FAV_KEY, sections: SEC_KEY, folio: FOLIO_KEY, views: VIEW_KEY });
+
+function acctAction(a){
+  if(a === 'logout'){ closeAcctMenu(); logout(); return; }
+
+  if(a === 'export'){
+    const dump = { _app: 'money-connection', _version: 1,
+                   exported: new Date().toISOString(),
+                   account: { provider: user.provider, id: user.id, name: user.name }, data: {} };
+    for(const [k, key] of Object.entries(acctStores())){
+      try { const raw = localStorage.getItem(key); if(raw) dump.data[k] = JSON.parse(raw); } catch(e){}
+    }
+    const blob = new Blob([JSON.stringify(dump, null, 1)], { type: 'application/json;charset=utf-8' });
+    const el = document.createElement('a');
+    el.href = URL.createObjectURL(blob);
+    el.download = `money-connection-${user.provider}-${new Date().toISOString().slice(0,10)}.json`;
+    el.click();
+    setTimeout(() => URL.revokeObjectURL(el.href), 2000);
+    closeAcctMenu();
+    return;
+  }
+
+  if(a === 'import'){
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'application/json,.json';
+    inp.addEventListener('change', () => {
+      const f = inp.files?.[0];
+      if(!f) return;
+      const rd = new FileReader();
+      rd.onload = () => {
+        let dump;
+        try { dump = JSON.parse(rd.result); }
+        catch(e){ alert('JSON 파일을 읽지 못했습니다.'); return; }
+        if(dump._app !== 'money-connection' || !dump.data){
+          alert('머니 커넥션에서 내보낸 파일이 아닙니다.'); return;
+        }
+        const from = dump.account
+          ? `${PROV_LABEL[dump.account.provider] || dump.account.provider} · ${dump.account.name || ''}`
+          : '알 수 없는 계정';
+        if(!confirm(`${from} 에서 ${(dump.exported || '').slice(0,10)} 에 내보낸 데이터입니다.\n\n`
+          + '지금 계정의 즐겨찾기 · 저장된 화면 · 장부를 이 파일로 덮어씁니다. 계속할까요?')) return;
+        for(const [k, key] of Object.entries(acctStores())){
+          try {
+            if(dump.data[k] === undefined) localStorage.removeItem(key);
+            else localStorage.setItem(key, JSON.stringify(dump.data[k]));
+          } catch(e){}
+        }
+        switchScope();
+        closeAcctMenu();
+        alert('가져왔습니다.');
+      };
+      rd.readAsText(f);
+    });
+    inp.click();
+    return;
+  }
+
+  if(a === 'wipe'){
+    if(!confirm('이 계정의 즐겨찾기 · 저장된 화면 · 모의/실거래 장부를 이 브라우저에서 모두 지웁니다.\n'
+      + '되돌릴 수 없습니다. 계속할까요?')) return;
+    if(!confirm('정말 지울까요? 내보내기를 하지 않았다면 복구할 방법이 없습니다.')) return;
+    for(const key of [...Object.values(acctStores()), FOLIO_KEY + '.mode']){
+      try { localStorage.removeItem(key); } catch(e){}
+    }
+    switchScope();
+    closeAcctMenu();
+  }
 }
 
 /* the gate: personal panels are replaced by a prompt, not hidden, so it is
