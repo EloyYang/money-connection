@@ -615,6 +615,9 @@
   .fav-row .drop{ border:none; background:none; color:var(--text-muted); cursor:pointer; font-size:13px;
                   padding:0 2px; line-height:1; }
   .fav-row .drop:hover{ color:var(--fav); }
+  .view-row .vname{ min-width:0; flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-family:inherit; font-weight:600; }
+  .view-row .vmeta{ margin-left:0; color:var(--text-muted); font-size:10px; white-space:nowrap; }
   .fav-group{ border-radius:7px; padding:0 2px 2px; }
   .fav-group.drop-target{ background:rgba(245,196,81,0.10); outline:1px dashed var(--fav); }
   .fav-row.dragging{ opacity:0.4; }
@@ -837,6 +840,29 @@
 
 
   <div class="left-stack graph-only">
+  <div class="panel fav-panel" id="fav-panel" data-panel="fav">
+    <div class="fav-head">
+      <h3>★ 즐겨찾기</h3><button class="help" data-h="favSections">?</button><span class="cnt" id="fav-count">0</span>
+    </div>
+    <div class="fav-actions">
+      <button class="fav-only" id="fav-add-sec" title="섹션 추가">＋ 섹션</button>
+      <button class="fav-only" id="fav-only">즐겨찾기만</button>
+    </div>
+    <div id="fav-list"></div>
+    <div class="fav-sync" id="fav-sync">이 브라우저에 저장됩니다.</div>
+  </div>
+
+  <div class="panel fav-panel" id="view-panel" data-panel="views">
+    <div class="fav-head">
+      <h3>⧉ 저장된 화면</h3><button class="help" data-h="savedViews">?</button>
+      <span class="cnt" id="view-count">0</span>
+    </div>
+    <div class="fav-actions">
+      <button class="fav-only" id="view-save">＋ 현재 화면 저장</button>
+    </div>
+    <div id="view-list"></div>
+  </div>
+
   <div class="panel legend" data-panel="theme">
     <div class="legend-head">
       <h3 id="legend-title">테마</h3><button class="help" data-h="theme">?</button>
@@ -890,17 +916,6 @@
     <div class="lead-breadth" id="lead-breadth"></div>
   </div>
 
-  <div class="panel fav-panel" id="fav-panel" data-panel="fav">
-    <div class="fav-head">
-      <h3>★ 즐겨찾기</h3><button class="help" data-h="favSections">?</button><span class="cnt" id="fav-count">0</span>
-    </div>
-    <div class="fav-actions">
-      <button class="fav-only" id="fav-add-sec" title="섹션 추가">＋ 섹션</button>
-      <button class="fav-only" id="fav-only">즐겨찾기만</button>
-    </div>
-    <div id="fav-list"></div>
-    <div class="fav-sync" id="fav-sync">이 브라우저에 저장됩니다.</div>
-  </div>
 
   </div>
 
@@ -1379,6 +1394,12 @@ const HELP = {
     '대신 저장소의 build/toss_bridge.py 를 본인 PC에서 실행하세요. 키는 ~/.money-connection/toss.json 에만 있고, ' +
     '브라우저는 localhost의 브리지에만 요청합니다.\n\n' +
     '"보유 종목 가져오기"는 토스 계좌의 실제 보유 수량과 평균단가를 장부에 덮어씁니다. 현금 잔고는 모의 값 그대로 남습니다.' },
+  savedViews: { t: '저장된 화면', dir: null, d:
+    '지금 보고 있는 네트워크 화면을 통째로 저장합니다 — 노드를 끌어다 놓은 배치, 확대·이동 위치, 분류(테마/시장/성격)와 켜 둔 그룹, ' +
+    '연결 기준, 기간, 상관계수 임계값, 주도주 기준, 필터 상태까지 전부.\n\n' +
+    '이름을 클릭하면 그대로 복원되고, 이때 물리 시뮬레이션은 멈춥니다 — 그러지 않으면 힘이 배치를 곧바로 흐트러뜨리기 때문입니다. ' +
+    '복원 후 기간이나 임계값을 바꾸면 배치는 다시 계산됩니다.\n\n' +
+    '이 브라우저에만 저장되며 최대 20개까지 보관합니다.' },
   usage: { t: '사용법', dir: null, d:
     '종목을 클릭하면 주가 차트 · 펀더멘털 · 상관계수 순위가 열립니다. ⌘/Ctrl/Shift+클릭으로 최대 5종목까지 겹쳐 비교할 수 있고, ' +
     '상세 아래 연관 종목을 클릭해도 비교에 추가됩니다. 두 종목만 고르면 선행·후행 분석이 함께 나옵니다.\n\n' +
@@ -4154,6 +4175,8 @@ function clearAll(){
   _leadCache = null;
 
   applyScope();                 // rebuilds legend, edges, leaders, and re-fits
+  // a restored view leaves the simulation stopped; 초기화 has to bring it back
+  sim.alpha(0.9).restart();
   syncSelectionHighlight();
 }
 document.getElementById('mode-reset').addEventListener('click', clearAll);
@@ -5555,6 +5578,140 @@ document.getElementById('tv-search').addEventListener('keydown', ev => {
 window.addEventListener('resize', () => {
   if(document.body.classList.contains('view-trade')) drawCandle();
 });
+
+/* =====================================================================
+   SAVED VIEWS — the whole network setup under a name.
+
+   Not just the filters: the node positions too. The layout is the part you
+   cannot reproduce by re-picking settings, because it comes from where the
+   simulation happened to settle and wherever you dragged things afterwards.
+   Restoring one therefore also STOPS the simulation — otherwise the forces
+   would immediately pull the arrangement back apart. Changing a filter after
+   that restarts it, and the note in the panel says so.
+   ===================================================================== */
+const VIEW_KEY = 'money-connection.views';
+let savedViews = [];
+try { savedViews = JSON.parse(localStorage.getItem(VIEW_KEY) || '[]'); } catch(e){}
+const saveViews = () => { try { localStorage.setItem(VIEW_KEY, JSON.stringify(savedViews)); } catch(e){} };
+
+function captureView(name){
+  const t = d3.zoomTransform(svg.node());
+  const pos = {};
+  nodes.forEach(n => { pos[n.id] = [Math.round(n.x * 10) / 10, Math.round(n.y * 10) / 10]; });
+  return {
+    id: 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    name: name.slice(0, 28),
+    ts: new Date().toISOString(),
+    groupMode,
+    active: Object.fromEntries(Object.entries(activeByMode).map(([k, v]) => [k, [...v]])),
+    relationMode, periodKey: period.key, threshold,
+    leadModes: [...leadModes], leadOnly, favOnly,
+    zoom: { x: t.x, y: t.y, k: t.k },
+    pos,
+  };
+}
+
+function restoreView(v){
+  // 1. grouping and scope
+  groupMode = ['theme', 'market', 'profile'].includes(v.groupMode) ? v.groupMode : 'theme';
+  Object.entries(v.active || {}).forEach(([m, ids]) => {
+    if(!activeByMode[m] || !Array.isArray(ids)) return;
+    activeByMode[m].clear();
+    ids.forEach(id => activeByMode[m].add(id));
+  });
+  activeGroups = activeByMode[groupMode];
+  nodes.forEach(n => {
+    n.group = groupMode === 'theme' ? n.themeId : groupMode === 'market' ? n.marketId : n.profileId;
+    n.color = groupMode === 'theme' ? n.themeColor : groupMode === 'market' ? n.marketColor : n.profileColor;
+  });
+  nodeSel.attr('fill', d => d.color);
+  document.querySelectorAll('#group-mode button')
+    .forEach(b => b.classList.toggle('on', b.dataset.mode === groupMode));
+  document.getElementById('legend-title').textContent =
+    groupMode === 'theme' ? '테마' : groupMode === 'market' ? '시장 · 자산군' : '종목 성격';
+
+  // 2. relation, period, threshold — this rebuilds the links
+  relationMode = ['price', 'macro', 'fund'].includes(v.relationMode) ? v.relationMode : 'price';
+  period = PERIODS.find(p => p.key === v.periodKey) || period;
+  threshold = typeof v.threshold === 'number' ? v.threshold : 0.35;
+  thrInput.value = String(threshold);
+  document.getElementById('thr-val').textContent = threshold.toFixed(2);
+  applyRelation();
+
+  // 3. filters and leaders
+  leadModes = (v.leadModes || []).filter(k => LEAD_METRICS[k]);
+  if(!leadModes.length) leadModes = ['chg'];
+  syncLeadButtons();
+  favOnly = !!v.favOnly; leadOnly = !!v.leadOnly;
+  document.getElementById('fav-only').classList.toggle('on', favOnly);
+  document.getElementById('lead-only').classList.toggle('on', leadOnly);
+  _leadCache = null;
+  renderLegend(); renderLeaders(); updateScopeNote();
+
+  // 4. the arrangement, last — applyRelation() just restarted the simulation,
+  //    which would otherwise drag every node off the saved position
+  if(v.pos){
+    nodes.forEach(n => {
+      const p = v.pos[n.id];
+      if(p){ n.x = p[0]; n.y = p[1]; n.vx = 0; n.vy = 0; }
+    });
+    sim.stop();
+    ticked();
+  }
+  if(v.zoom && isFinite(v.zoom.k)){
+    svg.call(zoom.transform, d3.zoomIdentity.translate(v.zoom.x, v.zoom.y).scale(v.zoom.k));
+  }
+  clearFocus();
+  resetOpacities();
+  renderViews();
+}
+
+function renderViews(){
+  document.getElementById('view-count').textContent = savedViews.length;
+  const host = document.getElementById('view-list');
+  if(!savedViews.length){
+    host.innerHTML = '<div class="fav-empty">지금 보고 있는 배치·테마·기간·기준을 통째로 저장해 두고 한 번에 되돌릴 수 있습니다.</div>';
+    return;
+  }
+  host.innerHTML = savedViews.map(v => `<div class="fav-row view-row" data-v="${v.id}" title="${v.ts.slice(0, 16).replace('T', ' ')}">
+      <span class="tk3 vname">${esc(v.name)}</span>
+      <span class="ret vmeta">${({ theme: '테마', market: '시장', profile: '성격' })[v.groupMode] || ''} · ${
+        (PERIODS.find(p => p.key === v.periodKey) || {}).label || ''}</span>
+      <button class="sec-btn" data-vren="${v.id}" title="이름 변경">✎</button>
+      <button class="sec-btn" data-vdel="${v.id}" title="삭제">✕</button>
+    </div>`).join('');
+  host.querySelectorAll('.view-row').forEach(row => row.addEventListener('click', ev => {
+    if(ev.target.closest('.sec-btn')) return;
+    const v = savedViews.find(x => x.id === row.dataset.v);
+    if(v) restoreView(v);
+  }));
+  host.querySelectorAll('[data-vren]').forEach(b => b.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const v = savedViews.find(x => x.id === b.dataset.vren);
+    if(!v) return;
+    const nm = prompt('화면 이름', v.name);
+    if(nm == null || !nm.trim()) return;
+    v.name = nm.trim().slice(0, 28);
+    saveViews(); renderViews();
+  }));
+  host.querySelectorAll('[data-vdel]').forEach(b => b.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const v = savedViews.find(x => x.id === b.dataset.vdel);
+    if(!v || !confirm(`'${v.name}' 화면을 지울까요?`)) return;
+    savedViews = savedViews.filter(x => x.id !== v.id);
+    saveViews(); renderViews();
+  }));
+}
+
+document.getElementById('view-save').addEventListener('click', () => {
+  const dflt = `${({ theme: '테마', market: '시장', profile: '성격' })[groupMode]} · ${period.label}`;
+  const name = prompt('이 화면의 이름 (배치·테마·기간·기준이 그대로 저장됩니다)', dflt);
+  if(name == null || !name.trim()) return;
+  savedViews.unshift(captureView(name.trim()));
+  if(savedViews.length > 20) savedViews.length = 20;   // localStorage 용량 보호
+  saveViews(); renderViews();
+});
+renderViews();
 
 initFavSync();   // last: every section's state exists by now
 
