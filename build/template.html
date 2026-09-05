@@ -671,11 +671,17 @@
                     font-size:10.5px; font-weight:600; padding:4px 10px; border-radius:5px; cursor:pointer; }
   .perf-seg button:hover{ color:var(--text-primary); }
   .perf-seg button.on{ background:#2c3138; color:var(--text-primary); }
-  .chart-tip{ position:absolute; z-index:6; pointer-events:none; background:#181c24;
+  .chart-tip{ position:absolute; z-index:6; pointer-events:none; background:rgba(24,28,36,0.94);
+              backdrop-filter:blur(3px);
               border:1px solid var(--border-strong); border-radius:8px; padding:7px 9px;
               font-size:11px; line-height:1.6; box-shadow:0 10px 26px rgba(0,0,0,0.5);
               white-space:nowrap; }
   .chart-tip[hidden]{ display:none; }
+  .bar-tip{ min-width:132px; }
+  .bar-tip .tr{ display:flex; align-items:center; gap:10px; color:var(--text-secondary); }
+  .bar-tip .tr .tv{ margin-left:auto; font-family:'JetBrains Mono',monospace;
+                    font-weight:600; color:var(--text-primary); }
+  .bar-tip .bt-sep{ margin-top:4px; padding-top:4px; border-top:1px solid var(--line); }
   .chart-tip .tp{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:11.5px;
                   margin-bottom:3px; }
   .chart-tip .tr{ display:flex; align-items:center; gap:6px; }
@@ -881,6 +887,9 @@
           <button data-l="fav" class="on">즐겨찾기</button><button data-l="hold" id="tv-hold-btn">보유</button><button data-l="lead">주도주</button>
         </div>
         <div class="ctl-note" style="margin:-2px 0 6px">클릭 = 차트 · ⌘/Ctrl+클릭 = 비교 · 끌어다 놓기 = 분할<button class="help" data-h="tvCompare">?</button></div>
+        <div class="seg-mini" id="tv-pct-mode" hidden style="margin:0 0 6px">
+          <button data-p="day" class="on">일간</button><button data-p="pl">손익</button>
+        </div>
         <div id="tv-list"></div>
       </aside>
 
@@ -2955,9 +2964,7 @@ function drawCombinedFin(host, f){
       })
       .on('mousemove', function(ev){
         const [mx, my] = d3.pointer(ev, host);
-        const w = tip.offsetWidth || 130;
-        tip.style.left = Math.max(2, Math.min(host.clientWidth - w - 2, mx - w / 2)) + 'px';
-        tip.style.top = Math.max(2, my - tip.offsetHeight - 12) + 'px';
+        placeTip(tip, host, mx, my);
       })
       .on('mouseleave', () => { tip.hidden = true; hoverBand.style('display', 'none'); });
   });
@@ -3112,9 +3119,7 @@ function drawEpsChart(host, f){
       })
       .on('mousemove', function(ev){
         const [mx, my] = d3.pointer(ev, host);
-        const w = tip.offsetWidth || 130;
-        tip.style.left = Math.max(2, Math.min(host.clientWidth - w - 2, mx - w / 2)) + 'px';
-        tip.style.top = Math.max(2, my - tip.offsetHeight - 12) + 'px';
+        placeTip(tip, host, mx, my);
       })
       .on('mouseleave', () => { tip.hidden = true; });
   });
@@ -3339,9 +3344,7 @@ function drawFundCmpChart(list){
       }).join('');
       tip.hidden = false;
       const [pxx, pyy] = d3.pointer(ev, host);
-      const w = tip.offsetWidth || 120;
-      tip.style.left = Math.max(2, Math.min(host.clientWidth - w - 2, pxx - w / 2)) + 'px';
-      tip.style.top = Math.max(2, pyy - tip.offsetHeight - 12) + 'px';
+      placeTip(tip, host, pxx, pyy);
     });
 
   const legend = document.createElement('div');
@@ -3934,9 +3937,7 @@ function drawSeasonalityCompare(list){
       tip.innerHTML = `<div class="tp">${d.getUTCMonth()+1}월 ${d.getUTCDate()}일</div>${body}`;
       tip.hidden = false;
       const [px, py] = d3.pointer(ev, host);
-      const w = tip.offsetWidth || 120;
-      tip.style.left = Math.max(2, Math.min(host.clientWidth - w - 2, px - w / 2)) + 'px';
-      tip.style.top = Math.max(2, py - tip.offsetHeight - 12) + 'px';
+      placeTip(tip, host, px, py);
     });
 
   renderSeasonCmpLegend(all);
@@ -4071,9 +4072,7 @@ function drawSeasonality(tk){
       tip.innerHTML = `<div class="tp">${d.getUTCMonth()+1}월 ${d.getUTCDate()}일</div>${rows}${avgRow}`;
       tip.hidden = false;
       const [px, py] = d3.pointer(ev, host);
-      const w = tip.offsetWidth || 120;
-      tip.style.left = Math.max(2, Math.min(host.clientWidth - w - 2, px - w / 2)) + 'px';
-      tip.style.top = Math.max(2, py - tip.offsetHeight - 12) + 'px';
+      placeTip(tip, host, px, py);
     });
 
   renderSeasonLegend(series, tk, avgPts, done.length);
@@ -4708,6 +4707,62 @@ function renderFavorites(){
 }
 
 const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---- 봉 위에 올렸을 때 뜨는 상세 상자 ----
+   아래 readout 은 한 줄이라 눈이 차트에서 멀어진다. 커서 근처(단, 반대편)에
+   날짜·시가·고가·저가·종가·전일대비·당일 변동폭·거래량을 함께 띄운다. */
+let barTipEl = null;
+function hideBarTip(){ if(barTipEl) barTipEl.hidden = true; }
+function showBarTip(svgNode, mx, my, idx, r, rows){
+  const host = svgNode.closest('.cpane') || document.getElementById('tv-chart');
+  if(!host) return;
+  if(!barTipEl || !barTipEl.isConnected){
+    barTipEl = document.createElement('div');
+    barTipEl.className = 'chart-tip bar-tip';
+    document.body.appendChild(barTipEl);
+  }
+  if(barTipEl.parentNode !== host){
+    host.appendChild(barTipEl);
+    if(getComputedStyle(host).position === 'static') host.style.position = 'relative';
+  }
+  // 직전 봉 대비 등락 — 없으면 그날 시가 대비
+  let prev = null;
+  for(let i = idx - 1; i >= 0; i--) if(rows[i]){ prev = rows[i][3]; break; }
+  const vsPrev = prev ? (r[3] / prev - 1) * 100 : (r[3] - r[0]) / r[0] * 100;
+  const range = r[2] ? (r[1] - r[2]) / r[2] * 100 : 0;
+  const cur = (nodeIndex.get(cTk) || {}).currency === 'KRW' ? '₩' : '$';
+  const f = v => cur + (+v).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const col = v => v >= 0 ? 'var(--up)' : 'var(--down)';
+  const sign = v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+  const volTxt = r[4]
+    ? (paneIv && isIntraday(paneIv()) ? (+r[4]).toLocaleString() + '주'
+                                      : ((r[4] * VOL_UNIT) / 1e6).toFixed(1) + 'M주')
+    : null;
+  barTipEl.innerHTML =
+    `<div class="tp">${esc(String(barLabel(idx)))}</div>` +
+    `<div class="tr">시가<span class="tv">${f(r[0])}</span></div>` +
+    `<div class="tr">고가<span class="tv" style="color:var(--up)">${f(r[1])}</span></div>` +
+    `<div class="tr">저가<span class="tv" style="color:var(--down)">${f(r[2])}</span></div>` +
+    `<div class="tr">종가<span class="tv" style="color:${col(r[3] - r[0])}">${f(r[3])}</span></div>` +
+    `<div class="tr bt-sep">전일 대비<span class="tv" style="color:${col(vsPrev)}">${sign(vsPrev)}</span></div>` +
+    `<div class="tr">변동폭<span class="tv">${range.toFixed(2)}%</span></div>` +
+    (volTxt ? `<div class="tr">거래량<span class="tv">${volTxt}</span></div>` : '');
+  barTipEl.hidden = false;
+  placeTip(barTipEl, host, mx, my, 30);   // 패널 이름표(⠿ 칩) 아래로
+}
+
+/* 툴팁을 커서가 있는 사분면의 반대편 모서리에 붙인다.
+   커서를 따라다니면 작은 차트에서는 보려는 부분을 바로 그 툴팁이 가린다. */
+function placeTip(tip, host, px, py, topInset){
+  const w = tip.offsetWidth || 120, h = tip.offsetHeight || 60;
+  const W = host.clientWidth, H = host.clientHeight, pad = 4;
+  // 차트 패널은 왼쪽 위에 종목 이름표가 떠 있어 그 자리를 비켜야 한다
+  const top0 = topInset || pad;
+  const left = px < W / 2 ? Math.max(pad, W - w - pad) : pad;   // 커서 반대쪽 가로
+  const top  = py < H / 2 ? Math.max(top0, H - h - pad) : top0; // 커서 반대쪽 세로
+  tip.style.left = left + 'px';
+  tip.style.top = top + 'px';
+}
 const favRowHTML = opts => n => {
   const r = n.stats.ret_1y ?? 0;
   return `<div class="fav-row" data-tk="${n.id}" draggable="true">
@@ -4967,6 +5022,35 @@ async function loadMinutes(tk, pages, onProgress){
   }
   if(!st.rows.length) throw new Error('분봉 데이터가 비어 있습니다.');
   return st;
+}
+
+/* 가장 최근 일자의 등락률. 오늘 봉을 받아 왔으면 그것이 기준이 된다. */
+function dayChange(tk){
+  const a = OH.data[tk] || [];
+  const t = TODAY.get(tk);
+  let last = null, prev = null, date = null;
+  if(t && isFinite(t.row[3])){
+    last = t.row[3]; date = t.date;
+    for(let i = a.length - 1; i >= 0; i--) if(a[i]){ prev = a[i][3]; break; }
+  } else {
+    for(let i = a.length - 1; i >= 0; i--){
+      if(!a[i]) continue;
+      if(last === null){ last = a[i][3]; date = OH.dates[i]; }
+      else { prev = a[i][3]; break; }
+    }
+  }
+  if(last == null || prev == null || !prev) return null;
+  return { pct: (last / prev - 1) * 100, last, date };
+}
+
+/* 보유 종목의 매수 후 손익률 */
+function holdChange(tk){
+  const pos = (book().positions || {})[tk];
+  if(!pos || !pos.qty) return null;
+  const avg = pos.cost / pos.qty;
+  const now = (latestClose(tk) || {}).px;
+  if(!isFinite(avg) || !avg || !isFinite(now)) return null;
+  return { pct: (now / avg - 1) * 100, avg, now };
 }
 
 /* 화면에 열어 둔 종목의 최신 일봉을 받아, 우리 것보다 새로우면 덧붙인다 */
@@ -5904,6 +5988,7 @@ setBrokerChip();
    TRADING VIEW — one symbol, its chart, and everything needed to act on it.
    ===================================================================== */
 let tvListMode = 'fav';
+let tvHoldPct = 'day';        // 보유 탭의 % 기준: 일간 등락 / 매수 후 손익
 
 function openTrading(tk){
   if(!tk || !OH.data[tk]) return;
@@ -6333,6 +6418,11 @@ function renderTvList(){
   const hb = document.getElementById('tv-hold-btn');
   if(hb) hb.textContent = folioMode === 'live' ? '보유(실)' : '보유(모의)';
   const host = document.getElementById('tv-list');
+  const pctSeg = document.getElementById('tv-pct-mode');
+  if(pctSeg){
+    pctSeg.hidden = tvListMode !== 'hold';
+    pctSeg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.p === tvHoldPct));
+  }
   const q = (document.getElementById('tv-search').value || '').trim().toLowerCase();
   let list;
   if(q){
@@ -6347,12 +6437,17 @@ function renderTvList(){
       : tvListMode === 'hold' ? `${folioMode === 'live' ? '실거래' : '모의'} 보유 종목이 없습니다.` : '주도주가 없습니다.'}</div>`;
     return;
   }
+  const pl = tvListMode === 'hold' && tvHoldPct === 'pl';
   host.innerHTML = list.map(t => {
-    const n = nodeIndex.get(t), r = n.stats.ret_1y ?? 0;
-    return `<div class="tv-row ${t === cTk ? 'on' : ''}" data-tk="${t}">
+    const n = nodeIndex.get(t);
+    const c = pl ? holdChange(t) : dayChange(t);
+    const v = c ? c.pct : null;
+    const txt = v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+    const tip = c ? (pl ? `평균 ${fmtNum(c.avg)} → 현재 ${fmtNum(c.now)}` : `${c.date} 종가 기준`) : '';
+    return `<div class="tv-row ${t === cTk ? 'on' : ''}" data-tk="${t}" title="${esc(tip)}">
       <span class="dot" style="width:7px;height:7px;background:${n.color};box-shadow:none"></span>
-      <span class="nm">${n.assetClass === 'kr_stock' ? n.name : t}</span>
-      <span class="rt" style="color:${r >= 0 ? 'var(--up)' : 'var(--down)'}">${r >= 0 ? '+' : ''}${r}%</span>
+      <span class="nm">${n.assetClass === 'kr_stock' ? esc(n.name) : t}</span>
+      <span class="rt" style="color:${v == null ? 'var(--text-muted)' : v >= 0 ? 'var(--up)' : 'var(--down)'}">${txt}</span>
     </div>`;
   }).join('');
   host.querySelectorAll('.tv-row').forEach(el =>
@@ -6439,8 +6534,17 @@ function renderTvSummary(){
             yoy(f.revenue) >= 0 ? 'var(--up)' : 'var(--down)')}
       ${pos.qty ? row('보유', `${+pos.qty.toFixed(6)}주 @ ${fmtPx(pos.cost / pos.qty, cur)}`) : ''}
     </div>
-    <button class="linkbtn" id="tv-to-graph" style="margin-top:9px">종목 상세 · 상관 종목 열기 →</button>`;
-  document.getElementById('tv-to-graph').addEventListener('click', () => openDetailOverlay(cTk));
+    <button class="linkbtn" id="tv-to-graph" style="margin-top:9px">${
+      PANES.length > 1 ? `종목 상세 · 분할 중인 ${PANES.length}종목 비교 →` : '종목 상세 · 상관 종목 열기 →'}</button>`;
+  document.getElementById('tv-to-graph').addEventListener('click', () => {
+    // 분할로 여러 종목을 보고 있으면 그 종목들을 그대로 비교로 넘긴다
+    const open = [...new Set(PANES.map(p => p.tk).filter(t => t && nodeIndex.has(t)))];
+    if(open.length > 1){
+      compareSet = [cTk, ...open.filter(t => t !== cTk)].slice(0, CMP_MAX);
+      openDetailOverlay(cTk, true);
+      renderTvList();
+    } else openDetailOverlay(cTk);
+  });
 }
 
 function renderIndButtons(){
@@ -6476,6 +6580,8 @@ document.querySelectorAll('#tv-list-mode button').forEach(b => b.addEventListene
   document.querySelectorAll('#tv-list-mode button').forEach(x => x.classList.toggle('on', x === b));
   renderTvList();
 }));
+document.querySelectorAll('#tv-pct-mode button').forEach(b =>
+  b.addEventListener('click', () => { tvHoldPct = b.dataset.p; renderTvList(); }));
 document.getElementById('tv-search').addEventListener('input', renderTvList);
 document.getElementById('tv-search').addEventListener('keydown', ev => {
   if(ev.key !== 'Enter') return;

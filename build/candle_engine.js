@@ -289,7 +289,7 @@ function drawCandle(silent){
   bigSvg.append('rect').attr('x',0).attr('y',0).attr('width',W).attr('height',H)
     .attr('fill','transparent')
     .style('cursor', cTool ? 'crosshair' : 'grab')
-    .on('mouseleave', ()=> cross.style('display','none'))
+    .on('mouseleave', ()=> { cross.style('display','none'); hideBarTip(); })
     .on('mousemove', function(ev){
       const [mx,my] = d3.pointer(ev, this);
       let idx = idxAt(mx); while(idx > i0 && !rows[idx]) idx--;
@@ -303,6 +303,7 @@ function drawCandle(silent){
         `종가 <b style="color:${r[3]>=r[0]?UP:DOWN}">${r[3]}</b>  ` +
         `<span style="color:${chg>=0?UP:DOWN}">${chg>=0?'+':''}${chg.toFixed(2)}%</span>` +
         (r[4] ? `  거래량 ${(r[4]/1000).toFixed(1)}M` : '');
+      showBarTip(this, mx, my, idx, r, rows);
       if(cPending && cTool === 'trend'){ cPending.x2 = idxAt(mx); cPending.y2 = invY(my); drawCandle(); }
     })
     .on('mousedown', function(ev){
