@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>토스증권 브리지 설정</title>
+<style>
+  :root{ color-scheme: light dark; }
+  body{ font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+        max-width:520px; margin:32px auto; padding:0 20px; }
+  h1{ font-size:18px; margin:0 0 4px; }
+  p.sub{ margin:0 0 22px; color:#777; font-size:12.5px; }
+  label{ display:block; margin:14px 0; font-size:12px; color:#666; }
+  input{ display:block; width:100%; box-sizing:border-box; margin-top:5px; padding:9px 11px;
+         font:13px ui-monospace,SFMono-Regular,Menlo,monospace;
+         border:1px solid #bbb; border-radius:8px; background:Canvas; color:CanvasText; }
+  button{ padding:9px 18px; font-size:13px; border-radius:8px; border:1px solid #888;
+          background:Canvas; color:CanvasText; cursor:pointer; }
+  button.primary{ background:#2563eb; border-color:#2563eb; color:#fff; }
+  .row{ display:flex; gap:8px; margin-top:20px; }
+  #msg{ margin-top:16px; font-size:12.5px; min-height:1.6em; }
+  .warn{ margin-top:22px; padding:11px 13px; border-radius:8px; font-size:12px; line-height:1.65;
+         border:1px solid #e0b4b4; background:#fdf3f3; color:#663; }
+  @media (prefers-color-scheme: dark){ .warn{ background:#2a1e1e; border-color:#5a3a3a; color:#ccb; } }
+</style>
+<h1>토스증권 브리지</h1>
+<p class="sub">머니 커넥션 대시보드가 실제 주문을 낼 수 있도록 중계합니다.</p>
+
+<label>client_id
+  <input id="id" type="text" autocomplete="off" spellcheck="false" placeholder="발급받은 클라이언트 ID"></label>
+<label>client_secret
+  <input id="secret" type="password" autocomplete="off" spellcheck="false" placeholder="발급받은 시크릿"></label>
+<label>계좌 번호 (선택 · 계좌가 여러 개일 때만)
+  <input id="seq" type="number" placeholder="비워 두면 첫 종합매매 계좌"></label>
+
+<div class="row">
+  <button class="primary" id="save">저장</button>
+  <button id="test">연결 확인</button>
+  <button id="clear">키 삭제</button>
+</div>
+<div id="msg"></div>
+
+<div class="warn">키는 이 확장 프로그램 안에만 저장되고 웹페이지로 전달되지 않습니다.
+  대시보드는 “주문해 줘”라고 부탁할 수 있을 뿐, 키를 읽을 수 없습니다.
+  <b>이 확장이 설치되어 있고 대시보드를 열어 둔 동안에는 그 페이지가 실제 주문을 낼 수 있습니다</b> —
+  쓰지 않을 때는 확장을 꺼 두세요.</div>
+<script src="options.js"></script>

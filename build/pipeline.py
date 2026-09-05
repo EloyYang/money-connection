@@ -1056,6 +1056,10 @@ def render(corr, px, oh, leaders, fund, macro, members, themes, index_date, prob
     # 브리지 스크립트를 페이지에 함께 싣는다. 사용자가 저장소를 clone 하지
     # 않아도 연동 마법사가 파일을 그대로 내려줄 수 있어야 한다.
     bridge_src = open(os.path.join(ROOT, "build", "toss_bridge.py")).read()
+    # 확장 프로그램도 통째로 싣는다 — 파이썬이 없는 사람을 위한 경로
+    ext_dir = os.path.join(ROOT, "build", "extension")
+    ext_files = {f: open(os.path.join(ext_dir, f)).read()
+                 for f in sorted(os.listdir(ext_dir)) if not f.startswith(".")}
     cfg = load_theme_config()
 
     def div_yield(t):
@@ -1090,8 +1094,16 @@ def render(corr, px, oh, leaders, fund, macro, members, themes, index_date, prob
         vv for kk, vv in v.items() if not kk.startswith("_"))]
     log(f"auth providers configured: {', '.join(have) if have else '(none — 비회원 모드만)'}")
     log(f"bridge script embedded: {len(bridge_src):,} bytes")
+    log(f"extension embedded: {len(ext_files)} files, "
+        f"{sum(len(v) for v in ext_files.values()):,} bytes")
 
-    blob = lambda o: json.dumps(o, separators=(",", ":"), ensure_ascii=False)
+    # 스크립트 블록 안에 심는 문자열에서 "<" 를 통째로 \u003c 로 바꾼다.
+    # "</script>" 는 그 자리에서 블록을 닫아 버리고, "<!--" 뒤의 "<script" 는
+    # 파서를 이중 이스케이프 상태로 밀어 넣어 그다음 "</script>" 를 무시하게 만든다.
+    # 확장 프로그램의 options.html 이 두 경우에 모두 해당한다.
+    # JSON 문자열 안에서 \u003c 는 "<" 와 같은 값이므로 내용은 변하지 않는다.
+    blob = lambda o: (json.dumps(o, separators=(",", ":"), ensure_ascii=False)
+                        .replace("<", "\\u003c"))
     body = (tpl.replace("/*__CANDLE_ENGINE__*/", engine, 1)
                .replace("/*__CORR__*/", blob(corr))
                .replace("/*__PX__*/", blob(px))
@@ -1101,7 +1113,8 @@ def render(corr, px, oh, leaders, fund, macro, members, themes, index_date, prob
                .replace("/*__MACRO__*/", blob(macro))
                .replace("/*__META__*/", blob(meta))
                .replace("/*__AUTH__*/", blob(auth))
-               .replace("/*__BRIDGE__*/", blob(bridge_src), 1))
+               .replace("/*__BRIDGE__*/", blob(bridge_src), 1)
+               .replace("/*__EXT__*/", blob(ext_files), 1))
 
     # The template is written for the Artifact wrapper, which supplies the
     # document head. A standalone site has to bring its own — without the
@@ -1135,6 +1148,14 @@ def render(corr, px, oh, leaders, fund, macro, members, themes, index_date, prob
 </body>
 </html>
 """
+    # 데이터를 통째로 심는 페이지라, 심은 내용이 스크립트 블록을 일찍 닫아
+    # 버리는 사고가 조용히 일어날 수 있다. 쓰기 전에 세어 본다.
+    opens = len(re.findall(r"<script\b", html))
+    closes = html.count("</script>")
+    if opens != closes:
+        raise SystemExit(f"스크립트 태그 수가 맞지 않습니다: <script {opens}개 / </script> {closes}개. "
+                         "심어 넣은 문자열 안에 </script> 가 들어갔을 수 있습니다.")
+
     os.makedirs(out_dir, exist_ok=True)
     logo_src = os.path.join(ROOT, "logo.svg")          # ship the mark alongside the page
     if os.path.exists(logo_src):
