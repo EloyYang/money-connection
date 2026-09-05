@@ -890,7 +890,7 @@
           <div class="modal-quote"><span class="px" id="m-px">—</span><span class="chg" id="m-chg">—</span></div>
           <select id="m-iv" class="mini-sel" title="봉 단위"></select><button class="help" data-h="barInterval">?</button>
           <button class="tool" id="m-more" hidden title="과거 봉을 더 받아 옵니다">← 과거 더</button>
-          <span class="modal-note mono" id="m-span" hidden style="font-size:10px"></span>
+          <span class="modal-note mono" id="m-span" hidden style="font-size:10px"></span><button class="help" data-h="todayBar" id="m-span-help" hidden>?</button>
           <button class="tool" id="m-live" title="실시간 시세 (확장 프로그램 필요)">실시간</button><button class="help" data-h="liveQuotes">?</button>
           <div class="seg" id="m-range">
             <button data-d="21">1개월</button><button data-d="63">3개월</button><button data-d="126">6개월</button>
@@ -1589,6 +1589,15 @@ const HELP = {
     '— 주문할 때 우리가 가정한 값과 다를 수 있기 때문입니다.\n\n' +
     '이것은 실시간 푸시가 아니라 5초 간격 조회입니다.\n\n' +
     '폴링은 <b>실거래 모드로 트레이딩이나 포트폴리오 화면을 보고 있을 때만</b> 돕니다.' },
+  todayBar: { t: '오늘 봉', dir: null, d:
+    '심어 둔 일봉은 <b>매일 아침 빌드 시점에서 멈춰</b> 있어 오늘 봉이 없습니다. ' +
+    '연동되어 있으면 토스에서 최신 일봉을 받아 차트에 하루를 덧붙이고, ' +
+    '봉 단위 옆에 <b>"(날짜) 봉 포함 (토스)"</b> 로 표시합니다.\n\n' +
+    '<b>실시간</b>을 켜 두면 이 봉의 종가·고가·저가가 체결마다 움직입니다. ' +
+    '거래량은 받아 온 시점의 값에서 멈춰 있습니다 — 실시간 프레임에 누적 거래량이 없기 때문입니다.\n\n' +
+    '덧붙이는 것은 <b>차트뿐</b>입니다. 계절성·상관관계·주도주는 심어 둔 일봉만 씁니다. ' +
+    '날짜 축을 223종목이 공유하고 있어, 한 종목 때문에 축을 늘리면 나머지가 전부 어긋나기 때문입니다.\n\n' +
+    '화면에 열어 둔 종목만, 1분에 한 번까지만 받아 옵니다.' },
   barInterval: { t: '봉 단위', dir: null, d:
     '<b>일봉</b>은 이 사이트가 매일 아침 미리 받아 둔 데이터라 연결 없이도 5년치가 바로 보입니다.\n\n' +
     '<b>1분 · 5분 · 15분 · 30분 · 1시간 · 4시간</b>은 토스증권에서 받아 온 1분봉으로 만듭니다. ' +
@@ -4876,14 +4885,36 @@ function aggregate(tk, iv){
   return out;
 }
 
-/* 차트가 그리는 봉. 차트 밖(계절성·상세·상관)은 언제나 일봉을 쓴다. */
+/* ---- 오늘 일봉 ----
+   심어 둔 일봉은 빌드 시점(평일 07:00 KST)에서 멈춰 있어 오늘 봉이 없다.
+   토스에서 최신 일봉을 받아 차트에만 하루를 덧붙인다.
+   OH 자체는 건드리지 않는다 — 날짜 축을 223종목이 공유하므로 여기에
+   손대면 계절성·상관·주도주가 전부 어긋난다. */
+const TODAY = new Map();     // tk -> { date, row, rows }
+
+function setTodayBar(tk, date, row){
+  const base = OH.data[tk] || [];
+  if(!base.length) return false;
+  const lastDate = OH.dates[base.length - 1];
+  if(!date || date <= lastDate){ TODAY.delete(tk); return false; }   // 이미 들어 있는 날
+  TODAY.set(tk, { date, row, rows: base.concat([row]) });            // 원본은 그대로
+  return true;
+}
+const todayBar = tk => TODAY.get(tk);
+
+/* 차트가 그리는 봉. 차트 밖(계절성·상세·상관)은 언제나 심어 둔 일봉을 쓴다. */
 function chartRows(tk){
   const iv = paneIv();
-  return isIntraday(iv) ? aggregate(tk, iv).rows : (OH.data[tk] || []);
+  if(isIntraday(iv)) return aggregate(tk, iv).rows;
+  const t = TODAY.get(tk);
+  return t ? t.rows : (OH.data[tk] || []);
 }
 const barLabel = i => {
   const iv = paneIv();
-  return isIntraday(iv) ? (aggregate(cTk, iv).labels[i] || '') : OH.dates[i];
+  if(isIntraday(iv)) return aggregate(cTk, iv).labels[i] || '';
+  const t = TODAY.get(cTk);
+  if(t && i === (OH.data[cTk] || []).length) return t.date;
+  return OH.dates[i];
 };
 /* 분봉을 지원하지 않는 자산 — 토스는 주식·ETF 만 준다 */
 const canMinute = tk => {
@@ -4938,6 +4969,39 @@ async function loadMinutes(tk, pages, onProgress){
   return st;
 }
 
+/* 화면에 열어 둔 종목의 최신 일봉을 받아, 우리 것보다 새로우면 덧붙인다 */
+const TODAY_TTL = 60000;
+const todayAt = new Map();
+async function loadTodayBar(tk, force){
+  if(!tk || !canMinute(tk)) return false;
+  if(!(extReady || bridgeOk)) return false;
+  const last = todayAt.get(tk);
+  if(!force && last && Date.now() - last < TODAY_TTL) return false;
+  todayAt.set(tk, Date.now());
+  let arr;
+  try {
+    const r = await bridge(`/candles?symbol=${encodeURIComponent(tk)}&interval=1d&count=3`);
+    const res = r.result || r;
+    arr = res.candles || res.items || [];
+  } catch(e){ return false; }
+  if(!arr.length) return false;
+  const c = arr[0];                       // 응답은 최신순
+  const v = numOr(c.volume) || 0;
+  return setTodayBar(tk, String(c.timestamp).slice(0, 10),
+    [numOr(c.openPrice), numOr(c.highPrice), numOr(c.lowPrice), numOr(c.closePrice),
+     v / VOL_UNIT]);                      // 심어 둔 일봉은 천 주 단위다
+}
+
+/* 화면에 열린 종목들의 오늘 봉을 채운다 */
+async function fillTodayBars(){
+  const list = [...new Set(PANES.map(p => p.tk).filter(Boolean))];
+  let any = false;
+  for(const tk of list){
+    if(await loadTodayBar(tk)) any = true;
+  }
+  if(any){ syncIvButtons(); drawCandle(); }
+}
+
 /* 받아 둔 구간을 사람이 읽을 수 있게 */
 function intradaySpan(tk){
   const st = MIN.get(tk);
@@ -4960,6 +5024,9 @@ async function ensureIntraday(tk){
 // newest close across the OHLC set — the correlation dataset ends a day earlier,
 // so the panels would otherwise disagree on "최근 종가"
 function latestClose(tk){
+  // 오늘 봉을 받아 왔으면 그것이 가장 최신이다 — 주문 금액 계산도 이 값을 쓴다
+  const t = (typeof TODAY !== 'undefined') && TODAY.get(tk);
+  if(t && isFinite(t.row[3])) return { px: t.row[3], date: t.date };
   const a = ohlcOf(tk);
   for(let i=a.length-1;i>=0;i--) if(a[i]) return { px: a[i][3], date: OH.dates[i] };
   return null;
@@ -5014,8 +5081,14 @@ function syncIvButtons(){
   }
   const span = document.getElementById('m-span');
   if(span){
-    span.hidden = !isIntraday(iv);
-    span.textContent = isIntraday(iv) ? intradaySpan(cTk) : '';
+    if(isIntraday(iv)){ span.hidden = false; span.textContent = intradaySpan(cTk); }
+    else {
+      const t = TODAY.get(cTk);
+      span.hidden = !t;
+      span.textContent = t ? `${t.date} 봉 포함 (토스)` : '';
+      const hb = document.getElementById('m-span-help');
+      if(hb) hb.hidden = !t;
+    }
   }
 }
 /* 장수가 많아지면 몇 초 걸린다 — 멈춘 것처럼 보이지 않게 알려 준다 */
@@ -5525,6 +5598,7 @@ async function checkBridge(quiet){
   setBrokerChip();
   updateTicket();
   if(typeof syncOrderPolling === 'function') syncOrderPolling();
+  if(bridgeOk && typeof fillTodayBars === 'function') fillTodayBars();
   return bridgeOk;
 }
 
@@ -5977,6 +6051,7 @@ function rebuild(tickers, focusIdx, rows){
   buildPanes(tickers, rows);
   if(typeof declareLive === 'function') declareLive();   // 보는 종목이 바뀌면 구독도 바뀐다
   if(typeof fillIntraday === 'function') setTimeout(() => fillIntraday(cTk), 0);
+  if(typeof fillTodayBars === 'function') setTimeout(fillTodayBars, 0);
   PANES.forEach((p, i) => { loadPane(i); setRange(rangeDays()); });
   loadPane(Math.min(focusIdx ?? 0, PANES.length - 1));
   activeP = Math.min(focusIdx ?? 0, PANES.length - 1);
@@ -6218,6 +6293,7 @@ function selectTrading(tk){
   renderTvSummary();
   updateTicket();
   fillIntraday(tk);          // 분봉 상태라면 이 종목 봉도 받아 온다
+  loadTodayBar(tk).then(ok => { if(ok){ syncIvButtons(); drawCandle(); } });
 }
 
 /* 분봉·시간봉을 보고 있는데 종목이 바뀌면 그 종목 데이터를 받아야 한다.
@@ -6842,6 +6918,7 @@ window.addEventListener('load', probeExtension);
 setTimeout(probeExtension, 600);
 
 function onExtFound(){
+  if(typeof fillTodayBars === 'function') setTimeout(fillTodayBars, 200);
   const el = document.getElementById('wiz-ext-state');
   if(el) el.innerHTML = `<span style="color:var(--up)">확장 프로그램이 설치되어 있습니다 (v${esc(String(extVersion))})</span>`
     + ' · <button class="linkbtn" data-w="open-setup">설정 창 열기</button>';
@@ -7087,6 +7164,12 @@ function applyLivePrice(tk, px){
     last[3] = px;
     if(px > last[1]) last[1] = px;
     if(px < last[2]) last[2] = px;
+  }
+  const t = TODAY.get(tk);                // 오늘 일봉도 같이 움직인다
+  if(t){
+    t.row[3] = px;
+    if(px > t.row[1]) t.row[1] = px;
+    if(px < t.row[2]) t.row[2] = px;
   }
   if(PANES.some(p => p.tk === tk)) drawCandle(true);
   if(tk === selectedTk) paintLiveQuote(tk, px);
