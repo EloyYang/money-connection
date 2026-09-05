@@ -431,7 +431,10 @@
   .auth-btn img, .auth-btn .av{ width:19px; height:19px; border-radius:50%; object-fit:cover;
     background:var(--border-strong); }
   .auth-btn .nm{ max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  #auth-box{ position:relative; }
+  .hdr-period{ display:flex; align-items:center; gap:7px; margin-left:auto; flex:0 0 auto; }
+  .hdr-period .hp-lab{ font-size:10.5px; color:var(--text-muted); display:flex; align-items:center; }
+  .hdr-period .seg-mini{ margin:0; }
+  #auth-box{ position:relative; margin-left:10px; }
   .auth-btn .caret{ font-size:8px; color:var(--text-muted); }
   .acct-menu{ position:absolute; right:0; top:calc(100% + 7px); z-index:130; width:272px;
     background:var(--panel-solid); border:1px solid var(--border-strong); border-radius:12px;
@@ -491,6 +494,9 @@
   /* ---- 미체결 주문 · 알림 ---- */
   #open-orders{ margin-bottom:12px; }
   #open-orders[hidden]{ display:none; }
+  /* 트레이딩에는 오른쪽에 정식 주문창이 있고 지정가·보조지표도 이미 있다.
+     상세의 간편 주문과 "트레이딩에서 지정가·보조지표" 링크는 여기서 중복이다. */
+  body.view-trade #mini-trade{ display:none; }
   .oo-row{ display:grid; grid-template-columns:38px minmax(0,1fr) auto auto 62px 34px;
     gap:9px; align-items:center; padding:6px 2px; font-size:11.5px;
     border-bottom:1px solid var(--line); }
@@ -886,6 +892,10 @@
     <button class="btn ghost" id="mode-reset" title="모든 필터·기간·기준을 처음 상태로">↺ 초기화</button>
     <button class="btn ghost" id="mode-fit">⤢ 전체보기</button>
   </div>
+  <div class="hdr-period">
+    <span class="hp-lab">기간<button class="help" data-h="corrPeriod">?</button></span>
+    <span class="seg-mini seg-wrap" id="period-sel"></span>
+  </div>
   <div id="auth-box"></div>
   <span class="seg-mini mode-seg" id="folio-mode" title="주문과 보유 장부를 모의/실거래로 전환">
     <button data-m="paper" class="on">모의</button><button data-m="live">실거래</button>
@@ -1104,8 +1114,6 @@
     <span class="seg-mini seg-wrap" id="relation-mode">
       <button data-rel="price" class="on">주가 상관</button><button data-rel="macro">매크로 민감도</button><button data-rel="fund">펀더멘털</button>
     </span>
-    <div class="ctl-label" id="period-label">기간 (전체 공통)<button class="help" data-h="corrPeriod">?</button></div>
-    <span class="seg-mini seg-wrap" id="period-sel"></span>
     <div class="ctl-note" id="relation-note"></div>
     <div class="slider-head"><span><span id="thr-label">상관계수 임계값 |r|</span><button class="help" data-h="threshold">?</button></span><b class="mono" id="thr-val">0.35</b></div>
     <input type="range" id="thr" min="0.2" max="0.7" step="0.05" value="0.35" />
@@ -1118,8 +1126,6 @@
       <h3>주도주</h3><button class="help" data-h="leadCriteria">?</button><span class="cnt mono" id="lead-date">—</span>
       <button class="fav-only" id="lead-only">주도주만</button>
     </div>
-    <div class="ctl-label"><span id="lead-period-label">기간 (전체 공통)</span><button class="help" data-h="leadPeriod">?</button></div>
-    <span class="seg-mini seg-wrap" id="lead-period"></span>
     <div class="ctl-label">기준 (여러 개 선택 시 종합 순위) <button class="mini-btn" id="lead-reset" style="flex:0 0 auto;padding:1px 6px;margin-left:4px">초기화</button></div>
     <div class="ctl-label" style="margin-top:2px">시세</div>
     <span class="seg-mini seg-wrap" id="lead-mode">
@@ -1205,8 +1211,6 @@
         </div>
       </div>
       <div class="tk-est" id="dt-est">—</div>
-      <label class="tk-f" style="margin-bottom:8px">매매 근거 메모
-        <input type="text" id="dt-memo" placeholder="예: 20일선 지지 확인"></label>
       <button class="linkbtn" id="to-trading">⤢ 트레이딩에서 지정가 · 보조지표 →</button>
     </div>
 
@@ -1792,9 +1796,15 @@ const HELP = {
   threshold: { t: '상관계수 임계값 |r|', dir: null, d:
     '이 값보다 약한 관계는 선을 그리지 않습니다. 낮출수록 선이 많아져 약한 관계까지 보이고, 높일수록 강한 관계만 남습니다. ' +
     '0.35 부근이 의미 있는 동조와 잡음이 갈리는 지점입니다.' },
-  corrPeriod: { t: '기간', dir: null, d:
-    '상관계수를 계산할 구간입니다. 짧을수록 최근 국면을 민감하게 반영하고, 길수록 안정적이지만 이미 끝난 국면이 섞입니다. ' +
-    '같은 두 종목도 3개월과 5년의 상관이 크게 다를 수 있습니다.' },
+  corrPeriod: { t: '기간 (전체 공통)', dir: null, d:
+    '이 하나가 화면 전체의 기간입니다. 바꾸면 <b>연결선(상관계수) · 주도주 순위 · 종목 상세의 주가 추이</b>가 ' +
+    '모두 같은 기간으로 함께 바뀝니다.\n\n' +
+    '상관계수는 최소 1개월 관측이 필요해, 1일·1주를 골라도 계산은 1개월 창으로 합니다 ' +
+    '— 그때는 연결 기준 아래에 그 사실이 표시됩니다.\n\n' +
+    '<b>기간이 적용되지 않는 것</b>도 있습니다. 매크로 민감도·펀더멘털 연결은 1년 고정 회귀이고, ' +
+    '종목 성격(우상향·방어·고변동성)은 3년 고정, 계절성은 연도별 전체입니다. ' +
+    '각 항목에 그 기준을 함께 적어 두었습니다.\n\n' +
+    '트레이딩 차트의 봉 단위(1분~일봉)는 이것과 별개입니다 — 차트는 패널마다 따로 정합니다.' },
   scope: { t: '범위', dir: null, d:
     '테마 패널에서 켜 둔 그룹이 전체 범위가 됩니다. 범위를 좁히면 그래프의 노드뿐 아니라 연결선의 계산 대상과 주도주 순위의 모집단도 함께 좁아집니다.' },
   corrList: { t: '연관 종목', dir: null, d:
@@ -1811,11 +1821,6 @@ const HELP = {
     '여러 기준을 동시에 고르면 각 기준 안에서의 순위를 백분위로 바꿔 평균낸 0~100 종합 점수로 정렬합니다. ' +
     '단위가 다른 값은 더할 수 없기 때문입니다(+3% 등락률과 45배 PER은 합산이 불가능합니다). ' +
     '고른 기준을 모두 갖춘 종목만 순위에 들어갑니다. 선택된 기준을 다시 누르면 해제, 더블클릭하면 그 기준만 남습니다.' },
-  leadPeriod: { t: '기간 (전체 공통)', dir: null, d:
-    '기간은 페이지 전체가 하나를 공유합니다. 여기서 바꾸든 연결 기준 패널에서 바꾸든 같은 값이며, ' +
-    '연결선의 상관계수와 주도주 순위가 함께 그 기간으로 다시 계산됩니다.\n\n' +
-    '단 상관계수는 최소 한 달 치 관측이 있어야 계산할 수 있어, 1일·1주를 고르면 네트워크는 1개월 창을 씁니다(연결 기준 패널에 표시됩니다). ' +
-    '펀더멘털 기준 주도주는 기간과 무관하게 최근 회계연도 값을 씁니다.' },
   chg: { t: '등락률', dir: 'high', d:
     '기간의 첫 종가 대비 마지막 종가입니다. 순수한 가격 변화이므로 통화·주가 수준과 무관하게 비교됩니다.' },
   contrib: { t: '지수 기여도', dir: 'high', d:
@@ -2320,7 +2325,7 @@ const RELATION_INFO = {
    user clicks, the other moves with it. */
 function renderPeriodButtons(){
   const meta = Object.fromEntries((CORR.periods || []).map(p => [p.key, p]));
-  ['period-sel', 'lead-period'].forEach(id => {
+  ['period-sel'].forEach(id => {
     const host = document.getElementById(id);
     if(!host) return;
     const m = meta[period.corr];
@@ -2339,6 +2344,12 @@ function setPeriod(key){
   applyRelation();          // network + correlation lists
   _leadCache = null;
   renderLeaders();
+  // 상세가 열려 있으면 주가 추이도 새 기간으로
+  if(compareSet.length && document.getElementById('drawer').classList.contains('show')){
+    drawPriceChart(compareSet);
+    document.getElementById('chart-title').textContent =
+      compareSet.length > 1 ? '주가 비교 (지수화)' : `${period.label} 주가 추이`;
+  }
   if(document.body.classList.contains('view-folio')) renderFolio();
 }
 
@@ -2348,12 +2359,14 @@ function applyRelation(){
   renderPeriodButtons();
   // the period control only changes a price correlation; the other two bases
   // are computed on a fixed 1-year regression, so hide it rather than imply it works
+  // 기간은 이제 헤더에 하나뿐이고 차트·주도주·상세가 모두 쓰므로 늘 보인다.
+  // 다만 매크로·펀더멘털 연결은 1년 고정이라 그 사실만 아래 설명에 남긴다.
   const priceMode = relationMode === 'price';
-  document.getElementById('period-sel').style.display = priceMode ? '' : 'none';
-  document.getElementById('period-label').style.display = priceMode ? '' : 'none';
   const info = RELATION_INFO[relationMode];
   document.getElementById('thr-label').textContent = info.thr;
-  const fallback = period.corr !== period.key
+  const fallback = !priceMode
+    ? '이 연결 기준은 1년 고정 회귀로 계산합니다 — 기간을 바꿔도 선은 그대로입니다. '
+    : period.corr !== period.key
     ? `상관계수는 최소 1개월 관측이 필요해 ${period.label} 대신 1개월 창으로 계산합니다. `
     : '';
   document.getElementById('relation-note').textContent = fallback + info.note();
@@ -2557,11 +2570,15 @@ function focusNode(d, keepCompare){
    DRAWER
    ===================================================================== */
 const drawer = document.getElementById('drawer');
-document.getElementById('drawer-close').addEventListener('click', ()=>{
-  drawer.classList.remove('show'); compareSet = []; cmpWarn = '';
+/* 상세를 완전히 닫는다 — 닫기 버튼과 탭 이동이 같은 경로를 쓴다 */
+function closeDrawer(){
+  if(!drawer.classList.contains('show')) return;
+  drawer.classList.remove('show');
+  compareSet = []; cmpWarn = '';
   closeDetailOverlay();
   clearFocus(); resetOpacities(); syncSelectionHighlight();
-});
+}
+document.getElementById('drawer-close').addEventListener('click', closeDrawer);
 
 let selectedTk = null, comparePeer = null;
 
@@ -2569,13 +2586,32 @@ let selectedTk = null, comparePeer = null;
 const CH = { w:298, h:116, l:38, r:8, t:10, b:16 };
 const chartSvg = d3.select('#pricechart');
 
+/* PX 는 1년치만 들고 있어 3년·5년을 그릴 수 없다. 5년치 일봉(OH)에서
+   종가만 뽑아 쓰면 기간 선택이 실제로 의미를 갖는다. */
+function closeSeries(list){
+  const nAll = OH.dates.length;
+  const want = Math.min(nAll, Math.max(20, period.days || 252));
+  const from = nAll - want;
+  return {
+    dates: OH.dates.slice(from),
+    raw: list.map(t => {
+      const a = OH.data[t] || [];
+      return OH.dates.slice(from).map((_, i) => {
+        const r = a[from + i];
+        return r ? r[3] : null;
+      });
+    }),
+  };
+}
+
 function drawPriceChart(tks){
   chartSvg.selectAll('*').remove();
-  const list = (Array.isArray(tks) ? tks : [tks]).filter(t => PX.prices[t]);
+  const list = (Array.isArray(tks) ? tks : [tks]).filter(t => (OH.data[t] || []).length);
   if(!list.length) return;
-  const dates = PX.dates, n = dates.length;
+  const cs = closeSeries(list);
+  const dates = cs.dates, n = dates.length;
   const multi = list.length > 1;
-  const raw = list.map(t => PX.prices[t]);
+  const raw = cs.raw;
   const innerW = CH.w - CH.l - CH.r, innerH = CH.h - CH.t - CH.b;
   const X = i => CH.l + (n < 2 ? 0 : (i/(n-1))*innerW);
 
@@ -2678,7 +2714,7 @@ function drawPriceChart(tks){
         else dot.style('display','none');
       });
       readout.innerHTML = `${dates[j]} · ` + list.map((t,k) => {
-        const px = PX.prices[t][j];
+        const px = raw[k][j];
         if(px == null) return `<b style="color:${cols[k]};opacity:.5">${t} —</b>`;
         const cur = nodeIndex.get(t)?.currency || 'USD';
         const idx = multi && series[k][j]!=null ? ` <span style="color:var(--text-muted)">${Math.round(series[k][j])}</span>` : '';
@@ -3641,7 +3677,8 @@ function openDrawer(d, peers, keepScroll){
   if(!keepScroll){ seasonHidden = new Set(); cmpSeasonHidden = new Set(); }
   renderCmpChips();
   document.getElementById('d-metrics').hidden = multi;   // the compare table carries these
-  document.getElementById('chart-title').textContent = multi ? '주가 비교 (지수화)' : '1년 주가 추이';
+  document.getElementById('chart-title').textContent =
+    multi ? '주가 비교 (지수화)' : `${period.label} 주가 추이`;
   document.getElementById('chart-scale').textContent = multi ? '시작일 = 100' : '';
   drawPriceChart(compareSet);
   drawSeasonality(compareSet);
@@ -4418,9 +4455,6 @@ function renderLeaders(){
   const d = leadData(), m = d.metric;
   const anyPeriod = d.metrics.some(x => x.period);
   document.getElementById('lead-panel').style.display = '';
-  document.getElementById('lead-period-label').textContent =
-    anyPeriod ? '기간 (전체 공통)' : '기간 (시세 기준에만 적용)';
-  document.getElementById('lead-period').style.opacity = anyPeriod ? 1 : 0.4;
   document.getElementById('lead-date').textContent =
     anyPeriod ? (d.range ? d.range.to : '—') : `${d.count}개 종목`;
 
@@ -5357,6 +5391,7 @@ function setView(v){
 }
 // 탭 자체는 비회원에게도 모두 열려 있다 — 잠그는 것은 탭이 아니라 개인 데이터다
 document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => {
+  closeDrawer();                      // 팝업을 켠 채로 다른 화면으로 넘어가지 않게
   setView(b.dataset.view);
   if(typeof syncOrderPolling === 'function') syncOrderPolling();
   if(typeof syncOrderbook === 'function'){ syncOrderbook(); refreshFlow(); }
@@ -5929,11 +5964,9 @@ function updateMiniTicket(){
 }
 async function miniOrder(side){
   if(!requireLogin()) return;
-  const memoEl = document.getElementById('dt-memo');
-  const ok = await placeOrder({ tk: selectedTk, side, type: 'MARKET',
+  await placeOrder({ tk: selectedTk, side, type: 'MARKET',
                      qty: parseFloat(document.getElementById('dt-qty').value),
-                     px: (latestClose(selectedTk) || {}).px, memo: memoEl.value });
-  if(ok) memoEl.value = '';
+                     px: (latestClose(selectedTk) || {}).px, memo: '' });
 }
 document.getElementById('dt-qty').addEventListener('input', updateMiniTicket);
 document.getElementById('dt-buy').addEventListener('click', () => miniOrder('BUY'));
