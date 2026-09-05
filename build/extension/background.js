@@ -228,6 +228,18 @@ async function handle(msg){
   }
   if(op === 'orderDetail') return await call('GET', `/api/v1/orders/${encodeURIComponent(body.orderId)}`);
   if(op === 'commissions') return await call('GET', '/api/v1/commissions', null, false);
+  if(op === 'orderbook')
+    return await call('GET', `/api/v1/orderbook?symbol=${encodeURIComponent(body.symbol)}`, null, false);
+  if(op === 'flow'){                     // 수급 — 국내 종목만
+    const q = new URLSearchParams({ count: String(body.count || 40) });
+    if(body.until) q.set('until', body.until);
+    return await call('GET',
+      `/api/v1/stocks/${encodeURIComponent(body.symbol)}/${body.kind}?${q}`, null, false);
+  }
+  if(op === 'buyingPower'){              // 통화별 현금 매수 가능 금액
+    const cur = body?.currency || 'KRW';
+    return await call('GET', `/api/v1/buying-power?currency=${encodeURIComponent(cur)}`);
+  }
   if(op === 'stream') return await wsSetSymbols(body?.symbols);   // 화면에 열린 종목만
   if(op === 'order'){
     for(const k of ['symbol', 'side', 'orderType', 'quantity'])

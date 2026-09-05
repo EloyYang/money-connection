@@ -468,6 +468,26 @@
   #m-live.on{ color:var(--up); border-color:rgba(61,220,132,0.45); }
   #m-px.tick{ animation:pxTick .45s ease; }
   @keyframes pxTick{ from{ color:var(--accent); } to{ color:inherit; } }
+  /* ---- 호가창 · 수급 ---- */
+  .ob-row{ position:relative; display:flex; align-items:center; gap:8px; padding:2px 6px;
+    font-size:11px; font-family:'JetBrains Mono',monospace; cursor:pointer; }
+  .ob-row:hover{ background:rgba(255,255,255,0.05); }
+  .ob-bar{ position:absolute; top:1px; bottom:1px; right:0; border-radius:3px; z-index:0; }
+  .ob-row.ask .ob-bar{ background:rgba(255,92,114,0.16); }
+  .ob-row.bid .ob-bar{ background:rgba(61,220,132,0.16); }
+  .ob-px{ position:relative; z-index:1; flex:1 1 auto; }
+  .ob-row.ask .ob-px{ color:var(--down); }
+  .ob-row.bid .ob-px{ color:var(--up); }
+  .ob-vol{ position:relative; z-index:1; color:var(--text-secondary); }
+  .ob-mid{ text-align:center; font-size:10px; color:var(--text-muted); padding:4px 0;
+    border-top:1px solid var(--line); border-bottom:1px solid var(--line); margin:3px 0; }
+  .fl-head, .fl-row{ display:grid; grid-template-columns:46px 1fr 1fr 82px; gap:6px;
+    align-items:center; font-size:11px; padding:3px 0; }
+  .fl-head{ color:var(--text-muted); font-size:9.5px; border-bottom:1px solid var(--line); }
+  .fl-v{ text-align:right; font-family:'JetBrains Mono',monospace; }
+  .fl-s{ text-align:right; font-size:10px; }
+  .fl-foot{ margin-top:6px; padding-top:6px; border-top:1px solid var(--line);
+    font-size:10.5px; color:var(--text-secondary); }
   /* ---- 미체결 주문 · 알림 ---- */
   #open-orders{ margin-bottom:12px; }
   #open-orders[hidden]{ display:none; }
@@ -936,6 +956,12 @@
 
       <aside class="tv-right">
         <div class="panel tv-panel" id="tv-summary"></div>
+        <div class="panel tv-panel" id="tv-orderbook-host">
+          <div class="sec-title"><span>호가<button class="help" data-h="orderbook">?</button></span>
+            <span class="mono" style="font-size:10px">2초마다</span></div>
+          <div id="tv-orderbook"><div class="cap">연동하면 호가가 표시됩니다.</div></div>
+        </div>
+        <div class="panel tv-panel" id="tv-flow"></div>
         <div class="panel tv-panel" id="tv-ticket-host">
 <div id="trade-block">
       <div class="sec-title"><span>주문<button class="help" data-h="trade">?</button></span>
@@ -1019,6 +1045,8 @@
           <button class="btn" id="wiz-open">토스증권 연동하기</button>
           <button class="btn ghost" id="bridge-test">연결 확인</button>
           <button class="btn ghost" id="bridge-sync">보유 종목 가져오기</button>
+          <button class="btn ghost" id="bridge-cash">현금 불러오기</button>
+          <button class="btn ghost" id="bridge-fee">내 수수료율 가져오기</button>
         </div>
         <div class="cap" id="bridge-status"></div>
         </div>
@@ -1590,6 +1618,36 @@ const HELP = {
     '받은 것을 더해서 만들면 틀린 값이 되기 때문입니다. 거래량은 봉 데이터 기준입니다.\n\n' +
     '연결이 끊기면 ● 가 ○ 로 바뀌고 자동으로 다시 붙습니다. ' +
     '갑자기 끊긴다면 토스 WTS 의 <b>허용 IP</b> 목록을 확인하세요 — 가정용 IP 는 바뀝니다.' },
+  orderbook: { t: '호가', dir: null, d:
+    '매도 호가(위, 붉은색)와 매수 호가(아래, 초록색)를 각각 10단계까지 보여 줍니다. ' +
+    '막대 길이는 그 가격의 잔량이고, 가운데 줄은 최우선 매도호가와 매수호가의 차이(스프레드)입니다.\n\n' +
+    '<b>호가를 클릭하면 지정가 주문칸에 그 가격이 들어갑니다.</b>\n\n' +
+    '2초마다 다시 불러옵니다. 실시간 웹소켓에도 호가 채널이 있지만, ' +
+    '구독 한도를 체결과 나눠 써야 해서 지금은 조회 방식으로 두었습니다. ' +
+    '장 시간이 아니면 비어 있을 수 있습니다.' },
+  flow: { t: '수급 (개인·외국인·기관)', dir: 'ctx', d:
+    '누가 사고 누가 팔고 있는지를 <b>거래량(주)</b> 기준으로 봅니다. ' +
+    '순매수 = 매수 − 매도이므로 음수면 순매도입니다.\n\n' +
+    '<b>당일</b>은 오늘 값, <b>5일 누적</b>은 최근 5거래일 합, ' +
+    '<b>연속</b>은 같은 방향이 며칠째 이어지는지입니다 — ' +
+    '"외국인이 20일 연속 순매수" 같은 것을 여기서 읽습니다.\n\n' +
+    '아래 줄에는 외국인 보유 비율, 공매도 거래량 비중, 신용융자 잔고를 함께 둡니다.\n\n' +
+    '<b>국내 종목만</b> 제공됩니다(토스 기준). 당일 값은 <b>장중 잠정치</b>이고 ' +
+    '개인·기타법인은 저녁에 확정치가 들어옵니다. ' +
+    '외국인은 <b>등록외국인</b> 기준이라 미등록 외국인은 빠져 있습니다.\n\n' +
+    '수급은 방향을 보장하지 않습니다 — 외국인이 사는 동안에도 주가는 내릴 수 있습니다. ' +
+    '상관관계·펀더멘털과 <b>같이</b> 보세요.' },
+  liveCash: { t: '현금 (매수 가능)', dir: null, d:
+    '토스증권의 <b>현금 기반 매수 가능 금액</b>을 원화·달러 각각 받아 옵니다. ' +
+    '표시되는 합계는 설정의 환율로 원화 환산한 값입니다.\n\n' +
+    '<b>은행 잔고 같은 "현금 잔고"와 완전히 같은 값은 아닙니다.</b> ' +
+    '토스가 주는 것은 "순수 현금으로 지금 매수할 수 있는 금액"(미수 미발생 기준)이라, ' +
+    '미결제 대금처럼 아직 쓸 수 없는 돈은 빠져 있을 수 있습니다. ' +
+    '그래서 이름도 <b>매수 가능</b>으로 적었습니다.\n\n' +
+    '연결 확인 · 보유 종목 가져오기 · 실거래 전환 · 주문 직후에 자동으로 다시 받아 옵니다. ' +
+    '설정의 <b>[현금 불러오기]</b> 로 언제든 갱신할 수 있습니다.\n\n' +
+    '주문을 넣으면 우리 장부에서도 현금을 빼지만, 그 값은 곧 토스에서 받은 실제 금액으로 덮어씁니다 ' +
+    '— 수수료·세금·환율이 우리 가정과 다를 수 있기 때문입니다.' },
   openOrders: { t: '미체결 주문', dir: null, d:
     '실거래 모드에서 아직 체결되지 않은 주문을 <b>5초마다</b> 토스에 물어 보여 줍니다. ' +
     '주문을 넣고 토스 앱을 열어 확인하지 않아도 됩니다.\n\n' +
@@ -1664,7 +1722,11 @@ const HELP = {
     '모의와 실거래가 같은 장부에 기록되며, 실거래에는 "실" 표시가 붙습니다. 실현손익은 매도 시점의 평균단가 대비 차익에서 수수료와 세금을 뺀 값입니다. ' +
     'CSV로 내보내 스프레드시트에서 따로 분석할 수 있습니다.' },
   folioSettings: { t: '설정', dir: null, d:
-    '수수료와 거래세는 증권사·계좌·시장마다 다릅니다. 기본값은 예시일 뿐이므로 본인 조건에 맞게 바꿔서 쓰세요.\n\n' +
+    '수수료와 거래세는 증권사·계좌·시장마다 다릅니다. 기본값 0.015%는 예시일 뿐입니다 — ' +
+    '연동되어 있으면 <b>[내 수수료율 가져오기]</b> 로 토스 계좌의 실제 수수료율을 받아 채울 수 있습니다. ' +
+    '연결 확인을 할 때 자동으로도 한 번 받아 옵니다.\n\n' +
+    '국내와 해외 수수료율이 다르면 국내 값을 설정에 넣습니다 — 계산은 한 값으로만 하기 때문입니다. ' +
+    '거래세는 토스 API 가 주지 않으므로 직접 확인해 넣으세요.\n\n' +
     '초기자금을 바꾸면 차액만큼 현금이 조정되고 누적 수익률의 기준도 함께 바뀝니다. 모든 값은 이 브라우저에만 저장됩니다.' },
   folioBroker: { t: '토스증권 연결 — 순서대로', dir: null, d:
     '<b>브리지 주소가 무엇인가요?</b> 내 PC에서 실행하는 작은 중계 프로그램의 주소입니다. ' +
@@ -5297,6 +5359,7 @@ function setView(v){
 document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => {
   setView(b.dataset.view);
   if(typeof syncOrderPolling === 'function') syncOrderPolling();
+  if(typeof syncOrderbook === 'function'){ syncOrderbook(); refreshFlow(); }
 }));
 document.body.className = 'view-graph';
 
@@ -5502,15 +5565,27 @@ function renderFolio(){
     <div class="v"${col ? ` style="color:${col}"` : ''}>${v}</div><div class="s">${sub || ''}</div></div>`;
   const sgn = v => (v >= 0 ? '+' : '') + fmtKrw(v).replace('₩', '') ;
   const col = v => v >= 0 ? 'var(--up)' : 'var(--down)';
+  const raw = live ? b.cashRaw : null;
+  const cashSub = raw
+    ? [raw.krw != null ? '₩' + Math.round(raw.krw).toLocaleString() : null,
+       raw.usd != null ? '$' + (+raw.usd).toLocaleString(undefined, { maximumFractionDigits: 2 }) : null]
+      .filter(Boolean).join(' + ')
+    : null;
   document.getElementById('folio-kpis').innerHTML =
-    kpi(live ? '평가금액' : '총 자산', live ? fmtKrw(value) : fmtKrw(total),
-        live ? '현금 잔고는 토스증권 계좌에 있습니다' : `평가 ${fmtKrw(value)} + 현금 ${fmtKrw(b.cash)}`) +
+    kpi(live && !raw ? '평가금액' : '총 자산',
+        live && !raw ? fmtKrw(value) : fmtKrw(total),
+        live
+          ? (raw ? `평가 ${fmtKrw(value)} + 현금 ${cashSub}`
+                 : '현금 잔고는 토스증권 계좌에 있습니다 · [현금 불러오기]')
+          : `평가 ${fmtKrw(value)} + 현금 ${fmtKrw(b.cash)}`) +
     kpi('평가손익', (unreal >= -0.5 ? '+' : '') + fmtKrw(unreal),
         invested ? `투자원금 대비 ${(unreal / invested * 100).toFixed(2)}%` : '보유 없음', col(unreal)) +
     kpi('실현손익', (b.realized >= 0 ? '+' : '') + fmtKrw(b.realized),
         `${b.trades.filter(t => t.side === 'SELL').length}회 매도`, col(b.realized)) +
     (live
-      ? kpi('투자원금', fmtKrw(invested), `${rows.length}종목 · 매수 평균가 기준`)
+      ? kpi('현금 (매수 가능)', raw ? fmtKrw(b.cash) : '—',
+            raw ? `토스 매수가능금액 · ${new Date(raw.at).toLocaleTimeString()} 기준${helpBadge('liveCash')}`
+                : `투자원금 ${fmtKrw(invested)} · ${rows.length}종목${helpBadge('liveCash')}`)
       : kpi('누적 수익률', (totalPl >= 0 ? '+' : '') + (b.startCash ? (totalPl / b.startCash * 100).toFixed(2) : '0.00') + '%',
             `초기자금 ${fmtKrw(b.startCash)}`, col(totalPl)));
 
@@ -5624,6 +5699,13 @@ async function bridge(path, opts){
     if(path.startsWith('/candles')) return extCall('candles', null, qsObj(path));
     if(path.startsWith('/orders')) return extCall('orderList', null, qsObj(path));
     if(path === '/commissions') return extCall('commissions');
+    if(path.startsWith('/buying-power')) return extCall('buyingPower', null, qsObj(path));
+    if(path.startsWith('/orderbook')) return extCall('orderbook', null, qsObj(path));
+    if(path.startsWith('/flow/')){
+      const [, , sym, rest] = path.split('/');
+      const kind = (rest || '').split('?')[0];
+      return extCall('flow', null, { symbol: sym, kind, ...qsObj(path) });
+    }
     if(path.startsWith('/order/') && path.endsWith('/cancel'))
       return extCall('cancel', null, { orderId: path.slice(7, -7) });
     return extCall('get', path);
@@ -5683,6 +5765,9 @@ async function checkBridge(quiet){
   updateTicket();
   if(typeof syncOrderPolling === 'function') syncOrderPolling();
   if(bridgeOk && typeof fillTodayBars === 'function') fillTodayBars();
+  if(bridgeOk && folioMode === 'live' && typeof fetchLiveCash === 'function') fetchLiveCash();
+  if(bridgeOk && typeof fetchCommissions === 'function') fetchCommissions();
+  if(typeof syncOrderbook === 'function'){ syncOrderbook(); refreshFlow(); }
   return bridgeOk;
 }
 
@@ -5779,6 +5864,7 @@ async function placeOrder({ tk, side, qty, px, type, memo }){
       toast(`주문 접수됨 · ${r.orderId ? r.orderId.slice(0, 8) + '…' : '번호 없음'} — 체결되면 알려 드립니다`);
       syncOrderPolling();
       setTimeout(pollOrders, 700);          // 접수 직후 한 번 바로 확인
+      setTimeout(fetchLiveCash, 1500);      // 우리가 뺀 현금 대신 실제 잔고로 맞춘다
     } catch(e){
       alert('주문 실패: ' + e.message);
       return false;
@@ -5877,6 +5963,7 @@ function setFolioMode(m){
     .forEach(x => x.classList.toggle('on', x.dataset.m === folioMode));
   saveFolio();
   if(folioMode === 'live' && !bridgeOk) checkBridge(true);
+  else if(folioMode === 'live' && typeof fetchLiveCash === 'function') fetchLiveCash();
   updateTicket();
   updateMiniTicket();
   renderTvList();
@@ -5928,6 +6015,29 @@ document.getElementById('set-reset').addEventListener('click', () => {
   folio[folioMode] = emptyBook(folioMode === 'live' ? 0 : folio.paper.startCash);
   saveFolio(); renderFolio(); updateTicket(); updateMiniTicket();
 });
+document.getElementById('bridge-cash').addEventListener('click', async () => {
+  if(!requireLogin()) return;
+  const st = document.getElementById('bridge-status');
+  st.textContent = '현금을 불러오는 중…';
+  const c = await fetchLiveCash();
+  st.innerHTML = c
+    ? `<span style="color:var(--up)">현금을 불러왔습니다</span> — ` +
+      [c.krw != null ? '₩' + Math.round(c.krw).toLocaleString() : null,
+       c.usd != null ? '$' + (+c.usd).toLocaleString(undefined,{maximumFractionDigits:2}) : null]
+      .filter(Boolean).join(' + ')
+    : '<span style="color:var(--down)">현금을 받지 못했습니다.</span> 연결 상태를 확인하세요.';
+});
+document.getElementById('bridge-fee').addEventListener('click', async () => {
+  if(!requireLogin()) return;
+  const st = document.getElementById('bridge-status');
+  st.textContent = '수수료율을 불러오는 중…';
+  const c = await fetchCommissions();
+  st.innerHTML = c
+    ? `<span style="color:var(--up)">수수료율을 가져왔습니다</span> — ` +
+      [c.kr != null ? `국내 ${c.kr}%` : null, c.us != null ? `해외 ${c.us}%` : null]
+        .filter(Boolean).join(' · ') + ' · 설정에 반영했습니다.'
+    : '<span style="color:var(--down)">수수료율을 받지 못했습니다.</span>';
+});
 document.getElementById('bridge-test').addEventListener('click', () => checkBridge(false));
 document.getElementById('bridge-sync').addEventListener('click', async () => {
   if(!requireLogin()) return;
@@ -5954,6 +6064,7 @@ document.getElementById('bridge-sync').addEventListener('click', async () => {
       applied++;
     });
     saveFolio(); renderFolio(); updateTicket();
+    fetchLiveCash();                      // 보유와 현금은 같이 봐야 총 자산이 맞는다
     folioMode = 'live';
     document.querySelectorAll('[data-m]').forEach(x => x.classList.toggle('on', x.dataset.m === 'live'));
     st.textContent = `실거래 장부에 보유 ${applied}종목을 반영했습니다.` +
@@ -6378,6 +6489,7 @@ function selectTrading(tk){
   renderTvSummary();
   updateTicket();
   fillIntraday(tk);          // 분봉 상태라면 이 종목 봉도 받아 온다
+  if(typeof syncOrderbook === 'function'){ syncOrderbook(); refreshFlow(); }
   loadTodayBar(tk).then(ok => { if(ok){ syncIvButtons(); drawCandle(); } });
 }
 
@@ -7025,6 +7137,8 @@ setTimeout(probeExtension, 600);
 
 function onExtFound(){
   if(typeof fillTodayBars === 'function') setTimeout(fillTodayBars, 200);
+  if(typeof syncOrderbook === 'function') setTimeout(() => { syncOrderbook(); refreshFlow(); }, 250);
+  if(typeof fetchCommissions === 'function') setTimeout(fetchCommissions, 400);
   const el = document.getElementById('wiz-ext-state');
   if(el) el.innerHTML = `<span style="color:var(--up)">확장 프로그램이 설치되어 있습니다 (v${esc(String(extVersion))})</span>`
     + ' · <button class="linkbtn" data-w="open-setup">설정 창 열기</button>';
@@ -7062,6 +7176,233 @@ document.addEventListener('click', ev => {
    확인해야 했던 것을 화면 안으로 들여온다.
    실거래 모드로 화면을 보고 있고 미체결 주문이 있을 때만 돈다.
    ===================================================================== */
+
+/* =====================================================================
+   호가창 · 수급 · 실제 수수료율
+   전부 REST 다. 호가는 2초마다 다시 부르고(실시간 웹소켓의 호가 채널은
+   구독 한도를 체결과 나눠 써야 해서 지금은 REST 로 둔다), 수급은 하루
+   단위 데이터라 종목이 바뀔 때만 부른다.
+   ===================================================================== */
+const isKR = tk => /^\d{6}$/.test(tk || '');
+
+/* ---- 호가창 ---- */
+let obTimer = null, obTk = null;
+const OB_MS = 2000;
+
+async function pollOrderbook(){
+  const tk = cTk;
+  if(!tk || !(extReady || bridgeOk)) return;
+  let r;
+  try { r = await bridge(`/orderbook?symbol=${encodeURIComponent(tk)}`); }
+  catch(e){ renderOrderbook(null, '호가를 받지 못했습니다.'); return; }
+  renderOrderbook((r.result || r), null, tk);
+}
+
+function renderOrderbook(ob, err, tk){
+  const host = document.getElementById('tv-orderbook');
+  if(!host) return;
+  if(err || !ob){ host.innerHTML = `<div class="cap">${esc(err || '호가 없음')}</div>`; return; }
+  const asks = (ob.asks || []).slice(0, 10);      // 낮은 가격순
+  const bids = (ob.bids || []).slice(0, 10);      // 높은 가격순
+  if(!asks.length && !bids.length){ host.innerHTML = '<div class="cap">호가가 없습니다 (장 시간이 아닐 수 있습니다).</div>'; return; }
+  const maxV = Math.max(1, ...asks.map(e => +e.volume || 0), ...bids.map(e => +e.volume || 0));
+  const cur = ob.currency === 'KRW' ? '₩' : '$';
+  const px = v => cur + (+v).toLocaleString(undefined, { maximumFractionDigits: 4 });
+  const vol = v => (+v).toLocaleString();
+  const row = (e, side) => `<div class="ob-row ${side}">
+      <span class="ob-bar" style="width:${(+e.volume || 0) / maxV * 100}%"></span>
+      <span class="ob-px">${px(e.price)}</span>
+      <span class="ob-vol">${vol(e.volume)}</span>
+    </div>`;
+  const spread = (asks[0] && bids[0]) ? (+asks[0].price - +bids[0].price) : null;
+  host.innerHTML =
+    asks.slice().reverse().map(e => row(e, 'ask')).join('') +
+    `<div class="ob-mid">${spread != null
+      ? `스프레드 ${px(spread)} · ${(spread / (+bids[0].price) * 100).toFixed(2)}%`
+      : '—'}</div>` +
+    bids.map(e => row(e, 'bid')).join('');
+  // 호가를 누르면 지정가에 그 값이 들어간다
+  host.querySelectorAll('.ob-row').forEach((el, i) => {
+    el.addEventListener('click', () => {
+      const all = [...asks].reverse().concat(bids);
+      const e = all[i];
+      if(!e) return;
+      tkType = 'LIMIT';
+      document.querySelectorAll('#tk-type button').forEach(x => x.classList.toggle('on', x.dataset.t === 'LIMIT'));
+      document.getElementById('tk-price-wrap').hidden = false;
+      document.getElementById('tk-price').value = e.price;
+      updateTicket();
+    });
+  });
+}
+
+function syncOrderbook(){
+  const want = document.body.classList.contains('view-trade') && (extReady || bridgeOk)
+            && !document.getElementById('tv-orderbook')?.closest('[hidden]');
+  if(want && (!obTimer || obTk !== cTk)){
+    clearInterval(obTimer);
+    obTk = cTk;
+    pollOrderbook();
+    obTimer = setInterval(pollOrderbook, OB_MS);
+  } else if(!want && obTimer){
+    clearInterval(obTimer); obTimer = null; obTk = null;
+  }
+}
+
+/* ---- 수급 (국내 종목만) ---- */
+const FLOW = new Map();                   // tk -> { inv, short, credit, at }
+const FLOW_TTL = 10 * 60000;
+
+async function loadFlow(tk){
+  if(!isKR(tk) || !(extReady || bridgeOk)) return null;
+  const c = FLOW.get(tk);
+  if(c && Date.now() - c.at < FLOW_TTL) return c;
+  const get = async kind => {
+    try {
+      const r = await bridge(`/flow/${encodeURIComponent(tk)}/${kind}?count=40`);
+      const res = r.result || r;
+      return res.records || res.items || [];
+    } catch(e){ return []; }
+  };
+  const [inv, sh, cr] = await Promise.all([
+    get('investor-trading'), get('short-selling'), get('credit-trades')]);
+  const set = { inv, short: sh, credit: cr, at: Date.now() };
+  FLOW.set(tk, set);
+  return set;
+}
+
+/* 연속 순매수 일수 — "외국인이 며칠째 사고 있나" */
+function streak(records, pick){
+  let n = 0;
+  for(const r of records){                // 최신순
+    const v = pick(r);
+    if(v == null) continue;
+    if(n === 0){ n = v > 0 ? 1 : v < 0 ? -1 : 0; if(!n) break; continue; }
+    if(n > 0 && v > 0) n++;
+    else if(n < 0 && v < 0) n--;
+    else break;
+  }
+  return n;
+}
+
+function renderFlow(tk, set){
+  const host = document.getElementById('tv-flow');
+  if(!host) return;
+  if(!isKR(tk)){
+    host.innerHTML = `<div class="sec-title"><span>수급${helpBadge('flow')}</span></div>
+      <div class="cap">국내 종목만 제공됩니다 (토스 기준).</div>`;
+    return;
+  }
+  if(!set){ host.innerHTML = `<div class="sec-title"><span>수급${helpBadge('flow')}</span></div>
+      <div class="cap">불러오는 중…</div>`; return; }
+  const inv = set.inv || [], sh = set.short || [], cr = set.credit || [];
+  if(!inv.length && !sh.length && !cr.length){
+    host.innerHTML = `<div class="sec-title"><span>수급${helpBadge('flow')}</span></div>
+      <div class="cap">수급 데이터가 없습니다.</div>`;
+    return;
+  }
+  const net = (r, who) => r && r[who] ? (parseFloat(r[who].netBuyVolume) || 0) : null;
+  const last = inv[0] || {};
+  const num = v => v == null ? '—' : (v >= 0 ? '+' : '') + Math.round(v).toLocaleString();
+  const col = v => v == null ? 'var(--text-muted)' : v >= 0 ? 'var(--up)' : 'var(--down)';
+  const sum5 = who => {
+    const xs = inv.slice(0, 5).map(r => net(r, who)).filter(v => v != null);
+    return xs.length ? xs.reduce((a, b) => a + b, 0) : null;
+  };
+  const st = who => streak(inv, r => net(r, who));
+  const stTxt = n => n === 0 ? '—' : `${Math.abs(n)}일 ${n > 0 ? '연속 순매수' : '연속 순매도'}`;
+  const holding = last.foreignerHolding
+    ? (parseFloat(last.foreignerHolding.holdingRate) * 100).toFixed(2) + '%' : null;
+  const shLast = sh[0];
+  const shRate = shLast && shLast.shortSellingVolumeRate != null
+    ? (parseFloat(shLast.shortSellingVolumeRate) * 100).toFixed(2) + '%' : null;
+  const crLast = cr[0];
+  const marginBal = crLast && crLast.marginLoan
+    ? parseFloat(crLast.marginLoan.balanceQuantity ?? crLast.marginLoan.balance ?? NaN) : NaN;
+
+  const rowFor = (label, who) => `<div class="fl-row">
+      <span class="fl-l">${label}</span>
+      <span class="fl-v" style="color:${col(net(last, who))}">${num(net(last, who))}</span>
+      <span class="fl-v" style="color:${col(sum5(who))}">${num(sum5(who))}</span>
+      <span class="fl-s" style="color:${col(st(who))}">${stTxt(st(who))}</span>
+    </div>`;
+  host.innerHTML = `<div class="sec-title"><span>수급${helpBadge('flow')}</span>
+      <span class="mono" style="font-size:10px">${esc(last.date || '')}</span></div>
+    <div class="fl-head"><span class="fl-l">투자자</span><span class="fl-v">당일</span>
+      <span class="fl-v">5일 누적</span><span class="fl-s">연속</span></div>
+    ${rowFor('개인', 'individual')}
+    ${rowFor('외국인', 'foreigner')}
+    ${rowFor('기관', 'institution')}
+    <div class="fl-foot">
+      ${holding ? `외국인 보유 <b>${holding}</b>` : ''}
+      ${shRate ? ` · 공매도 비중 <b>${shRate}</b>` : ''}
+      ${isFinite(marginBal) ? ` · 신용잔고 <b>${Math.round(marginBal).toLocaleString()}주</b>` : ''}
+    </div>
+    <div class="cap" style="margin-top:5px">순매수 = 매수 − 매도 거래량(주). 당일 값은 장중 잠정치입니다.</div>`;
+}
+
+async function refreshFlow(){
+  const tk = cTk;
+  const host = document.getElementById('tv-flow');
+  if(!host) return;
+  if(!isKR(tk)){ renderFlow(tk, null); return; }
+  renderFlow(tk, FLOW.get(tk) || null);
+  const set = await loadFlow(tk);
+  if(cTk === tk) renderFlow(tk, set);
+}
+
+/* ---- 내 실제 수수료율 ---- */
+async function fetchCommissions(){
+  if(!(extReady || bridgeOk)) return null;
+  let arr;
+  try {
+    const r = await bridge('/commissions');
+    const res = r.result || r;
+    arr = Array.isArray(res) ? res : (res.commissions || res.items || []);
+  } catch(e){ return null; }
+  if(!arr || !arr.length) return null;
+  const pick = m => arr.find(c => c.marketCountry === m);
+  const kr = pick('KR'), us = pick('US');
+  // 0.0007 * 100 은 0.06999999999999999 이 된다 — 소수 넷째 자리에서 정리한다
+  const rate = c => c && isFinite(parseFloat(c.commissionRate))
+    ? Math.round(parseFloat(c.commissionRate) * 100 * 10000) / 10000 : null;
+  const out = { kr: rate(kr), us: rate(us), at: Date.now() };
+  if(out.kr == null && out.us == null) return null;
+  folio.feeReal = out;
+  // 설정의 수수료율을 실제 값으로 맞춘다 — 기본값 0.015% 는 내가 넣은 예시였다
+  const use = out.kr != null ? out.kr : out.us;
+  folio.feePct = use;
+  saveFolio();
+  const inp = document.getElementById('set-fee');
+  if(inp) inp.value = folio.feePct;
+  updateTicket();
+  if(document.body.classList.contains('view-folio')) renderFolio();
+  return out;
+}
+
+/* ---- 토스 현금 잔고 ----
+   /api/v1/buying-power 는 통화별 "현금 기반 매수 가능 금액" 을 준다.
+   순수 현금으로 살 수 있는 금액이라 잔고와 완전히 같은 뜻은 아니다 —
+   미결제 대금 등이 빠져 있을 수 있어 화면에도 그대로 밝힌다. */
+async function fetchLiveCash(){
+  if(!(extReady || bridgeOk)) return null;
+  const out = { krw: null, usd: null, at: Date.now() };
+  for(const cur of ['KRW', 'USD']){
+    try {
+      const r = await bridge(`/buying-power?currency=${cur}`);
+      const v = parseFloat((r.result || r).cashBuyingPower);
+      if(isFinite(v)) out[cur.toLowerCase()] = v;
+    } catch(e){ /* 한 통화가 실패해도 나머지는 쓴다 */ }
+  }
+  if(out.krw == null && out.usd == null) return null;
+  folio.live.cashRaw = out;
+  folio.live.cash = (out.krw || 0) + toKrw(out.usd || 0, 'USD');
+  saveFolio();
+  if(document.body.classList.contains('view-folio')) renderFolio();
+  updateTicket();
+  return out;
+}
+
 const ORDER_POLL_MS = 5000;
 let orderTimer = null, openOrders = [], lastSeen = new Map();   // orderId -> status
 

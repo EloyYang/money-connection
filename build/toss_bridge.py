@@ -196,6 +196,31 @@ class Handler(BaseHTTPRequestHandler):
                 q.setdefault("count", "200")
                 return self._send(200, call("GET", "/api/v1/candles?" + urllib.parse.urlencode(q),
                                             self.cfg, account=False))
+            if path == "/orderbook":
+                q = {k: v[0] for k, v in
+                     urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).items()}
+                return self._send(200, call("GET", "/api/v1/orderbook?"
+                                            + urllib.parse.urlencode(q), self.cfg, account=False))
+            if path.startswith("/flow/"):
+                # /flow/{symbol}/{kind}  kind: investor-trading | short-selling | credit-trades
+                parts = path.split("/")
+                if len(parts) < 4:
+                    return self._send(400, {"error": "symbol 과 kind 가 필요합니다."})
+                sym, kind = parts[2], parts[3]
+                if kind not in ("investor-trading", "short-selling", "credit-trades"):
+                    return self._send(400, {"error": f"알 수 없는 수급 항목: {kind}"})
+                q = {k: v[0] for k, v in
+                     urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).items()}
+                q.setdefault("count", "40")
+                return self._send(200, call(
+                    "GET", f"/api/v1/stocks/{urllib.parse.quote(sym)}/{kind}?"
+                           + urllib.parse.urlencode(q), self.cfg, account=False))
+            if path == "/buying-power":
+                q = {k: v[0] for k, v in
+                     urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).items()}
+                q.setdefault("currency", "KRW")
+                return self._send(200, call("GET", "/api/v1/buying-power?"
+                                            + urllib.parse.urlencode(q), self.cfg))
             if path == "/commissions":
                 return self._send(200, call("GET", "/api/v1/commissions", self.cfg, account=False))
             if path.startswith("/order/"):
