@@ -408,6 +408,10 @@
   .folio-head h2{ font-family:'Space Grotesk',system-ui,sans-serif; font-size:17px; margin:0; font-weight:600; }
   .folio-head .seg-mini{ margin:0; }
   .folio-head .seg-mini button{ white-space:nowrap; }
+  .mode-seg{ margin:0 0 0 14px; flex:0 0 auto; }
+  .mode-seg button{ white-space:nowrap; padding:4px 11px; font-weight:600; }
+  .mode-seg button[data-m="live"].on{ color:var(--down); background:rgba(255,92,114,0.14); }
+  .mode-seg button[data-m="paper"].on{ color:var(--up); background:rgba(61,220,132,0.12); }
   .broker-chip{ font-size:10.5px; padding:3px 9px; border-radius:999px; border:1px solid var(--border-strong);
     color:var(--text-muted); white-space:nowrap; }
   .broker-chip.on{ border-color:var(--up); color:var(--up); background:rgba(61,220,132,0.10); }
@@ -694,6 +698,10 @@
     <button class="btn ghost" id="mode-reset" title="모든 필터·기간·기준을 처음 상태로">↺ 초기화</button>
     <button class="btn ghost" id="mode-fit">⤢ 전체보기</button>
   </div>
+  <span class="seg-mini mode-seg" id="folio-mode" title="주문과 보유 장부를 모의/실거래로 전환">
+    <button data-m="paper" class="on">모의</button><button data-m="live">실거래</button>
+  </span>
+  <button class="help" data-h="folioMode" style="margin-left:4px">?</button>
   <div class="freshness" id="freshness" title="구성종목·시세 자동 갱신 상태">—</div>
   <button class="help" data-h="usage" style="margin-left:6px">?</button>
   <button class="help" data-h="method" style="margin-left:2px">i</button>
@@ -707,7 +715,7 @@
       <aside class="tv-side panel">
         <div class="tv-search"><input id="tv-search" placeholder="티커·회사명 검색…" autocomplete="off"></div>
         <div class="seg-mini seg-wrap" id="tv-list-mode">
-          <button data-l="fav" class="on">즐겨찾기</button><button data-l="hold">보유</button><button data-l="lead">주도주</button>
+          <button data-l="fav" class="on">즐겨찾기</button><button data-l="hold" id="tv-hold-btn">보유</button><button data-l="lead">주도주</button>
         </div>
         <div class="ctl-note" style="margin:-2px 0 6px">클릭 = 차트 · ⌘/Ctrl+클릭 = 비교 · 끌어다 놓기 = 분할<button class="help" data-h="tvCompare">?</button></div>
         <div id="tv-list"></div>
@@ -782,9 +790,6 @@
     <div class="folio-wrap">
       <div class="folio-head">
         <h2>포트폴리오</h2>
-        <span class="seg-mini" id="folio-mode">
-          <button data-m="paper" class="on">모의</button><button data-m="live">실거래</button>
-        </span>
         <span class="broker-chip" id="broker-chip">토스증권 미연결</span>
         <button class="btn ghost" id="folio-settings-btn">설정</button>
       </div>
@@ -1382,6 +1387,11 @@ const HELP = {
     '실거래는 토스증권 Open API로 실제 주문을 냅니다. 이 페이지는 공개된 정적 사이트라 API 키를 담을 수 없으므로, ' +
     '본인 PC에서 실행하는 브리지(build/toss_bridge.py)를 거쳐 전송됩니다. 브리지가 없으면 실거래 버튼은 비활성입니다.\n\n' +
     '암호화폐와 금 현물은 토스증권 주식 API 대상이 아니라 모의 거래만 가능합니다.' },
+  folioMode: { t: '모의 / 실거래', dir: null, d:
+    '두 장부는 완전히 분리되어 있습니다. 모의 보유와 실거래 보유가 섞이지 않고, 각각 자기 거래 내역·실현손익·평가손익을 따로 가집니다.\n\n' +
+    '가상의 현금으로 산 종목과 실제로 산 종목을 한 줄에 더하는 것은 아무 의미가 없기 때문입니다.\n\n' +
+    '여기서 고른 모드가 주문이 어느 장부로 들어갈지, 포트폴리오와 트레이딩의 보유 목록이 어느 쪽을 보여줄지를 정합니다. ' +
+    '실거래 장부의 현금 잔고는 토스증권 계좌에 있으므로 여기서는 평가금액만 보여줍니다.' },
   folioHoldings: { t: '보유 종목', dir: null, d:
     '평균단가와 현재가는 그 종목이 거래되는 통화 그대로 보여 주고, 평가금액·손익·비중은 원화로 환산해 한 줄로 비교할 수 있게 했습니다. ' +
     `환율은 설정에서 바꿀 수 있고 기본값은 시가총액 환산에 쓰는 것과 같은 값입니다.\n\n` +
@@ -4664,30 +4674,45 @@ document.querySelectorAll('.left-stack > .panel[data-panel]').forEach(panel => {
    limit order may never fill — and the ticket says so.
    ===================================================================== */
 const FOLIO_KEY = 'money-connection.folio';
+/* Two separate books. A simulated position and a real one are not the same
+   holding and must never be added together — the paper book has invented cash,
+   the live book's cash lives at the broker. `book()` is the active one; the
+   settings (fees, FX, bridge) are shared. */
+const emptyBook = cash => ({ startCash: cash, cash, positions: {}, trades: [], realized: 0 });
 const FOLIO_DEFAULTS = {
-  startCash: 10000000,        // 모의 초기자금 1천만원
-  cash: 10000000,
   feePct: 0.015,              // 수수료 %
   taxPct: 0.18,               // 국내 매도 거래세 %
   fx: null,                   // null이면 META.fx.KRW 사용
   bridge: 'http://localhost:8787',
-  positions: {},              // tk -> { qty, cost }  (cost는 거래통화 기준 총 매입금액)
-  trades: [],
-  realized: 0,                // 실현손익 (KRW)
+  paper: emptyBook(10000000), // 모의 초기자금 1천만원
+  live: emptyBook(0),         // 실거래 현금은 증권사 계좌에 있다
 };
-let folio = { ...FOLIO_DEFAULTS, positions: {}, trades: [] };
+let folio = JSON.parse(JSON.stringify(FOLIO_DEFAULTS));
 let folioMode = 'paper';      // 'paper' | 'live'
+const book = () => folio[folioMode] || folio.paper;
 let allocMode = 'theme';
 
 function loadFolio(){
-  folio = { ...FOLIO_DEFAULTS, positions: {}, trades: [] };
+  folio = JSON.parse(JSON.stringify(FOLIO_DEFAULTS));
   try {
     const raw = localStorage.getItem(FOLIO_KEY);
-    if(raw) folio = { ...folio, ...JSON.parse(raw) };
+    if(!raw) return;
+    const o = JSON.parse(raw);
+    ['feePct', 'taxPct', 'fx', 'bridge'].forEach(k => { if(o[k] != null) folio[k] = o[k]; });
+    // a book saved before the split was a single set of paper holdings
+    if(o.positions || o.trades){
+      folio.paper = { startCash: o.startCash ?? 10000000, cash: o.cash ?? 0,
+                      positions: o.positions || {}, trades: o.trades || [], realized: o.realized || 0 };
+    }
+    ['paper', 'live'].forEach(k => { if(o[k]) folio[k] = { ...folio[k], ...o[k] }; });
   } catch(e){ /* blocked storage: memory only */ }
+  try { folioMode = localStorage.getItem(FOLIO_KEY + '.mode') === 'live' ? 'live' : 'paper'; } catch(e){}
 }
 function saveFolio(){
-  try { localStorage.setItem(FOLIO_KEY, JSON.stringify(folio)); } catch(e){}
+  try {
+    localStorage.setItem(FOLIO_KEY, JSON.stringify(folio));
+    localStorage.setItem(FOLIO_KEY + '.mode', folioMode);
+  } catch(e){}
 }
 const fxRate = () => folio.fx || (META.fx || {}).KRW || 1350;
 const toKrw = (v, cur) => cur === 'KRW' ? v : v * fxRate();
@@ -4697,7 +4722,7 @@ const isKr = tk => (nodeIndex.get(tk)?.currency || 'USD') === 'KRW';
 /* Toss trades stocks and ETFs; crypto and spot gold are not on that API */
 const tradable = tk => ['us_stock', 'kr_stock', 'etf'].includes(nodeIndex.get(tk)?.assetClass);
 
-function posOf(tk){ return folio.positions[tk] || { qty: 0, cost: 0 }; }
+function posOf(tk){ return book().positions[tk] || { qty: 0, cost: 0 }; }
 function avgCost(tk){ const p = posOf(tk); return p.qty > 0 ? p.cost / p.qty : null; }
 
 function costs(tk, side, gross){
@@ -4708,6 +4733,7 @@ function costs(tk, side, gross){
 
 /* One place where a fill changes the book, whichever venue produced it. */
 function applyFill({ tk, side, qty, px, mode, memo }){
+  const b = book();
   const cur = nodeIndex.get(tk)?.currency || 'USD';
   const gross = qty * px;
   const c = costs(tk, side, gross);
@@ -4717,34 +4743,34 @@ function applyFill({ tk, side, qty, px, mode, memo }){
   if(side === 'BUY'){
     const need = toKrw(gross + c.total, cur);
     // live fills are already funded by the broker; only the paper book is ours to bound
-    if(mode !== 'live' && need > folio.cash + 1e-6){
-      return { ok: false, msg: `현금이 부족합니다. 필요 ${fmtKrw(need)} · 보유 현금 ${fmtKrw(folio.cash)}` };
+    if(mode !== 'live' && need > b.cash + 1e-6){
+      return { ok: false, msg: `현금이 부족합니다. 필요 ${fmtKrw(need)} · 보유 현금 ${fmtKrw(b.cash)}` };
     }
-    folio.positions[tk] = { qty: p.qty + qty, cost: p.cost + gross };
-    folio.cash -= need;
+    b.positions[tk] = { qty: p.qty + qty, cost: p.cost + gross };
+    b.cash -= need;
   } else {
     if(qty > p.qty + 1e-9) return { ok: false, msg: `보유 ${p.qty}주보다 많이 팔 수 없습니다.` };
     const avg = p.qty > 0 ? p.cost / p.qty : px;
     realized = toKrw((px - avg) * qty - c.total, cur);
     const left = p.qty - qty;
-    folio.positions[tk] = left > 1e-9 ? { qty: left, cost: p.cost - avg * qty } : undefined;
-    if(!folio.positions[tk]) delete folio.positions[tk];
-    folio.cash += toKrw(gross - c.total, cur);
-    folio.realized += realized;
+    b.positions[tk] = left > 1e-9 ? { qty: left, cost: p.cost - avg * qty } : undefined;
+    if(!b.positions[tk]) delete b.positions[tk];
+    b.cash += toKrw(gross - c.total, cur);
+    b.realized += realized;
   }
-  folio.trades.unshift({
+  b.trades.unshift({
     id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
     ts: new Date().toISOString(), tk, side, qty, px, cur, mode,
     fee: c.fee, tax: c.tax, realized: side === 'SELL' ? realized : null,
     memo: (memo || '').slice(0, 300),
   });
-  if(folio.trades.length > 500) folio.trades.length = 500;
+  if(b.trades.length > 500) b.trades.length = 500;
   saveFolio();
   return { ok: true, realized };
 }
 
 function folioRows(){
-  return Object.entries(folio.positions).map(([tk, p]) => {
+  return Object.entries(book().positions).map(([tk, p]) => {
     const n = nodeIndex.get(tk);
     const cur = n?.currency || 'USD';
     const last = (latestClose(tk) || {}).px ?? (p.cost / p.qty);
@@ -4756,32 +4782,36 @@ function folioRows(){
 }
 
 function renderFolio(){
+  const b = book(), live = folioMode === 'live';
   const rows = folioRows();
   const invested = rows.reduce((a, r) => a + r.cost, 0);
   const value = rows.reduce((a, r) => a + r.value, 0);
-  const total = value + folio.cash;
+  const total = value + b.cash;
   const unreal = value - invested;
-  const totalPl = total - folio.startCash;
+  const totalPl = total - b.startCash;
 
   const kpi = (l, v, sub, col) => `<div class="folio-kpi"><div class="l">${l}</div>
     <div class="v"${col ? ` style="color:${col}"` : ''}>${v}</div><div class="s">${sub || ''}</div></div>`;
   const sgn = v => (v >= 0 ? '+' : '') + fmtKrw(v).replace('₩', '') ;
   const col = v => v >= 0 ? 'var(--up)' : 'var(--down)';
   document.getElementById('folio-kpis').innerHTML =
-    kpi('총 자산', fmtKrw(total),
-        `평가 ${fmtKrw(value)} + 현금 ${fmtKrw(folio.cash)}`) +
+    kpi(live ? '평가금액' : '총 자산', live ? fmtKrw(value) : fmtKrw(total),
+        live ? '현금 잔고는 토스증권 계좌에 있습니다' : `평가 ${fmtKrw(value)} + 현금 ${fmtKrw(b.cash)}`) +
     kpi('평가손익', (unreal >= -0.5 ? '+' : '') + fmtKrw(unreal),
         invested ? `투자원금 대비 ${(unreal / invested * 100).toFixed(2)}%` : '보유 없음', col(unreal)) +
-    kpi('실현손익', (folio.realized >= 0 ? '+' : '') + fmtKrw(folio.realized),
-        `${folio.trades.filter(t => t.side === 'SELL').length}회 매도`, col(folio.realized)) +
-    kpi('누적 수익률', (totalPl >= 0 ? '+' : '') + (folio.startCash ? (totalPl / folio.startCash * 100).toFixed(2) : '0.00') + '%',
-        `초기자금 ${fmtKrw(folio.startCash)}`, col(totalPl));
+    kpi('실현손익', (b.realized >= 0 ? '+' : '') + fmtKrw(b.realized),
+        `${b.trades.filter(t => t.side === 'SELL').length}회 매도`, col(b.realized)) +
+    (live
+      ? kpi('투자원금', fmtKrw(invested), `${rows.length}종목 · 매수 평균가 기준`)
+      : kpi('누적 수익률', (totalPl >= 0 ? '+' : '') + (b.startCash ? (totalPl / b.startCash * 100).toFixed(2) : '0.00') + '%',
+            `초기자금 ${fmtKrw(b.startCash)}`, col(totalPl)));
 
   document.getElementById('folio-count').textContent = rows.length ? `${rows.length}종목` : '';
   const tbl = document.getElementById('folio-table');
   if(!rows.length){
     tbl.innerHTML = `<tbody><tr><td class="folio-empty" colspan="8">
-      보유 종목이 없습니다. 종목 네트워크에서 종목을 고르고 상세 패널의 <b>주문</b>에서 매수하세요.</td></tr></tbody>`;
+      ${folioMode === 'live' ? '실거래 보유 종목이 없습니다. 설정의 <b>보유 종목 가져오기</b>로 토스증권 계좌를 불러오거나, 실거래로 매수하세요.'
+        : '모의 보유 종목이 없습니다. 종목을 고르고 <b>주문</b>에서 매수하세요.'}</td></tr></tbody>`;
   } else {
     tbl.innerHTML = `<thead><tr><th>종목</th><th>수량</th><th>평균단가</th><th>현재가</th>
         <th>평가금액</th><th>손익</th><th>비중</th><th></th></tr></thead><tbody>` +
@@ -4829,13 +4859,13 @@ function renderAlloc(rows, value){
 
 function renderTrades(){
   const t = document.getElementById('folio-trades');
-  if(!folio.trades.length){
+  if(!book().trades.length){
     t.innerHTML = '<tbody><tr><td class="folio-empty">아직 거래가 없습니다.</td></tr></tbody>';
     return;
   }
   t.innerHTML = `<thead><tr><th>시각</th><th>종목</th><th>구분</th><th>수량</th><th>체결가</th>
       <th>수수료·세금</th><th>실현손익</th><th>매매 근거<button class="help" data-h="tradeMemo">?</button></th></tr></thead><tbody>` +
-    folio.trades.slice(0, 60).map(x => `<tr>
+    book().trades.slice(0, 60).map(x => `<tr>
       <td>${x.ts.slice(2, 16).replace('T', ' ')}</td>
       <td class="tk">${isKr(x.tk) ? (nodeIndex.get(x.tk)?.name || x.tk) : x.tk}</td>
       <td style="color:${x.side === 'BUY' ? 'var(--up)' : 'var(--down)'}">${x.side === 'BUY' ? '매수' : '매도'}${
@@ -4848,7 +4878,7 @@ function renderTrades(){
       <td class="memo-cell${x.memo ? '' : ' empty'}" data-memo="${x.id}" title="클릭해서 수정">${
         x.memo ? esc(x.memo) : '메모 없음'}</td></tr>`).join('') + '</tbody>';
   t.querySelectorAll('[data-memo]').forEach(cell => cell.addEventListener('click', () => {
-    const tr = folio.trades.find(y => y.id === cell.dataset.memo);
+    const tr = book().trades.find(y => y.id === cell.dataset.memo);
     if(!tr) return;
     const v = prompt(`${tr.tk} ${tr.side === 'BUY' ? '매수' : '매도'} 근거`, tr.memo || '');
     if(v == null) return;
@@ -4942,10 +4972,10 @@ function updateTicket(){
   else {
     const gross = px * qty, c = costs(tk, tkSide, gross);
     const net = tkSide === 'BUY' ? gross + c.total : gross - c.total;
-    const short = folioMode === 'paper' && tkSide === 'BUY' && toKrw(net, cur) > folio.cash;
+    const short = folioMode === 'paper' && tkSide === 'BUY' && toKrw(net, cur) > book().cash;
     const over = tkSide === 'SELL' && qty > pos.qty;
     if(short || over) btn.disabled = true;
-    est.innerHTML = (short ? `<span style="color:var(--down)">모의 현금 부족 · 보유 ${fmtKrw(folio.cash)}</span><br>` : '') +
+    est.innerHTML = (short ? `<span style="color:var(--down)">모의 현금 부족 · 보유 ${fmtKrw(book().cash)}</span><br>` : '') +
       (over ? `<span style="color:var(--down)">보유 수량(${+pos.qty.toFixed(6)}주)을 초과합니다</span><br>` : '') +
       `${tkSide === 'BUY' ? '필요 금액' : '수령 금액'} <b>${fmtPx(net, cur)}</b>` +
       (cur !== 'KRW' ? ` <span style="color:var(--text-muted)">≈ ${fmtKrw(toKrw(net, cur))}</span>` : '') +
@@ -4994,7 +5024,7 @@ async function placeOrder({ tk, side, qty, px, type, memo }){
       // The book records the fill we asked for; the broker is the authority on
       // what actually filled, so the order id is kept for reconciliation.
       applyFill({ tk, side, qty, px, mode: 'live', memo });
-      folio.trades[0].orderId = r.orderId || null;
+      book().trades[0].orderId = r.orderId || null;
       saveFolio();
       alert(`주문이 접수되었습니다.\n주문번호 ${r.orderId || '(없음)'}\n\n실제 체결 수량·가격은 토스증권 앱에서 확인하세요. 설정의 "보유 종목 가져오기"로 장부를 맞출 수 있습니다.`);
     } catch(e){
@@ -5048,7 +5078,7 @@ function updateMiniTicket(){
   const gross = px * qty;
   const cb = costs(tk, 'BUY', gross), cs = costs(tk, 'SELL', gross);
   const need = gross + cb.total, get = gross - cs.total;
-  const short = !live && toKrw(need, cur) > folio.cash;
+  const short = !live && toKrw(need, cur) > book().cash;
   const over = qty > pos.qty;
   buy.disabled = short || (live && (!bridgeOk || !tradable(tk)));
   sell.disabled = over || (live && (!bridgeOk || !tradable(tk)));
@@ -5088,12 +5118,19 @@ document.querySelectorAll('#tk-type button').forEach(b => b.addEventListener('cl
 ['tk-qty', 'tk-price'].forEach(id => document.getElementById(id).addEventListener('input', updateTicket));
 document.getElementById('tk-submit').addEventListener('click', submitTicket);
 
-document.querySelectorAll('#folio-mode button').forEach(b => b.addEventListener('click', () => {
-  folioMode = b.dataset.m;
-  document.querySelectorAll('#folio-mode button').forEach(x => x.classList.toggle('on', x === b));
+function setFolioMode(m){
+  folioMode = m === 'live' ? 'live' : 'paper';
+  document.querySelectorAll('#folio-mode button')
+    .forEach(x => x.classList.toggle('on', x.dataset.m === folioMode));
+  saveFolio();
   if(folioMode === 'live' && !bridgeOk) checkBridge(true);
   updateTicket();
-}));
+  updateMiniTicket();
+  renderTvList();
+  if(document.body.classList.contains('view-folio')) renderFolio();
+}
+document.querySelectorAll('#folio-mode button')
+  .forEach(b => b.addEventListener('click', () => setFolioMode(b.dataset.m)));
 document.querySelectorAll('#alloc-mode button').forEach(b => b.addEventListener('click', () => {
   allocMode = b.dataset.g;
   document.querySelectorAll('#alloc-mode button').forEach(x => x.classList.toggle('on', x === b));
@@ -5103,7 +5140,7 @@ document.getElementById('folio-settings-btn').addEventListener('click', () => {
   const el = document.getElementById('folio-settings');
   el.hidden = !el.hidden;
   if(!el.hidden){
-    document.getElementById('set-cash').value = folio.startCash;
+    document.getElementById('set-cash').value = folio.paper.startCash;
     document.getElementById('set-fee').value = folio.feePct;
     document.getElementById('set-tax').value = folio.taxPct;
     document.getElementById('set-fx').value = fxRate();
@@ -5117,20 +5154,20 @@ document.getElementById('set-save').addEventListener('click', () => {
   folio.taxPct = num('set-tax', folio.taxPct);
   folio.fx = num('set-fx', fxRate());
   folio.bridge = document.getElementById('set-bridge').value.trim();
-  const cash = num('set-cash', folio.startCash);
-  if(cash !== folio.startCash){
+  const cash = num('set-cash', folio.paper.startCash);
+  if(cash !== folio.paper.startCash){
     // moving the starting capital without resetting would make the return meaningless
-    folio.cash += cash - folio.startCash;
-    folio.startCash = cash;
+    folio.paper.cash += cash - folio.paper.startCash;
+    folio.paper.startCash = cash;
   }
   saveFolio(); renderFolio(); updateTicket();
   document.getElementById('bridge-status').textContent = '저장했습니다.';
 });
 document.getElementById('set-reset').addEventListener('click', () => {
-  if(!confirm('모의 계좌를 초기화합니다. 보유 종목과 거래 내역이 모두 지워집니다. 계속할까요?')) return;
-  const keep = { feePct: folio.feePct, taxPct: folio.taxPct, fx: folio.fx, bridge: folio.bridge, startCash: folio.startCash };
-  folio = { ...FOLIO_DEFAULTS, ...keep, cash: keep.startCash, positions: {}, trades: [], realized: 0 };
-  saveFolio(); renderFolio(); updateTicket();
+  const which = folioMode === 'live' ? '실거래 장부' : '모의 계좌';
+  if(!confirm(`${which}를 초기화합니다. 이 장부의 보유 종목과 거래 내역이 모두 지워집니다. 계속할까요?`)) return;
+  folio[folioMode] = emptyBook(folioMode === 'live' ? 0 : folio.paper.startCash);
+  saveFolio(); renderFolio(); updateTicket(); updateMiniTicket();
 });
 document.getElementById('bridge-test').addEventListener('click', () => checkBridge(false));
 document.getElementById('bridge-sync').addEventListener('click', async () => {
@@ -5141,23 +5178,25 @@ document.getElementById('bridge-sync').addEventListener('click', async () => {
     if(!items.length){ st.textContent = '토스증권 계좌에 보유 종목이 없습니다.'; return; }
     const unknown = [];
     let applied = 0;
+    folio.live.positions = {};          // the broker is the authority, not our copy
     items.forEach(it => {
       if(!nodeIndex.has(it.symbol)){ unknown.push(it.symbol); return; }
       const qty = parseFloat(it.quantity), avg = parseFloat(it.averagePurchasePrice);
       if(!(qty > 0) || !isFinite(avg)) return;
-      folio.positions[it.symbol] = { qty, cost: qty * avg };
+      folio.live.positions[it.symbol] = { qty, cost: qty * avg };
       applied++;
     });
     saveFolio(); renderFolio(); updateTicket();
-    st.textContent = `보유 ${applied}종목을 장부에 반영했습니다.` +
-      (unknown.length ? ` 이 대시보드에 없는 종목은 건너뛰었습니다: ${unknown.join(', ')}` : '') +
-      ' 현금 잔고는 모의 값 그대로입니다.';
+    folioMode = 'live';
+    document.querySelectorAll('[data-m]').forEach(x => x.classList.toggle('on', x.dataset.m === 'live'));
+    st.textContent = `실거래 장부에 보유 ${applied}종목을 반영했습니다.` +
+      (unknown.length ? ` 이 대시보드에 없는 종목은 건너뛰었습니다: ${unknown.join(', ')}` : '');
   } catch(e){ st.textContent = '가져오기 실패: ' + e.message; }
 });
 document.getElementById('folio-export').addEventListener('click', () => {
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const head = 'time,ticker,side,quantity,price,currency,fee,tax,realized_krw,mode,orderId,memo';
-  const body = folio.trades.map(t => [t.ts, t.tk, t.side, t.qty, t.px, t.cur,
+  const body = book().trades.map(t => [t.ts, t.tk, t.side, t.qty, t.px, t.cur,
     t.fee.toFixed(4), t.tax.toFixed(4), t.realized ?? '', t.mode, t.orderId || '',
     q(t.memo)].join(',')).join('\n');
   const blob = new Blob(['﻿' + head + '\n' + body], { type: 'text/csv;charset=utf-8' });
@@ -5169,6 +5208,8 @@ document.getElementById('folio-export').addEventListener('click', () => {
 });
 
 loadFolio();
+document.querySelectorAll('#folio-mode button')
+  .forEach(x => x.classList.toggle('on', x.dataset.m === folioMode));
 setBrokerChip();
 
 /* =====================================================================
@@ -5437,11 +5478,13 @@ function selectTrading(tk){
 }
 
 function tvCandidates(){
-  if(tvListMode === 'hold') return Object.keys(folio.positions);
+  if(tvListMode === 'hold') return Object.keys(book().positions);
   if(tvListMode === 'lead'){ const d = leadData(); return [...d.up, ...d.dn].map(r => r.t); }
   return [...favorites];
 }
 function renderTvList(){
+  const hb = document.getElementById('tv-hold-btn');
+  if(hb) hb.textContent = folioMode === 'live' ? '보유(실)' : '보유(모의)';
   const host = document.getElementById('tv-list');
   const q = (document.getElementById('tv-search').value || '').trim().toLowerCase();
   let list;
@@ -5454,7 +5497,7 @@ function renderTvList(){
   if(!list.length){
     host.innerHTML = `<div class="folio-empty">${q ? '검색 결과가 없습니다.'
       : tvListMode === 'fav' ? '즐겨찾기가 비어 있습니다. ★ 로 추가하세요.'
-      : tvListMode === 'hold' ? '보유 종목이 없습니다.' : '주도주가 없습니다.'}</div>`;
+      : tvListMode === 'hold' ? `${folioMode === 'live' ? '실거래' : '모의'} 보유 종목이 없습니다.` : '주도주가 없습니다.'}</div>`;
     return;
   }
   host.innerHTML = list.map(t => {
