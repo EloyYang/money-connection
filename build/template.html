@@ -460,6 +460,11 @@
   .acct-act:hover{ background:rgba(255,255,255,0.05); border-color:var(--line); }
   .acct-act.danger{ color:var(--down); }
   .acct-act .sub{ display:block; font-size:9.5px; color:var(--text-muted); margin-top:1px; }
+  .mini-sel{ padding:4px 8px; border-radius:7px; border:1px solid var(--border-strong);
+    background:var(--panel-solid); color:var(--text-primary); font-family:inherit;
+    font-size:11.5px; cursor:pointer; }
+  .mini-sel:disabled{ opacity:0.5; cursor:default; }
+  #m-more[disabled]{ opacity:0.45; cursor:default; }
   #m-live.on{ color:var(--up); border-color:rgba(61,220,132,0.45); }
   #m-px.tick{ animation:pxTick .45s ease; }
   @keyframes pxTick{ from{ color:var(--accent); } to{ color:inherit; } }
@@ -883,9 +888,8 @@
         <div class="modal-top">
           <div class="modal-id"><div style="display:flex;align-items:center;gap:5px"><div class="tk" id="m-tk">—</div><button class="star" id="m-fav" title="즐겨찾기 추가/해제" aria-pressed="false">☆</button></div><div class="nm" id="m-nm">—</div></div>
           <div class="modal-quote"><span class="px" id="m-px">—</span><span class="chg" id="m-chg">—</span></div>
-          <div class="seg" id="m-iv" title="봉 단위">
-            <button data-iv="1d" class="on">일봉</button><button data-iv="1m">1분봉</button>
-          </div><button class="help" data-h="barInterval">?</button>
+          <select id="m-iv" class="mini-sel" title="봉 단위"></select><button class="help" data-h="barInterval">?</button>
+          <button class="tool" id="m-more" hidden title="과거 봉을 더 받아 옵니다">← 과거 더</button>
           <button class="tool" id="m-live" title="실시간 시세 (확장 프로그램 필요)">실시간</button><button class="help" data-h="liveQuotes">?</button>
           <div class="seg" id="m-range">
             <button data-d="21">1개월</button><button data-d="63">3개월</button><button data-d="126">6개월</button>
@@ -1584,14 +1588,19 @@ const HELP = {
     '— 주문할 때 우리가 가정한 값과 다를 수 있기 때문입니다.\n\n' +
     '이것은 실시간 푸시가 아니라 5초 간격 조회입니다.\n\n' +
     '폴링은 <b>실거래 모드로 트레이딩이나 포트폴리오 화면을 보고 있을 때만</b> 돕니다.' },
-  barInterval: { t: '봉 단위 (일봉 · 1분봉)', dir: null, d:
+  barInterval: { t: '봉 단위', dir: null, d:
     '<b>일봉</b>은 이 사이트가 매일 아침 미리 받아 둔 데이터라 연결 없이도 5년치가 바로 보입니다.\n\n' +
-    '<b>1분봉</b>은 토스증권에서 그때그때 받아 옵니다. 그래서 <b>연동이 되어 있어야</b> 하고, ' +
-    '화면에 열어 둔 종목만 요청합니다 — 223종목을 다 받을 이유가 없기 때문입니다. ' +
-    '한 번에 최근 200봉을 가져옵니다.\n\n' +
-    '봉 단위는 <b>패널마다 따로</b> 기억합니다. 왼쪽은 일봉으로 큰 흐름을, 오른쪽은 1분봉으로 ' +
+    '<b>1분 · 5분 · 15분 · 30분 · 1시간 · 4시간</b>은 토스증권에서 받아 온 1분봉으로 만듭니다. ' +
+    '토스가 주는 원본은 1분봉과 일봉 두 가지뿐이라, 그 사이 간격은 1분봉을 묶어서 그립니다 — ' +
+    '한 번 받아 두면 간격을 바꿔도 다시 받지 않습니다.\n\n' +
+    '<b>연동이 되어 있어야</b> 하고, 화면에 열어 둔 종목만 요청합니다. ' +
+    '처음에는 최근 600봉(200봉 × 3장)을 받고, <b>[← 과거 더]</b> 를 누르면 1,000봉씩 ' +
+    '과거로 이어 붙입니다. 더 받을 것이 없으면 버튼이 <b>과거 끝</b>으로 바뀝니다. ' +
+    '보고 있던 구간은 그대로 유지됩니다.\n\n' +
+    '봉 단위는 <b>패널마다 따로</b> 기억합니다. 왼쪽은 일봉으로 큰 흐름을, 오른쪽은 5분봉으로 ' +
     '진입 시점을 보는 식으로 쓸 수 있습니다.\n\n' +
-    '암호화폐와 금 현물은 토스 주식 API 대상이 아니라 분봉이 제공되지 않습니다.' },
+    '암호화폐와 금 현물은 토스 주식 API 대상이 아니라 분봉이 없습니다. ' +
+    '그런 종목을 고르면 자동으로 일봉으로 돌아갑니다.' },
   chartSplit: { t: '차트 분할 · 전체화면', dir: null, d:
     '왼쪽 목록의 종목을 차트로 끌어다 놓으면 분할됩니다. 최대 4개.\n\n' +
     '· 패널 가장자리에 놓으면 → 그 방향으로 분할 (초록색으로 들어갈 자리가 미리 보입니다)\n' +
@@ -4807,42 +4816,120 @@ const drawings = new Map();   // ticker -> [{type,x1,y1,x2,y2} | {type:'hline',y
 
 function ohlcOf(tk){ return OH.data[tk] || []; }
 
-/* ---- 분봉 ----
-   일봉은 빌드 때 심어 둔 OH 를 쓰고, 분봉은 토스에서 그때그때 받아 온다.
-   화면에 열려 있는 종목만 부른다 — 223종목을 다 받을 이유가 없다. */
-const MIN = new Map();                   // tk -> { labels:[], rows:[] }
+/* ---- 분봉 · 시간봉 ----
+   토스가 주는 원본은 1분봉뿐이다(interval 은 1m / 1d 두 가지). 5분·15분·
+   30분·1시간·4시간은 그 1분봉을 묶어서 만든다. 그래서 한 번 받아 둔
+   1분봉으로 모든 시간대를 그릴 수 있다.
+   화면에 열어 둔 종목만 받는다 — 223종목을 다 받을 이유가 없다. */
+const IVS = [
+  { k: '1m',  min: 1,    label: '1분' },
+  { k: '5m',  min: 5,    label: '5분' },
+  { k: '15m', min: 15,   label: '15분' },
+  { k: '30m', min: 30,   label: '30분' },
+  { k: '1h',  min: 60,   label: '1시간' },
+  { k: '4h',  min: 240,  label: '4시간' },
+  { k: '1d',  min: null, label: '일봉' },
+];
+const ivMin = k => (IVS.find(v => v.k === k) || {}).min || null;
+const isIntraday = k => !!ivMin(k);
+
+const MIN = new Map();   // tk -> { ts:[ms], rows:[[o,h,l,c,v]], cursor, done, ver }
+const AGG = new Map();   // `${tk}|${iv}` -> { ver, rows, labels }
 const paneIv = () => (PANES[activeP]?.iv) || '1d';
+
+/* 1분봉을 묶어 원하는 간격의 봉으로. 결과는 원본이 늘어날 때까지 재사용한다
+   — drawCandle 은 마우스가 움직일 때마다 불리므로 매번 다시 만들면 안 된다. */
+function aggregate(tk, iv){
+  const st = MIN.get(tk);
+  if(!st || !st.rows.length) return { rows: [], labels: [] };
+  const key = tk + '|' + iv, cached = AGG.get(key);
+  if(cached && cached.ver === st.ver) return cached;
+  const m = ivMin(iv), span = m * 60000;
+  const rows = [], labels = [];
+  let bucket = null, cur = null, curT = 0;
+  const label = t => {
+    const d = new Date(t), p = n => String(n).padStart(2, '0');
+    return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+  for(let i = 0; i < st.ts.length; i++){
+    const b = Math.floor(st.ts[i] / span), r = st.rows[i];
+    if(b !== bucket){
+      if(cur){ rows.push(cur); labels.push(label(curT)); }
+      bucket = b; curT = b * span;
+      cur = [r[0], r[1], r[2], r[3], r[4]];
+    } else {
+      if(r[1] > cur[1]) cur[1] = r[1];
+      if(r[2] < cur[2]) cur[2] = r[2];
+      cur[3] = r[3];
+      cur[4] += r[4];
+    }
+  }
+  if(cur){ rows.push(cur); labels.push(label(curT)); }
+  const out = { ver: st.ver, rows, labels };
+  AGG.set(key, out);
+  return out;
+}
+
 /* 차트가 그리는 봉. 차트 밖(계절성·상세·상관)은 언제나 일봉을 쓴다. */
 function chartRows(tk){
-  if(paneIv() === '1m') return (MIN.get(tk) || {}).rows || [];
-  return OH.data[tk] || [];
+  const iv = paneIv();
+  return isIntraday(iv) ? aggregate(tk, iv).rows : (OH.data[tk] || []);
 }
-const barLabel = i => paneIv() === '1m'
-  ? (((MIN.get(cTk) || {}).labels || [])[i] || '')
-  : OH.dates[i];
+const barLabel = i => {
+  const iv = paneIv();
+  return isIntraday(iv) ? (aggregate(cTk, iv).labels[i] || '') : OH.dates[i];
+};
 /* 분봉을 지원하지 않는 자산 — 토스는 주식·ETF 만 준다 */
 const canMinute = tk => {
   const n = nodeIndex.get(tk);
   return !!n && !['crypto', 'metal'].includes(n.assetClass);
 };
 
-async function loadMinutes(tk, force){
-  if(!canMinute(tk)) throw new Error('이 자산은 분봉을 제공하지 않습니다 (주식·ETF만 가능).');
-  if(!force && MIN.has(tk)) return MIN.get(tk);
-  const r = await bridge(`/candles?symbol=${encodeURIComponent(tk)}&interval=1m&count=200`);
-  const arr = (r.result && (r.result.candles || r.result.items)) || r.candles || r.items || r.result || [];
-  if(!Array.isArray(arr) || !arr.length) throw new Error('분봉 데이터가 비어 있습니다.');
-  const num = v => { const x = parseFloat(v); return isFinite(x) ? x : null; };
-  const rows = [], labels = [];
-  arr.slice().sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)))
-     .forEach(c => {
-       rows.push([num(c.openPrice), num(c.highPrice), num(c.lowPrice), num(c.closePrice), num(c.volume) || 0]);
-       labels.push(String(c.timestamp).slice(5, 16).replace('T', ' '));
-     });
-  const set = { labels, rows, at: Date.now() };
-  MIN.set(tk, set);
-  return set;
+const numOr = v => { const x = parseFloat(v); return isFinite(x) ? x : null; };
+
+async function fetchMinutePage(tk, before){
+  const q = new URLSearchParams({ symbol: tk, interval: '1m', count: '200' });
+  if(before) q.set('before', before);
+  const r = await bridge('/candles?' + q);
+  const res = r.result || r;
+  return { arr: res.candles || res.items || [], next: res.nextBefore || null };
 }
+
+/* 과거로 pages 장만큼 더 받아 앞에 이어 붙인다. 응답은 최신순으로 오므로 뒤집는다. */
+async function loadMinutes(tk, pages){
+  if(!canMinute(tk)) throw new Error('이 자산은 분봉을 제공하지 않습니다 (주식·ETF만 가능).');
+  let st = MIN.get(tk);
+  if(!st){ st = { ts: [], rows: [], cursor: null, done: false, ver: 0 }; MIN.set(tk, st); }
+  for(let i = 0; i < (pages || 1); i++){
+    if(st.done) break;
+    const { arr, next } = await fetchMinutePage(tk, st.cursor);
+    if(!arr.length){ st.done = true; break; }
+    const ts = [], rows = [];
+    arr.slice().reverse().forEach(c => {
+      ts.push(Date.parse(c.timestamp));
+      rows.push([numOr(c.openPrice), numOr(c.highPrice), numOr(c.lowPrice),
+                 numOr(c.closePrice), numOr(c.volume) || 0]);
+    });
+    st.ts = ts.concat(st.ts);
+    st.rows = rows.concat(st.rows);
+    st.cursor = next;
+    if(!next) st.done = true;
+    st.ver++;
+  }
+  if(!st.rows.length) throw new Error('분봉 데이터가 비어 있습니다.');
+  return st;
+}
+
+/* 이 종목의 분봉이 아직 없으면 첫 장을 받아 온다 —
+   분봉 상태에서 다른 종목을 고르면 빈 차트가 되던 원인이다. */
+async function ensureIntraday(tk){
+  if(!isIntraday(paneIv()) || !tk) return false;
+  if(MIN.has(tk) && MIN.get(tk).rows.length) return false;
+  await loadMinutes(tk, INTRA_FIRST_PAGES);
+  return true;
+}
+const INTRA_FIRST_PAGES = 3;      // 첫 조회에 200봉 × 3장
+
 // newest close across the OHLC set — the correlation dataset ends a day earlier,
 // so the panels would otherwise disagree on "최근 종가"
 function latestClose(tk){
@@ -4881,36 +4968,74 @@ document.querySelectorAll('#m-range button').forEach(b=>{
 
 /* 봉 단위는 패널마다 따로 기억한다 — 한 화면에 일봉과 분봉을 같이 둘 수 있다 */
 function syncIvButtons(){
+  const sel = document.getElementById('m-iv');
+  if(!sel) return;
+  if(!sel.options.length)
+    sel.innerHTML = IVS.map(v => `<option value="${v.k}">${v.label}</option>`).join('');
   const iv = paneIv();
-  document.querySelectorAll('#m-iv button').forEach(x => x.classList.toggle('on', x.dataset.iv === iv));
+  sel.value = iv;
   const rng = document.getElementById('m-range');
-  if(rng) rng.style.display = iv === '1m' ? 'none' : '';
+  if(rng) rng.style.display = isIntraday(iv) ? 'none' : '';
+  const more = document.getElementById('m-more');
+  if(more){
+    const st = MIN.get(cTk);
+    more.hidden = !isIntraday(iv);
+    more.disabled = !!(st && st.done);
+    more.textContent = st && st.done ? '과거 끝' : '← 과거 더';
+  }
 }
+let ivBusy = false;
 async function setInterval1(iv){
   const p = PANES[activeP];
-  if(!p) return;
-  const btn = document.querySelector(`#m-iv button[data-iv="${iv}"]`);
-  if(iv === '1m'){
+  if(!p || ivBusy) return;
+  const sel = document.getElementById('m-iv');
+  if(isIntraday(iv)){
     if(!extReady && !bridgeOk){
-      alert('분봉은 토스증권에서 받아옵니다. 포트폴리오 → 연동하기로 먼저 연결해 주세요.');
+      alert('분봉·시간봉은 토스증권에서 받아옵니다. 포트폴리오 → 연동하기로 먼저 연결해 주세요.');
       syncIvButtons(); return;
     }
-    const old = btn ? btn.textContent : '';
-    if(btn) btn.textContent = '불러오는 중…';
-    try { await loadMinutes(cTk); }
-    catch(e){ alert('분봉을 받지 못했습니다: ' + e.message); if(btn) btn.textContent = old; syncIvButtons(); return; }
-    if(btn) btn.textContent = old;
+    const prev = p.iv;
+    p.iv = iv;                            // ensureIntraday 가 현재 간격을 보고 판단한다
+    ivBusy = true; if(sel) sel.disabled = true;
+    try { await ensureIntraday(cTk); }
+    catch(e){
+      p.iv = prev;
+      alert('봉 데이터를 받지 못했습니다: ' + e.message);
+      ivBusy = false; if(sel) sel.disabled = false; syncIvButtons(); return;
+    }
+    ivBusy = false; if(sel) sel.disabled = false;
   }
   p.iv = iv;
   syncIvButtons();
   const rows = chartRows(cTk);
-  cI0 = Math.max(0, rows.length - (iv === '1m' ? 120 : rangeDays() || rows.length));
   cI1 = rows.length - 1;
+  cI0 = Math.max(0, rows.length - (isIntraday(iv) ? 120 : (rangeDays() || rows.length)));
   yManual = null;
   drawCandle();
+  declareLive();                          // 실시간 구독은 화면을 따라간다
 }
-document.querySelectorAll('#m-iv button').forEach(b =>
-  b.addEventListener('click', () => setInterval1(b.dataset.iv)));
+document.getElementById('m-iv').addEventListener('change', e => setInterval1(e.target.value));
+
+/* 과거로 더 — 왼쪽 끝까지 밀었을 때도 같은 일을 한다 */
+let moreBusy = false;
+async function loadMoreIntraday(){
+  if(moreBusy || !isIntraday(paneIv())) return;
+  const st = MIN.get(cTk);
+  if(st && st.done) return;
+  moreBusy = true;
+  const btn = document.getElementById('m-more');
+  if(btn){ btn.disabled = true; btn.textContent = '불러오는 중…'; }
+  const before = chartRows(cTk).length;
+  try { await loadMinutes(cTk, 5); }
+  catch(e){ toast('과거 데이터를 더 받지 못했습니다: ' + e.message, 'down'); }
+  moreBusy = false;
+  const grew = chartRows(cTk).length - before;
+  cI0 += grew; cI1 += grew;               // 보던 구간을 그대로 유지한다
+  if(grew) toast(`과거 ${grew}봉을 더 받았습니다`);
+  syncIvButtons();
+  drawCandle();
+}
+document.getElementById('m-more').addEventListener('click', loadMoreIntraday);
 
 document.getElementById('m-live').addEventListener('click', () => {
   if(!extReady){
@@ -5804,6 +5929,7 @@ function currentTickers(){ stashPane(); return PANES.map(p => p.tk); }
 function rebuild(tickers, focusIdx, rows){
   buildPanes(tickers, rows);
   if(typeof declareLive === 'function') declareLive();   // 보는 종목이 바뀌면 구독도 바뀐다
+  if(typeof fillIntraday === 'function') setTimeout(() => fillIntraday(cTk), 0);
   PANES.forEach((p, i) => { loadPane(i); setRange(rangeDays()); });
   loadPane(Math.min(focusIdx ?? 0, PANES.length - 1));
   activeP = Math.min(focusIdx ?? 0, PANES.length - 1);
@@ -6006,7 +6132,13 @@ document.addEventListener('keydown', ev => {
 });
 
 function loadChart(tk){
-  if(PANES[activeP]){ PANES[activeP].tk = tk; savePanes(); }
+  if(PANES[activeP]){
+    PANES[activeP].tk = tk; savePanes();
+    // 패널 이름표는 buildPanes 에서 한 번 그려지고 끝이라, 목록에서 종목만
+    // 바꾸면 옛 이름이 남아 있었다. 여기서 다시 그린다.
+    const p = PANES[activeP], old = p.host?.querySelector('.pane-chip');
+    if(old){ old.replaceWith(paneChip(activeP, tk, PANES.length)); }
+  }
   cTk = tk; cTool = null; cPending = null; cSel = null; yManual = null;
   document.getElementById('sel-bar').hidden = true;
   ['tool-trend', 'tool-hline'].forEach(id => document.getElementById(id).classList.remove('on'));
@@ -6018,17 +6150,55 @@ function loadChart(tk){
     ? '이 종목은 종가만 제공되어 봉이 아닌 선으로 표시됩니다 · 휠·축 드래그 = 확대/축소'
     : '휠·핀치·축 드래그 = 확대/축소 · 드래그 = 이동 · 선 클릭 = 선택 후 이동/복사';
   renderFavorites();
-  const on = document.querySelector('#m-range button.on');
-  setRange(on ? +on.dataset.d : 252);
+  if(isIntraday(paneIv())){
+    const rows = chartRows(tk);
+    cI1 = rows.length - 1;
+    cI0 = Math.max(0, rows.length - 120);
+    drawCandle();
+  } else {
+    const on = document.querySelector('#m-range button.on');
+    setRange(on ? +on.dataset.d : 252);
+  }
+  if(typeof declareLive === 'function') declareLive();
 }
 
 function selectTrading(tk){
+  if(!tk || !nodeIndex.has(tk)) return;   // 빈 목록에서 부르면 상태가 깨진다
   selectedTk = tk;
   compareSet = [tk];
   loadChart(tk);
   renderTvList();
   renderTvSummary();
   updateTicket();
+  fillIntraday(tk);          // 분봉 상태라면 이 종목 봉도 받아 온다
+}
+
+/* 분봉·시간봉을 보고 있는데 종목이 바뀌면 그 종목 데이터를 받아야 한다.
+   없으면 차트가 빈 채로 남는다. */
+async function fillIntraday(tk){
+  if(!isIntraday(paneIv()) || !tk) return;
+  if(MIN.has(tk) && MIN.get(tk).rows.length){ syncIvButtons(); return; }
+  if(!canMinute(tk)){
+    const p = PANES[activeP];
+    if(p) p.iv = '1d';                    // 암호화폐·금은 분봉이 없다 — 일봉으로 되돌린다
+    toast('이 자산은 분봉이 없어 일봉으로 전환했습니다');
+    syncIvButtons(); drawCandle();
+    return;
+  }
+  const sel = document.getElementById('m-iv');
+  if(sel) sel.disabled = true;
+  try {
+    await loadMinutes(tk, INTRA_FIRST_PAGES);
+    const rows = chartRows(tk);
+    cI1 = rows.length - 1;
+    cI0 = Math.max(0, rows.length - 120);
+    yManual = null;
+    drawCandle();
+  } catch(e){
+    toast('봉 데이터를 받지 못했습니다: ' + e.message, 'down');
+  }
+  if(sel) sel.disabled = false;
+  syncIvButtons();
 }
 
 function tvCandidates(){
