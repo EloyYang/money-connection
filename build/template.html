@@ -282,7 +282,7 @@
   .modal-body.n2{ grid-template-columns:1fr 1fr; grid-template-rows:1fr; }
   .modal-body.n3{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; }
   .modal-body.n4{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; }
-  .modal-body.n3 .cpane:first-child{ grid-row:span 2; }
+  .modal-body.n3 .cpane[data-i="2"]{ grid-column:1 / -1; }
   .cpane{ position:relative; min-width:0; min-height:0; border-radius:8px;
     border:1px solid transparent; overflow:hidden; }
   .cpane.active{ border-color:rgba(199,125,255,0.5); }
@@ -683,13 +683,13 @@
   <div class="stat graph-only"><div class="n mono" id="stat-nodes">–</div><div class="l">종목</div></div>
   <div class="stat graph-only"><div class="n mono" id="stat-links">–</div><div class="l">상관 연결</div></div>
   <div class="stat graph-only"><div class="n mono" id="stat-days">–</div><div class="l">거래일</div></div>
-  <div class="sim-controls graph-only" style="border-left:1px solid var(--border); padding-left:16px;">
-    <button class="btn ghost" id="mode-reset">↺ 초기화</button>
-    <button class="btn ghost" id="mode-fit">⤢ 전체보기</button>
-  </div>
-  <div class="searchwrap graph-only">
+  <div class="searchwrap graph-only" style="border-left:1px solid var(--border); padding-left:16px;">
     <input id="search" placeholder="티커 또는 회사명 검색…" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="search-results" />
     <div id="search-results" hidden></div>
+  </div>
+  <div class="sim-controls graph-only">
+    <button class="btn ghost" id="mode-reset" title="모든 필터·기간·기준을 처음 상태로">↺ 초기화</button>
+    <button class="btn ghost" id="mode-fit">⤢ 전체보기</button>
   </div>
   <div class="freshness" id="freshness" title="구성종목·시세 자동 갱신 상태">—</div>
   <button class="help" data-h="usage" style="margin-left:6px">?</button>
@@ -1345,7 +1345,7 @@ const HELP = {
     '수익이 난 이유와 손실이 난 이유를 나중에 구분할 수 있는 유일한 기록입니다 — 체결가만 남으면 왜 샀는지는 사라집니다.' },
   chartSplit: { t: '차트 분할 · 전체화면', dir: null, d:
     '왼쪽 목록의 종목을 차트로 끌어다 놓으면 분할됩니다. 최대 4개.\n\n' +
-    '· 패널 가장자리에 놓으면 → 새 패널 추가 (초록 테두리)\n' +
+    '· 패널 가장자리에 놓으면 → 새 패널 추가 (초록 테두리, 최대 4개)\n' +
     '· 패널 가운데에 놓으면 → 그 패널의 종목 교체 (파란 테두리)\n' +
     '· 패널 왼쪽 위 이름표(⠿)를 끌어 다른 패널에 놓으면 → 두 패널 위치 교환 (보라 테두리)\n' +
     '· 이름표의 ✕ 로 패널을 닫습니다\n\n' +
@@ -4114,16 +4114,47 @@ document.getElementById('lead-only').addEventListener('click', () => {
   clearFocus(); resetOpacities();
 });
 
+/* 초기화 = back to the state a fresh visit starts in. It used to drop only the
+   selection, which is not what "초기화" says: a hidden theme, a 3-year window or
+   a PER-based leaders ranking all survived it. */
 function clearAll(){
-  clearFocus(); resetOpacities();
   compareSet = []; cmpWarn = '';
-  syncSelectionHighlight();
+  closeDetailOverlay();
   drawer.classList.remove('show');
-  if(typeof leadOnly !== 'undefined' && leadOnly){
-    leadOnly = false;
-    document.getElementById('lead-only').classList.remove('on');
-    renderLeaders();
-  }
+  clearFocus();
+
+  // filters
+  favOnly = false;
+  leadOnly = false;
+  document.getElementById('fav-only').classList.remove('on');
+  document.getElementById('lead-only').classList.remove('on');
+  document.getElementById('search').value = '';
+  closeSearchResults();
+
+  // grouping + scope
+  Object.keys(activeByMode).forEach(m => {
+    const defs = m === 'theme' ? GROUPS : m === 'market' ? MARKETS : PROFILES;
+    activeByMode[m].clear();
+    defs.forEach(g => activeByMode[m].add(g.id));
+  });
+  if(groupMode !== 'theme') applyGroupMode('theme');
+
+  // relation + period + threshold
+  relationMode = 'price';
+  period = PERIODS.find(p => p.key === '1y') || PERIODS[PERIODS.length - 1];
+  threshold = 0.35;
+  thrInput.value = String(threshold);
+  document.getElementById('thr-val').textContent = threshold.toFixed(2);
+  renderPeriodButtons();
+  applyRelation();
+
+  // leaders
+  leadModes = ['chg'];
+  syncLeadButtons();
+  _leadCache = null;
+
+  applyScope();                 // rebuilds legend, edges, leaders, and re-fits
+  syncSelectionHighlight();
 }
 document.getElementById('mode-reset').addEventListener('click', clearAll);
 
@@ -5144,7 +5175,6 @@ function buildPanes(tickers){
     host.appendChild(svg);
     host.appendChild(paneChip(i, tk, list.length));
     body.appendChild(host);
-    wirePaneDnD(host, i);
     PANES.push({ tk, i0: 0, i1: 0, yManual: null, host, sel: d3.select(svg) });
   });
   activeP = 0;
@@ -5271,7 +5301,7 @@ function onSymbolDragMove(ev){
   const host = paneAt(ev.clientX, ev.clientY);
   if(!host) return;
   const intent = dropIntent(host, ev.clientX, ev.clientY);
-  host.classList.add('drop-' + intent);
+  if(intent) host.classList.add('drop-' + intent);
 }
 function onSymbolDragEnd(ev){
   window.removeEventListener('mousemove', onSymbolDragMove, true);
@@ -5281,7 +5311,7 @@ function onSymbolDragEnd(ev){
   const intent = host ? dropIntent(host, ev.clientX, ev.clientY) : null;
   clearDropMarks();
   dragMoved = false;
-  if(!moved || !pl || !host) return;
+  if(!moved || !pl || !host || !intent) return;
   ev.preventDefault();
   ev.stopPropagation();
   const i = +host.dataset.i;
