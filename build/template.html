@@ -446,6 +446,13 @@
     border-radius:0 0 12px 12px; background:rgba(10,12,16,0.55); }
   .lock-veil > div{ text-align:center; font-size:11px; color:var(--text-secondary); line-height:1.7; }
   .lock-veil .btn{ display:block; margin:7px auto 0; padding:4px 12px; }
+  .guest-note{ display:flex; align-items:center; gap:9px; margin:0 0 12px; padding:8px 12px;
+    border:1px solid var(--line); border-radius:8px; background:var(--panel);
+    font-size:11.5px; color:var(--text-secondary); }
+  .guest-note .btn{ margin-left:auto; flex:0 0 auto; }
+  .guest-note[hidden]{ display:none; }
+  .seg-mini button.needs-login{ opacity:0.55; }
+  .seg-mini button.needs-login::after{ content:'🔒'; margin-left:3px; font-size:8.5px; }
   .view-gate{ position:absolute; inset:0; z-index:30; display:flex; align-items:center; justify-content:center;
     background:rgba(10,12,16,0.72); backdrop-filter:blur(3px); border-radius:12px; }
   .view-gate[hidden]{ display:none; }
@@ -797,7 +804,6 @@
         </div>
       </main>
 
-      <div id="tv-gate" class="view-gate" hidden></div>
       <aside class="tv-right">
         <div class="panel tv-panel" id="tv-summary"></div>
         <div class="panel tv-panel" id="tv-ticket-host">
@@ -834,7 +840,7 @@
         <button class="btn ghost" id="folio-settings-btn">설정</button>
       </div>
 
-      <div id="folio-gate" class="view-gate" hidden></div>
+      <div id="folio-note" class="guest-note" hidden></div>
       <div class="folio-kpis" id="folio-kpis"></div>
 
       <div class="folio-cols">
@@ -971,8 +977,8 @@
     <div class="login-panel" role="dialog" aria-modal="true" aria-label="로그인">
       <button class="close" id="login-close" aria-label="닫기">✕</button>
       <h2>로그인</h2>
-      <p>즐겨찾기 · 저장된 화면 · 보유 · 포트폴리오를 쓰려면 로그인이 필요합니다.
-         종목 네트워크와 차트는 로그인 없이도 그대로 볼 수 있습니다.</p>
+      <p>모든 탭은 비회원에게도 열려 있습니다. 즐겨찾기 · 저장된 화면 · 보유 목록 ·
+         주문처럼 <b>내 데이터를 저장하는 동작</b>에만 로그인이 필요합니다.</p>
       <button class="sso google" data-p="google"><span class="ic">G</span>Google로 계속하기</button>
       <button class="sso kakao"  data-p="kakao"><span class="ic">K</span>카카오로 계속하기</button>
       <button class="sso naver"  data-p="naver"><span class="ic">N</span>네이버로 계속하기</button>
@@ -1475,8 +1481,10 @@ const HELP = {
     '복원 후 기간이나 임계값을 바꾸면 배치는 다시 계산됩니다.\n\n' +
     '이 브라우저에만 저장되며 최대 20개까지 보관합니다.' },
   login: { t: '로그인', dir: null, d:
-    '구글 · 카카오 · 네이버 계정으로 로그인합니다. 종목 네트워크와 차트는 로그인 없이도 전부 볼 수 있고, ' +
-    '즐겨찾기 · 저장된 화면 · 보유 · 포트폴리오처럼 내 데이터를 다루는 기능에서만 로그인을 요구합니다.\n\n' +
+    '구글 · 카카오 · 네이버 계정으로 로그인합니다. 잠기는 것은 탭이 아니라 내 데이터입니다 — ' +
+    '종목 네트워크 · 트레이딩 · 포트폴리오는 비회원도 모두 열어서 차트와 지표, 주도주, 종목 상세를 ' +
+    '그대로 볼 수 있습니다. 로그인이 필요한 것은 즐겨찾기(★)와 저장된 화면, 트레이딩의 즐겨찾기 · 보유 ' +
+    '목록 탭, 주문(모의 · 실거래), 토스 보유 종목 가져오기, 장부 초기화입니다.\n\n' +
     '이 사이트는 서버가 없는 정적 페이지입니다. 로그인은 이 브라우저 안의 신원 확인이며, ' +
     '한 기기에서 계정별로 즐겨찾기와 장부를 분리해 주는 역할을 합니다.\n\n' +
     '주의: 데이터는 여전히 이 브라우저의 저장소에 있습니다. 기기 간 동기화는 되지 않고, ' +
@@ -4273,6 +4281,7 @@ document.getElementById('mode-reset').addEventListener('click', clearAll);
 const AUTH = /*__AUTH__*/;
 const AUTH_KEY = 'money-connection.user';
 const GATED = ['fav', 'views'];          // 좌측 패널 중 로그인이 필요한 것
+const GATED_LISTS = ['fav', 'hold'];     // 트레이딩 목록 탭 중 로그인이 필요한 것
 let user = null;
 try { user = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch(e){}
 const isLoggedIn = () => !!(user && user.id);
@@ -4354,6 +4363,7 @@ function setSyncNote(text){ document.getElementById('fav-sync').textContent = te
 function isFav(tk){ return favorites.has(tk); }
 function toggleFav(tk){
   if(!tk) return;
+  if(!requireLogin()) return;
   if(favorites.has(tk)){ favorites.delete(tk); delete favAssign[tk]; }
   else favorites.add(tk);
   saveFavorites();
@@ -4679,11 +4689,9 @@ function setView(v){
     setTimeout(() => { remeasureGraph(); fitToView(300); }, 60);
   }
 }
-document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => {
-  // 트레이딩·포트폴리오는 개인 데이터를 다루므로 로그인 뒤에 열린다
-  if(typeof gateView === 'function' && !gateView(b.dataset.view)) return;
-  setView(b.dataset.view);
-}));
+// 탭 자체는 비회원에게도 모두 열려 있다 — 잠그는 것은 탭이 아니라 개인 데이터다
+document.querySelectorAll('.tab').forEach(b =>
+  b.addEventListener('click', () => setView(b.dataset.view)));
 document.body.className = 'view-graph';
 
 /* =====================================================================
@@ -5095,6 +5103,7 @@ function updateTicket(){
 /* One order path for both tickets — the full one in the trading tab and the
    market-only one in the stock detail. */
 async function placeOrder({ tk, side, qty, px, type, memo }){
+  if(!requireLogin()) return false;
   const n = nodeIndex.get(tk);
   const cur = n?.currency || 'USD';
   if(!tk || !(qty > 0) || !(px > 0)) return false;
@@ -5184,6 +5193,7 @@ function updateMiniTicket(){
     (live && !bridgeOk ? '<br><span style="color:var(--down)">브리지 미연결</span>' : '');
 }
 async function miniOrder(side){
+  if(!requireLogin()) return;
   const memoEl = document.getElementById('dt-memo');
   const ok = await placeOrder({ tk: selectedTk, side, type: 'MARKET',
                      qty: parseFloat(document.getElementById('dt-qty').value),
@@ -5258,6 +5268,7 @@ document.getElementById('set-save').addEventListener('click', () => {
   document.getElementById('bridge-status').textContent = '저장했습니다.';
 });
 document.getElementById('set-reset').addEventListener('click', () => {
+  if(!requireLogin()) return;
   const which = folioMode === 'live' ? '실거래 장부' : '모의 계좌';
   if(!confirm(`${which}를 초기화합니다. 이 장부의 보유 종목과 거래 내역이 모두 지워집니다. 계속할까요?`)) return;
   folio[folioMode] = emptyBook(folioMode === 'live' ? 0 : folio.paper.startCash);
@@ -5265,6 +5276,7 @@ document.getElementById('set-reset').addEventListener('click', () => {
 });
 document.getElementById('bridge-test').addEventListener('click', () => checkBridge(false));
 document.getElementById('bridge-sync').addEventListener('click', async () => {
+  if(!requireLogin()) return;
   const st = document.getElementById('bridge-status');
   try {
     const r = await bridge('/holdings');
@@ -5718,6 +5730,7 @@ function renderIndButtons(){
 }
 
 document.querySelectorAll('#tv-list-mode button').forEach(b => b.addEventListener('click', () => {
+  if(GATED_LISTS.includes(b.dataset.l) && !requireLogin()) return;
   tvListMode = b.dataset.l;
   document.querySelectorAll('#tv-list-mode button').forEach(x => x.classList.toggle('on', x === b));
   renderTvList();
@@ -6047,22 +6060,33 @@ function applyGates(){
       p.appendChild(veil);
     } else if(on && veil) veil.remove();
   });
-  ['trade', 'folio'].forEach(v => {
-    const tab = document.querySelector(`.tab[data-view="${v}"]`);
-    if(tab) tab.classList.toggle('needs-login', !on);
+  // 트레이딩·포트폴리오는 누구나 열어 볼 수 있고, 개인 데이터를 다루는
+  // 목록 탭과 주문만 로그인을 요구한다
+  document.querySelectorAll('#tv-list-mode button').forEach(b => {
+    b.classList.toggle('needs-login', !on && GATED_LISTS.includes(b.dataset.l));
   });
-  const msg = `<div style="text-align:center;font-size:12.5px;color:var(--text-secondary);line-height:1.8">
-      로그인하면 사용할 수 있습니다<br>
-      <button class="btn ghost" style="margin-top:9px">로그인</button></div>`;
-  ['folio-gate', 'tv-gate'].forEach(id => {
-    const el = document.getElementById(id);
-    if(!el) return;
-    el.hidden = on;
-    if(!on && !el.firstChild){
-      el.innerHTML = msg;
-      el.querySelector('button').addEventListener('click', openLoginModal);
+  if(!on && GATED_LISTS.includes(tvListMode)){
+    tvListMode = 'lead';
+    document.querySelectorAll('#tv-list-mode button')
+      .forEach(x => x.classList.toggle('on', x.dataset.l === 'lead'));
+    if(document.getElementById('tv-list').childElementCount) renderTvList();
+  }
+  const note = document.getElementById('folio-note');
+  if(note){
+    note.hidden = on;
+    if(!on && !note.firstChild){
+      note.innerHTML = '<span>비회원은 둘러보기만 가능합니다 · 로그인하면 보유·거래 내역이 '
+        + '계정별로 저장됩니다</span><button class="btn ghost">로그인</button>';
+      note.querySelector('button').addEventListener('click', openLoginModal);
     }
-  });
+  }
+}
+
+/* 로그인이 필요한 동작 앞에 세우는 문지기 — 막을 때 로그인 창을 띄운다 */
+function requireLogin(){
+  if(isLoggedIn()) return true;
+  openLoginModal();
+  return false;
 }
 
 function openLoginModal(){
@@ -6084,14 +6108,7 @@ document.querySelectorAll('#login-modal [data-p]')
   .forEach(b => b.addEventListener('click', () => login(b.dataset.p)));
 document.getElementById('login-guest').addEventListener('click', closeLoginModal);
 
-/* gate the two personal tabs; the network stays open to everyone */
-function gateView(v){
-  if(['trade', 'folio'].includes(v) && !isLoggedIn()){
-    openLoginModal();
-    return false;
-  }
-  return true;
-}
+
 scopeKeys();
 renderAuth();
 applyGates();
