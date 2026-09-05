@@ -59,9 +59,43 @@ async function call(method, path, body, withAccount = true){
   }
 }
 
+/* 설정이 끝났는지 — 배지와 자동 열기의 기준 */
+async function configured(){
+  const c = await cfg();
+  return !!(c.client_id && c.client_secret);
+}
+
+async function refreshBadge(){
+  const ok = await configured();
+  chrome.action.setBadgeText({ text: ok ? '' : '!' });
+  if(!ok){
+    chrome.action.setBadgeBackgroundColor({ color: '#e5484d' });
+    chrome.action.setTitle({ title: '토스증권 브리지 — 키를 넣어야 합니다. 눌러서 설정하세요.' });
+  } else {
+    chrome.action.setTitle({ title: '토스증권 브리지 — 설정됨' });
+  }
+}
+
+/* 설치 직후 설정 창을 바로 띄운다. 사용자가 세부정보를 뒤져 옵션을
+   찾아 들어가야 할 이유가 없다. */
+chrome.runtime.onInstalled.addListener(details => {
+  refreshBadge();
+  if(details.reason === 'install') chrome.runtime.openOptionsPage();
+  else configured().then(ok => { if(!ok) chrome.runtime.openOptionsPage(); });
+});
+chrome.runtime.onStartup?.addListener(refreshBadge);
+
+/* 툴바 아이콘을 누르면 설정 창 */
+chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
+
 /* 페이지가 부를 수 있는 것만 노출한다 — 키 읽기는 목록에 없다 */
 async function handle(msg){
   const { op, path, body } = msg;
+  if(op === 'setup'){                    // 대시보드가 "설정 창 열어 줘" 라고 부탁
+    chrome.runtime.openOptionsPage();
+    return { opened: true };
+  }
+  if(op === 'status') return { configured: await configured() };
   if(op === 'health'){
     await token();                       // 키가 실제로 통하는지까지 확인
     const s = await seq();
@@ -98,5 +132,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   return true;                            // 비동기 응답
 });
 
-/* 키가 바뀌면 캐시를 버린다 */
-chrome.storage.onChanged.addListener(() => { tok = { value: null, expires: 0 }; acct = { seq: null, no: null }; });
+/* 키가 바뀌면 캐시를 버리고 배지를 다시 칠한다 */
+chrome.storage.onChanged.addListener(() => {
+  tok = { value: null, expires: 0 };
+  acct = { seq: null, no: null };
+  refreshBadge();
+});
+refreshBadge();

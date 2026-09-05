@@ -6446,7 +6446,8 @@ function extCall(op, path, body, ms = 20000){
 
 function onExtFound(){
   const el = document.getElementById('wiz-ext-state');
-  if(el) el.innerHTML = `<span style="color:var(--up)">확장 프로그램이 설치되어 있습니다 (v${esc(String(extVersion))})</span>`;
+  if(el) el.innerHTML = `<span style="color:var(--up)">확장 프로그램이 설치되어 있습니다 (v${esc(String(extVersion))})</span>`
+    + ' · <button class="linkbtn" data-w="open-setup">설정 창 열기</button>';
   setBrokerChip();
   if(document.getElementById('wiz') && !document.getElementById('wiz').hidden) renderWizard();
 }
@@ -6535,8 +6536,9 @@ function renderWizard(){
       <li>브라우저 주소창에 <code>chrome://extensions</code> 를 입력해 엽니다.</li>
       <li>오른쪽 위 <b>개발자 모드</b>를 켭니다.</li>
       <li><b>압축해제된 확장 프로그램을 로드합니다</b> 를 누르고 위 폴더를 고릅니다.</li>
-      <li>목록에 생긴 <b>머니 커넥션 — 토스증권 브리지</b>의 <b>세부정보 → 확장 프로그램 옵션</b>에서
-        <b>client_id</b> 와 <b>client_secret</b> 을 넣고 저장합니다.</li>
+      <li><b>설정 창이 저절로 열립니다.</b> 거기에 <b>client_id</b> 와 <b>client_secret</b> 을 넣고
+        <b>저장</b>을 누르면 연결까지 자동으로 확인합니다.
+        <span style="color:var(--text-muted)">창이 안 뜨면 브라우저 툴바의 확장 아이콘(!)을 누르세요.</span></li>
       <li>이 페이지를 <b>새로고침</b>하면 확장이 인식됩니다.</li>
     </ol>
     <div id="wiz-ext-state" class="wiz-note"></div>
@@ -6605,7 +6607,8 @@ function renderWizard(){
     sub.textContent = '4단계 · 연결 확인';
     body.innerHTML = extReady
       ? `<div class="wiz-step">확장 프로그램이 인식되었습니다 (v${esc(String(extVersion))}).
-           키가 제대로 들어갔는지 확인합니다.</div>
+           키가 제대로 들어갔는지 확인합니다.
+           <br>아직 안 넣으셨다면 <button class="linkbtn" data-w="open-setup">설정 창 열기</button>.</div>
          <div id="wiz-result" class="wiz-note"></div>`
       : `<div class="wiz-step">브리지를 실행한 터미널에 표시된 <b>브리지 주소</b>를 넣고 확인합니다.
            <br>확장을 설치하셨다면 이 페이지를 새로고침하면 주소 없이 연결됩니다.</div>
@@ -6657,6 +6660,7 @@ document.getElementById('wiz').addEventListener('click', async ev => {
   if(w === 'dl'){ wizDownload(); return; }
   if(w === 'dl-bridge'){ downloadBridge(b); return; }
   if(w === 'dl-ext'){ downloadExtension(b); return; }
+  if(w === 'open-setup'){ extCall('setup').catch(() => {}); return; }
   if(w === 'go-ext'){ gotoWiz('ext'); downloadExtension(); return; }
   if(w === 'install'){ wizDownload(); gotoWiz('install'); return; }
   if(w === 'sync'){ closeWizard(); openBrokerSettings();
@@ -6674,7 +6678,8 @@ document.getElementById('wiz').addEventListener('click', async ev => {
     const ok = await checkBridge(false);      // 실패 원인을 그대로 보여 준다
     if(ok){ gotoWiz('done'); return; }
     res.innerHTML = `<span style="color:var(--down)">연결되지 않았습니다.</span>
-      ${document.getElementById('bridge-status')?.innerHTML || ''}`;
+      ${document.getElementById('bridge-status')?.innerHTML || ''}`
+      + (extReady ? ' <button class="linkbtn" data-w="open-setup">확장 설정 창 열기</button>' : '');
     return;
   }
   gotoWiz(w);

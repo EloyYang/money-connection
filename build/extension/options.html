@@ -16,12 +16,31 @@
   button.primary{ background:#2563eb; border-color:#2563eb; color:#fff; }
   .row{ display:flex; gap:8px; margin-top:20px; }
   #msg{ margin-top:16px; font-size:12.5px; min-height:1.6em; }
+  .how{ margin:0 0 22px; padding:12px 14px; border-radius:8px; font-size:12px; line-height:1.7;
+        border:1px solid #cdd6e4; background:#f5f8fc; color:#445; }
+  .how ol{ margin:8px 0 0; padding-left:20px; }
+  .how a{ color:#2563eb; }
+  @media (prefers-color-scheme: dark){ .how{ background:#1b2230; border-color:#33415a; color:#aab6c8; } }
+  .done{ margin-top:18px; padding:12px 14px; border-radius:8px; font-size:12.5px; line-height:1.7;
+         border:1px solid #9ad3b0; background:#f0fbf4; color:#265; }
+  @media (prefers-color-scheme: dark){ .done{ background:#16281e; border-color:#2f5c42; color:#a8d8bd; } }
+  .done a{ color:#2563eb; font-weight:600; }
   .warn{ margin-top:22px; padding:11px 13px; border-radius:8px; font-size:12px; line-height:1.65;
          border:1px solid #e0b4b4; background:#fdf3f3; color:#663; }
   @media (prefers-color-scheme: dark){ .warn{ background:#2a1e1e; border-color:#5a3a3a; color:#ccb; } }
 </style>
-<h1>토스증권 브리지</h1>
-<p class="sub">머니 커넥션 대시보드가 실제 주문을 낼 수 있도록 중계합니다.</p>
+<h1>토스증권 브리지 설정</h1>
+<p class="sub">아래 두 값만 넣으면 끝입니다. 머니 커넥션 대시보드가 실제 주문을 낼 수 있게 됩니다.</p>
+
+<div class="how" id="how">
+  <b>client_id · client_secret 은 어디서 받나요?</b>
+  <ol>
+    <li><a href="https://www.tossinvest.com/" target="_blank" rel="noopener noreferrer">토스증권(PC 웹)</a> 에 로그인합니다.</li>
+    <li>화면 오른쪽 아래 <b>톱니바퀴(⚙) 설정</b>을 누릅니다.</li>
+    <li><b>Open API</b> 를 클릭하고 신청합니다.</li>
+    <li>발급된 두 값을 아래에 붙여 넣으세요.</li>
+  </ol>
+</div>
 
 <label>client_id
   <input id="id" type="text" autocomplete="off" spellcheck="false" placeholder="발급받은 클라이언트 ID"></label>
@@ -36,6 +55,7 @@
   <button id="clear">키 삭제</button>
 </div>
 <div id="msg"></div>
+<div class="done" id="done" hidden></div>
 
 <div class="warn">키는 이 확장 프로그램 안에만 저장되고 웹페이지로 전달되지 않습니다.
   대시보드는 “주문해 줘”라고 부탁할 수 있을 뿐, 키를 읽을 수 없습니다.
