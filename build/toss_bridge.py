@@ -24,7 +24,7 @@ localhost 의 이 프로세스에만 요청한다.
 127.0.0.1 에만 바인딩한다. 외부에 노출하지 말 것 — 이 포트에 닿을 수 있는
 모든 프로그램이 당신의 계좌로 주문을 낼 수 있다.
 """
-import argparse, json, os, sys, threading, time, urllib.error, urllib.parse, urllib.request
+import argparse, gzip, json, os, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 API = "https://openapi.tossinvest.com"
@@ -52,6 +52,16 @@ def load_config():
     return cfg
 
 
+def read_body(resp):
+    """토스는 gzip 으로 응답할 수 있다(오류 응답 포함). 압축을 풀어 문자열로."""
+    raw = resp.read()
+    enc = (resp.headers.get("Content-Encoding") or "").lower()
+    if "gzip" in enc or raw[:2] == b"\x1f\x8b":
+        try: raw = gzip.decompress(raw)
+        except Exception: pass                       # noqa: BLE001
+    return raw.decode("utf-8", errors="replace")
+
+
 def call(method, path, cfg, body=None, account=True, timeout=20):
     """토스 API 호출. 401 이면 토큰을 한 번 새로 받아 재시도한다."""
     for attempt in (1, 2):
@@ -65,9 +75,9 @@ def call(method, path, cfg, body=None, account=True, timeout=20):
         req = urllib.request.Request(API + path, data=data, headers=headers, method=method)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
-                return json.loads(r.read().decode() or "{}")
+                return json.loads(read_body(r) or "{}")
         except urllib.error.HTTPError as e:
-            raw = e.read().decode(errors="replace")
+            raw = read_body(e)
             if e.code == 401 and attempt == 1:
                 with _lock:
                     _token["value"] = None          # 만료로 보고 한 번만 재발급
@@ -83,16 +93,21 @@ def token(cfg):
     with _lock:
         if _token["value"] and time.time() < _token["expires"]:
             return _token["value"]
-    body = json.dumps({"grant_type": "client_credentials",
-                       "client_id": cfg["client_id"],
-                       "client_secret": cfg["client_secret"]}).encode()
+    # 스펙상 이 엔드포인트만 form-urlencoded 이다 (나머지는 JSON)
+    body = urllib.parse.urlencode({"grant_type": "client_credentials",
+                                   "client_id": cfg["client_id"],
+                                   "client_secret": cfg["client_secret"]}).encode()
     req = urllib.request.Request(API + "/oauth2/token", data=body, method="POST",
-                                 headers={"Content-Type": "application/json", "Accept": "application/json"})
+                                 headers={"Content-Type": "application/x-www-form-urlencoded",
+                                          "Accept": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
-            d = json.loads(r.read().decode())
+            d = json.loads(read_body(r))
     except urllib.error.HTTPError as e:
-        raise RuntimeError(f"토큰 발급 실패 {e.code}: {e.read().decode(errors='replace')[:300]}") from None
+        msg = read_body(e)[:300]
+        hint = ("  ← client_id / client_secret 을 확인하세요 (토스증권 WTS → 설정 → Open API)"
+                if e.code in (400, 401) else "")
+        raise RuntimeError(f"토큰 발급 실패 {e.code}: {msg}{hint}") from None
     with _lock:
         _token["value"] = d["access_token"]
         # 만료 60초 전에 갱신되도록 여유를 둔다
@@ -159,6 +174,9 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
         try:
             if path == "/health":
+                # 키가 실제로 통하는지까지 확인한다. account_seq 가 설정에 박혀 있으면
+                # 계좌 조회를 건너뛰므로, 토큰을 받아 봐야 "연결됨" 이 거짓말이 아니게 된다.
+                token(self.cfg)
                 seq = account_seq(self.cfg)
                 return self._send(200, {"ok": True, "accountSeq": seq, "accountNo": _account["no"]})
             if path == "/accounts":
@@ -215,7 +233,15 @@ def main():
     Handler.cfg = load_config()
     Handler.origins = a.origin + DEFAULT_ORIGINS
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
-    log(f"bridge on http://127.0.0.1:{a.port}  (origins: {', '.join(Handler.origins)})")
+    addr = f"http://localhost:{a.port}"
+    print()
+    print("  " + "─" * 56)
+    print(f"  브리지 주소:  {addr}")
+    print("  이 주소를 대시보드 → 포트폴리오 → 설정 → '브리지 주소' 에 넣고")
+    print("  [연결 확인] 을 누르세요.")
+    print("  " + "─" * 56)
+    print()
+    log(f"listening on 127.0.0.1:{a.port}  (origins: {', '.join(Handler.origins)})")
     log("주문은 대시보드에서 확인 버튼을 눌러야 전송됩니다. 종료: Ctrl+C")
     try:
         srv.serve_forever()

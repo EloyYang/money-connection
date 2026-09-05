@@ -297,6 +297,13 @@
   .pane-chip .x:hover{ color:var(--down); }
   .cpane.drop-replace{ border-color:var(--accent); box-shadow:inset 0 0 0 2px rgba(95,208,255,0.25); }
   .cpane.drop-split{ border-color:var(--up); }
+  .cap code{ font-family:'JetBrains Mono',monospace; font-size:10px; padding:1px 4px;
+    border-radius:4px; background:rgba(255,255,255,0.06); border:1px solid var(--line); }
+  .hp-body code{ font-family:'JetBrains Mono',monospace; font-size:10.5px; padding:1px 5px;
+    border-radius:4px; background:rgba(255,255,255,0.07); border:1px solid var(--line);
+    word-break:break-all; }
+  .hp-body .step{ display:block; margin:9px 0 3px; font-weight:600; color:var(--text-primary); }
+  .hp-body .warn{ color:var(--down); }
   .cpane.drop-move{ border-color:var(--sel); }
   .cpane.drop-split::after, .cpane.drop-move::after{ content:''; position:absolute; z-index:10;
     pointer-events:none; border-radius:6px; }
@@ -453,6 +460,9 @@
   .acct-act:hover{ background:rgba(255,255,255,0.05); border-color:var(--line); }
   .acct-act.danger{ color:var(--down); }
   .acct-act .sub{ display:block; font-size:9.5px; color:var(--text-muted); margin-top:1px; }
+  #broker-sec.flash{ animation:brokerFlash 1.6s ease; border-radius:8px; }
+  @keyframes brokerFlash{ 0%,100%{ box-shadow:0 0 0 0 rgba(95,208,255,0); }
+    18%{ box-shadow:0 0 0 3px rgba(95,208,255,0.30); } }
   .acct-note{ font-size:9.5px; color:var(--text-muted); line-height:1.6;
     margin:8px 0 2px; padding-top:8px; border-top:1px solid var(--line); }
   #login-modal{ position:fixed; inset:0; z-index:120; background:rgba(6,8,11,0.8); backdrop-filter:blur(4px);
@@ -913,7 +923,10 @@
           <button class="btn ghost" id="set-save">저장</button>
           <button class="btn ghost" id="set-reset">모의 계좌 초기화</button>
         </div>
+        <div id="broker-sec">
         <div class="sec-title" style="margin-top:16px"><span>토스증권 연결<button class="help" data-h="folioBroker">?</button></span></div>
+        <div class="cap" style="margin:-2px 0 8px">내 PC에서 <code>python3 build/toss_bridge.py</code> 를 실행하면
+          터미널에 표시되는 주소입니다 (보통 <code>http://localhost:8787</code>). 실행 순서는 위 <b>?</b> 를 눌러 확인하세요.</div>
         <div class="set-grid">
           <label>브리지 주소<input type="text" id="set-bridge" placeholder="http://localhost:8787"></label>
         </div>
@@ -922,6 +935,7 @@
           <button class="btn ghost" id="bridge-sync">보유 종목 가져오기</button>
         </div>
         <div class="cap" id="bridge-status"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1475,8 +1489,8 @@ const HELP = {
     '   아래쪽에 놓으면 위아래로, 옆에 놓으면 좌우로 나뉩니다. 차트 1개에서 아래에 놓으면 \n' +
     '   가로로 긴 차트 2개가 위아래로, 좌우 2개 상태에서 위에 놓으면 위 1개(넓게)·아래 2개가 됩니다.\n' +
     '· 패널 가운데에 놓으면 → 그 패널의 종목 교체 (파란 테두리)\n' +
-    '· 이름표(⠿)를 끌어 다른 패널 **가운데**에 놓으면 → 두 패널 자리 교환 (배치는 그대로)\n' +
-    '· 이름표(⠿)를 끌어 다른 패널 **가장자리**에 놓으면 → 그 자리로 이동하며 배치가 다시 짜입니다 (보라색 미리보기)\n' +
+    '· 이름표(⠿)를 끌어 다른 패널 <b>가운데</b>에 놓으면 → 두 패널 자리 교환 (배치는 그대로)\n' +
+    '· 이름표(⠿)를 끌어 다른 패널 <b>가장자리</b>에 놓으면 → 그 자리로 이동하며 배치가 다시 짜입니다 (보라색 미리보기)\n' +
     '   좌우 2개에서 하나를 다른 쪽 아래에 놓으면 상하 2단이 되고, 위 1개(넓게)를 아래 두 개 옆에 \n' +
     '   놓으면 위아래가 뒤집힙니다.\n' +
     '· 이름표의 ✕ 로 패널을 닫습니다\n\n' +
@@ -1510,12 +1524,35 @@ const HELP = {
   folioSettings: { t: '설정', dir: null, d:
     '수수료와 거래세는 증권사·계좌·시장마다 다릅니다. 기본값은 예시일 뿐이므로 본인 조건에 맞게 바꿔서 쓰세요.\n\n' +
     '초기자금을 바꾸면 차액만큼 현금이 조정되고 누적 수익률의 기준도 함께 바뀝니다. 모든 값은 이 브라우저에만 저장됩니다.' },
-  folioBroker: { t: '토스증권 연결', dir: null, d:
-    '토스증권 Open API는 OAuth 2.0 client credentials 방식이고, 토스 문서도 client secret은 서버에서만 쓰라고 명시합니다. ' +
-    '이 사이트는 누구나 소스를 볼 수 있는 정적 페이지이므로 키를 넣을 수 없습니다.\n\n' +
-    '대신 저장소의 build/toss_bridge.py 를 본인 PC에서 실행하세요. 키는 ~/.money-connection/toss.json 에만 있고, ' +
-    '브라우저는 localhost의 브리지에만 요청합니다.\n\n' +
-    '"보유 종목 가져오기"는 토스 계좌의 실제 보유 수량과 평균단가를 장부에 덮어씁니다. 현금 잔고는 모의 값 그대로 남습니다.' },
+  folioBroker: { t: '토스증권 연결 — 순서대로', dir: null, d:
+    '<b>브리지 주소가 무엇인가요?</b> 내 PC에서 실행하는 작은 중계 프로그램의 주소입니다. ' +
+    '토스 키는 비밀이라 공개된 이 웹페이지에 넣을 수 없어서, 키는 내 PC에만 두고 ' +
+    '브라우저는 그 프로그램에게만 주문을 부탁합니다. 5단계를 마치면 자동으로 채워집니다.\n' +
+    '<span class="step">1. 토스증권에서 키 발급</span>' +
+    '토스증권 WTS(PC 웹) 로그인 → <b>설정 → Open API</b> → 신청하고 ' +
+    '<code>client_id</code> 와 <code>client_secret</code> 을 받습니다.\n' +
+    '<span class="warn">secret은 비밀번호입니다. 이 사이트나 깃허브에 절대 넣지 마세요.</span>\n' +
+    '<span class="step">2. 키를 내 PC에 저장</span>' +
+    '<code>~/.money-connection/toss.json</code> 파일을 만들고 아래를 넣습니다.\n' +
+    '<code>{"client_id": "발급받은ID", "client_secret": "발급받은시크릿"}</code>\n' +
+    '계좌가 여러 개면 <code>"account_seq": 1</code> 을 추가하세요. 없으면 첫 종합매매 계좌를 씁니다.\n' +
+    '<span class="step">3. 브리지 실행</span>' +
+    '저장소를 내려받은 폴더에서 터미널에 입력합니다.\n' +
+    '<code>python3 build/toss_bridge.py</code>\n' +
+    '실행되면 화면에 <b>브리지 주소</b>가 그대로 표시됩니다 — 보통 ' +
+    '<code>http://localhost:8787</code> 입니다. <b>이 창은 거래하는 동안 켜 두어야 합니다.</b>\n' +
+    '<span class="step">4. 주소 입력 후 연결 확인</span>' +
+    '위 <b>브리지 주소</b> 칸에 3번에서 본 주소를 넣고 <b>[연결 확인]</b>을 누릅니다. ' +
+    '계좌번호가 뜨면 성공입니다. 실패하면 그 이유가 그대로 표시됩니다 ' +
+    '(<code>invalid_client</code> = 키가 틀림, <code>Failed to fetch</code> = 브리지가 꺼져 있음).\n' +
+    '<span class="step">5. 보유 종목 가져오기</span>' +
+    '<b>[보유 종목 가져오기]</b>로 실제 계좌의 보유 수량·평균단가를 실거래 장부에 불러옵니다. ' +
+    '이 버튼은 실거래 장부를 <b>덮어씁니다</b> — 증권사 값이 정답이기 때문입니다. 현금 잔고는 토스 계좌에 그대로 있습니다.\n' +
+    '<span class="step">주문할 때</span>' +
+    '상단 메뉴에서 <b>실거래</b>로 바꾸고 주문하면 이 브리지를 거쳐 실제 계좌로 나갑니다. ' +
+    '체결 결과는 토스증권 앱에서 확인하고, 5번으로 장부를 맞추세요.\n' +
+    '<span class="warn">브리지는 127.0.0.1 에만 열립니다. 외부에 공개하지 마세요 — ' +
+    '이 포트에 닿는 프로그램은 누구나 내 계좌로 주문할 수 있습니다.</span>' },
   savedViews: { t: '저장된 화면', dir: null, d:
     '지금 보고 있는 네트워크 화면을 통째로 저장합니다 — 노드를 끌어다 놓은 배치, 확대·이동 위치, 분류(테마/시장/성격)와 켜 둔 그룹, ' +
     '연결 기준, 기간, 상관계수 임계값, 주도주 기준, 필터 상태까지 전부.\n\n' +
@@ -5074,12 +5111,22 @@ async function checkBridge(quiet){
     const r = await bridge('/health');
     bridgeOk = !!r.ok;
     bridgeAccount = r.accountNo || null;
-    if(st) st.textContent = bridgeOk
-      ? `연결됨 · 계좌 ${r.accountNo || '?'} (seq ${r.accountSeq ?? '?'})`
+    if(st) st.innerHTML = bridgeOk
+      ? `<span style="color:var(--up)">연결됨</span> · 계좌 ${esc(String(r.accountNo || '?'))} (seq ${r.accountSeq ?? '?'})
+         — 이제 상단에서 <b>실거래</b>로 바꾸면 실제 주문이 나갑니다.`
       : '브리지는 응답했지만 계좌 인증에 실패했습니다.';
   } catch(e){
     bridgeOk = false; bridgeAccount = null;
-    if(st && !quiet) st.textContent = `연결 실패: ${e.message} — 로컬에서 build/toss_bridge.py 를 실행했는지 확인하세요.`;
+    const m = e.message || '';
+    // 네트워크 단계에서 죽었는지, 토스가 거절했는지를 나눠서 안내한다
+    const why = /Failed to fetch|NetworkError|load failed/i.test(m)
+      ? '브리지에 닿지 못했습니다. 내 PC에서 <code>python3 build/toss_bridge.py</code> 가 켜져 있는지, '
+        + '주소가 터미널에 표시된 것과 같은지 확인하세요.'
+      : /invalid_client|401|토큰 발급 실패/.test(m)
+      ? 'client_id 또는 client_secret 이 틀립니다. <code>~/.money-connection/toss.json</code> 을 확인하세요.'
+      : '브리지는 응답했지만 토스 호출이 실패했습니다. 브리지를 켜 둔 터미널의 로그를 확인하세요.';
+    if(st && !quiet) st.innerHTML = `<span style="color:var(--down)">연결 실패</span> — ${why}<br>
+      <span class="mono" style="font-size:10px;color:var(--text-muted)">${esc(m).slice(0, 220)}</span>`;
   }
   setBrokerChip();
   updateTicket();
@@ -5287,9 +5334,9 @@ document.querySelectorAll('#alloc-mode button').forEach(b => b.addEventListener(
   document.querySelectorAll('#alloc-mode button').forEach(x => x.classList.toggle('on', x === b));
   renderFolio();
 }));
-document.getElementById('folio-settings-btn').addEventListener('click', () => {
+function openFolioSettings(force){
   const el = document.getElementById('folio-settings');
-  el.hidden = !el.hidden;
+  el.hidden = force ? false : !el.hidden;
   if(!el.hidden){
     document.getElementById('set-cash').value = folio.paper.startCash;
     document.getElementById('set-fee').value = folio.feePct;
@@ -5298,7 +5345,9 @@ document.getElementById('folio-settings-btn').addEventListener('click', () => {
     document.getElementById('set-bridge').value = folio.bridge || '';
     checkBridge(true);
   }
-});
+}
+document.getElementById('folio-settings-btn')
+  .addEventListener('click', () => openFolioSettings(false));
 document.getElementById('set-save').addEventListener('click', () => {
   const num = (id, dflt) => { const v = parseFloat(document.getElementById(id).value); return isFinite(v) ? v : dflt; };
   folio.feePct = num('set-fee', folio.feePct);
@@ -6262,6 +6311,11 @@ function renderAcctMenu(){
       <span class="sub">되돌릴 수 없습니다 · 먼저 내보내기를 권합니다</span></button>
     <div class="acct-note">이 사이트는 서버가 없습니다. 위 데이터는 <b>이 브라우저</b>에만
       있고 기기 간에 자동으로 동기화되지 않습니다 — 다른 기기로 옮기려면 내보내기를 쓰세요.</div>
+    <div class="acct-sec">실거래 연동</div>
+    <button class="acct-act" data-a="broker">토스증권 연결
+      <span class="sub">${bridgeOk
+        ? `연결됨 · 계좌 ${esc(String(bridgeAccount || '?'))}`
+        : '미연결 — 설정과 연결 순서를 여기서 확인하세요'}</span></button>
     <div class="acct-sec">계정</div>
     <button class="acct-act" data-a="logout">로그아웃
       <span class="sub">데이터는 남고, 다시 로그인하면 그대로 보입니다</span></button>`;
@@ -6269,11 +6323,26 @@ function renderAcctMenu(){
     b.addEventListener('click', () => acctAction(b.dataset.a)));
 }
 
+/* 계정 메뉴 → 토스 연결: 포트폴리오로 옮겨 설정을 펴고 그 칸을 비춰 준다 */
+function openBrokerSettings(){
+  setView('folio');
+  openFolioSettings(true);
+  const sec = document.getElementById('broker-sec');
+  // 레이아웃이 끝난 뒤에 옮겨야 스크롤과 포커스가 실제로 걸린다
+  setTimeout(() => {
+    sec?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if(sec){ sec.classList.add('flash'); setTimeout(() => sec.classList.remove('flash'), 1600); }
+    document.getElementById('set-bridge')?.focus();
+  }, 90);
+  checkBridge(false);          // 여기서는 상태를 숨기지 않는다 — 그게 보러 온 이유다
+}
+
 /* 이 계정의 저장소 전체를 한 덩어리로 다룬다 */
 const acctStores = () => ({ favorites: FAV_KEY, sections: SEC_KEY, folio: FOLIO_KEY, views: VIEW_KEY });
 
 function acctAction(a){
   if(a === 'logout'){ closeAcctMenu(); logout(); return; }
+  if(a === 'broker'){ closeAcctMenu(); openBrokerSettings(); return; }
 
   if(a === 'export'){
     const dump = { _app: 'money-connection', _version: 1,
