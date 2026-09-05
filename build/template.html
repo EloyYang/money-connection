@@ -460,6 +460,45 @@
   .acct-act:hover{ background:rgba(255,255,255,0.05); border-color:var(--line); }
   .acct-act.danger{ color:var(--down); }
   .acct-act .sub{ display:block; font-size:9.5px; color:var(--text-muted); margin-top:1px; }
+  /* ---- 토스 연동 마법사 ---- */
+  #wiz{ position:fixed; inset:0; z-index:140; background:rgba(6,8,11,0.82); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; padding:20px; }
+  #wiz[hidden]{ display:none; }
+  .wiz-panel{ position:relative; width:min(520px,100%); max-height:88vh; overflow-y:auto;
+    background:var(--panel-solid); border:1px solid var(--border-strong); border-radius:14px;
+    padding:24px; box-shadow:0 30px 80px rgba(0,0,0,0.6); }
+  .wiz-panel h2{ font-family:'Space Grotesk',system-ui,sans-serif; font-size:18px; margin:0 0 3px; }
+  .wiz-dots{ display:flex; gap:5px; margin:0 0 16px; }
+  .wiz-dots i{ height:3px; flex:1; border-radius:2px; background:var(--line); }
+  .wiz-dots i.on{ background:var(--accent); }
+  .wiz-panel .close{ position:absolute; right:12px; top:12px; background:none; border:none;
+    color:var(--text-muted); font-size:15px; cursor:pointer; padding:4px; }
+  .wiz-step{ font-size:12.5px; color:var(--text-secondary); line-height:1.75; }
+  .wiz-step b{ color:var(--text-primary); }
+  .wiz-ol{ margin:12px 0 0; padding:0; list-style:none; counter-reset:w; }
+  .wiz-ol li{ counter-increment:w; position:relative; padding:0 0 12px 30px; font-size:12.5px;
+    color:var(--text-secondary); line-height:1.6; }
+  .wiz-ol li::before{ content:counter(w); position:absolute; left:0; top:0; width:20px; height:20px;
+    border-radius:50%; background:var(--border-strong); color:var(--text-primary);
+    font-size:10.5px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .wiz-field{ display:block; margin:10px 0; font-size:11px; color:var(--text-secondary); }
+  .wiz-field input{ display:block; width:100%; margin-top:4px; padding:8px 10px; border-radius:8px;
+    border:1px solid var(--border-strong); background:var(--bg); color:var(--text-primary);
+    font-family:'JetBrains Mono',monospace; font-size:12px; }
+  .wiz-cmd{ position:relative; margin:10px 0; padding:10px 12px; padding-right:60px; border-radius:8px;
+    background:rgba(255,255,255,0.045); border:1px solid var(--line);
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-primary);
+    white-space:pre-wrap; word-break:break-all; line-height:1.6; }
+  .wiz-cmd button{ position:absolute; right:7px; top:7px; padding:3px 8px; font-size:10px;
+    border-radius:6px; border:1px solid var(--border-strong); background:var(--panel-solid);
+    color:var(--text-secondary); cursor:pointer; font-family:inherit; }
+  .wiz-acts{ display:flex; gap:8px; margin-top:18px; }
+  .wiz-acts .btn{ flex:1 1 auto; justify-content:center; }
+  .wiz-acts .back{ flex:0 0 auto; }
+  .wiz-warn{ margin:12px 0 0; padding:9px 11px; border-radius:8px; font-size:11px; line-height:1.65;
+    border:1px solid rgba(255,92,114,0.35); background:rgba(255,92,114,0.08); color:var(--text-secondary); }
+  .wiz-ok{ border-color:rgba(61,220,132,0.35); background:rgba(61,220,132,0.08); }
+  .wiz-note{ margin-top:12px; font-size:10.5px; color:var(--text-muted); line-height:1.65; }
   #broker-sec.flash{ animation:brokerFlash 1.6s ease; border-radius:8px; }
   @keyframes brokerFlash{ 0%,100%{ box-shadow:0 0 0 0 rgba(95,208,255,0); }
     18%{ box-shadow:0 0 0 3px rgba(95,208,255,0.30); } }
@@ -884,6 +923,7 @@
       <div class="folio-head">
         <h2>포트폴리오</h2>
         <span class="broker-chip" id="broker-chip">토스증권 미연결</span>
+        <button class="btn ghost" id="wiz-open-top">연동하기</button>
         <button class="btn ghost" id="folio-settings-btn">설정</button>
       </div>
 
@@ -931,6 +971,7 @@
           <label>브리지 주소<input type="text" id="set-bridge" placeholder="http://localhost:8787"></label>
         </div>
         <div class="set-actions">
+          <button class="btn" id="wiz-open">토스증권 연동하기</button>
           <button class="btn ghost" id="bridge-test">연결 확인</button>
           <button class="btn ghost" id="bridge-sync">보유 종목 가져오기</button>
         </div>
@@ -1023,6 +1064,17 @@
   </div>
 
   <div class="panel hint graph-only">스크롤 확대/축소 · 드래그 이동 · 노드 드래그 재배치 · 빈 곳 클릭 시 해제</div>
+
+  <div id="wiz" hidden>
+    <div class="wiz-panel">
+      <button class="close" id="wiz-x" aria-label="닫기">✕</button>
+      <h2 id="wiz-title">토스증권 연동</h2>
+      <div class="cap" id="wiz-sub" style="margin:0 0 12px"></div>
+      <div class="wiz-dots" id="wiz-dots"></div>
+      <div id="wiz-body"></div>
+      <div class="wiz-acts" id="wiz-acts"></div>
+    </div>
+  </div>
 
   <div id="login-modal" hidden>
     <div class="login-panel" role="dialog" aria-modal="true" aria-label="로그인">
@@ -5100,6 +5152,8 @@ async function bridge(path, opts){
 }
 function setBrokerChip(){
   const chip = document.getElementById('broker-chip');
+  const top = document.getElementById('wiz-open-top');
+  if(top) top.hidden = bridgeOk;
   chip.classList.toggle('on', bridgeOk);
   chip.textContent = bridgeOk
     ? `토스증권 연결됨${bridgeAccount ? ' · ' + bridgeAccount : ''}`
@@ -5348,6 +5402,8 @@ function openFolioSettings(force){
 }
 document.getElementById('folio-settings-btn')
   .addEventListener('click', () => openFolioSettings(false));
+['wiz-open', 'wiz-open-top'].forEach(id =>
+  document.getElementById(id)?.addEventListener('click', openWizard));
 document.getElementById('set-save').addEventListener('click', () => {
   const num = (id, dflt) => { const v = parseFloat(document.getElementById(id).value); return isFinite(v) ? v : dflt; };
   folio.feePct = num('set-fee', folio.feePct);
@@ -6312,15 +6368,197 @@ function renderAcctMenu(){
     <div class="acct-note">이 사이트는 서버가 없습니다. 위 데이터는 <b>이 브라우저</b>에만
       있고 기기 간에 자동으로 동기화되지 않습니다 — 다른 기기로 옮기려면 내보내기를 쓰세요.</div>
     <div class="acct-sec">실거래 연동</div>
-    <button class="acct-act" data-a="broker">토스증권 연결
+    <button class="acct-act" data-a="broker">토스증권 ${bridgeOk ? '연결 설정' : '연동하기'}
       <span class="sub">${bridgeOk
         ? `연결됨 · 계좌 ${esc(String(bridgeAccount || '?'))}`
-        : '미연결 — 설정과 연결 순서를 여기서 확인하세요'}</span></button>
+        : '미연결 — 발급부터 연결까지 안내를 따라가세요'}</span></button>
     <div class="acct-sec">계정</div>
     <button class="acct-act" data-a="logout">로그아웃
       <span class="sub">데이터는 남고, 다시 로그인하면 그대로 보입니다</span></button>`;
   m.querySelectorAll('.acct-act').forEach(b =>
     b.addEventListener('click', () => acctAction(b.dataset.a)));
+}
+
+
+/* =====================================================================
+   토스증권 연동 마법사
+   키를 브라우저에 저장하지 않는다. 입력받은 값은 toss.json 파일을 만드는
+   데만 쓰이고 창을 닫으면 사라진다 — 애초에 브라우저가 토스 API 를 직접
+   부를 수도 없다(CORS 로 막혀 있다). 그래서 키는 내 PC 의 브리지에만 있다.
+   ===================================================================== */
+const WIZ = ['ask', 'issue', 'keys', 'install', 'connect', 'done'];
+let wizStep = 'ask';
+let wizKeys = { id: '', secret: '' };      // 메모리에만 — 저장도 전송도 하지 않는다
+
+function openWizard(){
+  wizStep = 'ask'; wizKeys = { id: '', secret: '' };
+  document.getElementById('wiz').hidden = false;
+  renderWizard();
+}
+function closeWizard(){
+  document.getElementById('wiz').hidden = true;
+  wizKeys = { id: '', secret: '' };         // 창을 닫으면 시크릿은 사라진다
+  const b = document.getElementById('wiz-body');
+  if(b) b.innerHTML = '';
+}
+function gotoWiz(step){ wizStep = step; renderWizard(); }
+
+const wizCmd = (text, id) =>
+  `<div class="wiz-cmd" id="${id}">${esc(text)}<button data-copy="${id}">복사</button></div>`;
+
+function renderWizard(){
+  const body = document.getElementById('wiz-body');
+  const acts = document.getElementById('wiz-acts');
+  const sub  = document.getElementById('wiz-sub');
+  const dots = document.getElementById('wiz-dots');
+  const idx  = Math.max(0, WIZ.indexOf(wizStep));
+  dots.innerHTML = WIZ.map((_, i) => `<i class="${i <= idx ? 'on' : ''}"></i>`).join('');
+
+  if(wizStep === 'ask'){
+    sub.textContent = '실제 계좌로 주문하려면 토스증권 Open API 키가 필요합니다.';
+    body.innerHTML = `<div class="wiz-step">
+      토스증권 Open API 키(<b>client_id</b> · <b>client_secret</b>)를 이미 발급받으셨나요?</div>`;
+    acts.innerHTML = `<button class="btn" data-w="keys">네, 있습니다</button>
+      <button class="btn ghost" data-w="issue">아니요, 발급받을게요</button>`;
+  }
+
+  else if(wizStep === 'issue'){
+    sub.textContent = '1단계 · 토스증권에서 키 발급받기';
+    body.innerHTML = `<ol class="wiz-ol">
+      <li><b>토스증권에 로그인</b>합니다.<br>
+        <a href="https://www.tossinvest.com/" target="_blank" rel="noopener noreferrer"
+           style="color:var(--accent)">www.tossinvest.com 열기 ↗</a></li>
+      <li>화면 <b>오른쪽 아래의 톱니바퀴(⚙) 설정</b>을 누릅니다.</li>
+      <li>메뉴에서 <b>Open API</b>를 클릭합니다.</li>
+      <li>신청한 뒤 <b>client_id</b> 와 <b>client_secret</b> 을 복사해 둡니다.</li>
+    </ol>
+    <div class="wiz-note">발급 화면은 PC 웹(WTS)에서만 나옵니다. 모바일 앱에는 없습니다.</div>`;
+    acts.innerHTML = `<button class="btn ghost back" data-w="ask">← 뒤로</button>
+      <button class="btn" data-w="keys">발급받았어요 →</button>`;
+  }
+
+  else if(wizStep === 'keys'){
+    sub.textContent = '2단계 · 키를 설정 파일로 만들기';
+    body.innerHTML = `<div class="wiz-step">
+      아래에 넣으면 브리지가 읽을 <b>toss.json</b> 파일을 만들어 드립니다.</div>
+      <label class="wiz-field">client_id
+        <input type="text" id="wiz-id" placeholder="발급받은 클라이언트 ID" autocomplete="off" spellcheck="false"></label>
+      <label class="wiz-field">client_secret
+        <input type="password" id="wiz-secret" placeholder="발급받은 시크릿" autocomplete="off" spellcheck="false"></label>
+      <label class="wiz-field">계좌 번호 (선택 · 계좌가 여러 개일 때만)
+        <input type="number" id="wiz-seq" placeholder="비워 두면 첫 종합매매 계좌"></label>
+      <div class="wiz-warn"><b>이 값은 이 사이트에 저장되지 않습니다.</b>
+        입력한 내용은 파일을 만드는 데만 쓰이고, 창을 닫으면 사라집니다.
+        서버로 보내지도 않습니다 — 애초에 브라우저는 토스 API를 직접 부를 수 없습니다(CORS 차단).
+        <b>client_secret 은 비밀번호</b>이므로 이 사이트를 포함해 어디에도 저장하지 마세요.</div>`;
+    const sync = () => {
+      wizKeys.id = document.getElementById('wiz-id').value.trim();
+      wizKeys.secret = document.getElementById('wiz-secret').value.trim();
+      const go = acts.querySelector('[data-w="install"]');
+      if(go) go.disabled = !(wizKeys.id && wizKeys.secret);
+    };
+    acts.innerHTML = `<button class="btn ghost back" data-w="issue">← 발급 방법</button>
+      <button class="btn" data-w="install" disabled>toss.json 내려받기 →</button>`;
+    ['wiz-id', 'wiz-secret'].forEach(id =>
+      document.getElementById(id).addEventListener('input', sync));
+    document.getElementById('wiz-id').value = wizKeys.id;
+    document.getElementById('wiz-secret').value = wizKeys.secret;
+    sync();
+  }
+
+  else if(wizStep === 'install'){
+    sub.textContent = '3단계 · 파일을 옮기고 브리지 실행';
+    const mv = 'mkdir -p ~/.money-connection && mv ~/Downloads/toss.json ~/.money-connection/';
+    body.innerHTML = `<div class="wiz-step">
+      <b>toss.json</b> 이 내려받아졌습니다. 아래 두 줄을 터미널에 차례로 붙여 넣으세요.</div>
+      <ol class="wiz-ol">
+        <li>파일을 제자리로 옮깁니다 ${wizCmd(mv, 'wiz-c1')}</li>
+        <li>이 저장소를 내려받은 폴더에서 브리지를 실행합니다 ${wizCmd('python3 build/toss_bridge.py', 'wiz-c2')}
+          <span style="color:var(--text-muted)">거래하는 동안 이 터미널 창은 켜 두어야 합니다.</span></li>
+      </ol>
+      <div class="wiz-note">실행하면 터미널에 <b>브리지 주소</b>가 표시됩니다 — 다음 단계에서 씁니다.</div>`;
+    acts.innerHTML = `<button class="btn ghost back" data-w="keys">← 뒤로</button>
+      <button class="btn ghost" data-w="dl">다시 내려받기</button>
+      <button class="btn" data-w="connect">실행했어요 →</button>`;
+  }
+
+  else if(wizStep === 'connect'){
+    sub.textContent = '4단계 · 연결 확인';
+    body.innerHTML = `<div class="wiz-step">
+      브리지를 실행한 터미널에 표시된 <b>브리지 주소</b>를 넣고 연결을 확인합니다.</div>
+      <label class="wiz-field">브리지 주소
+        <input type="text" id="wiz-bridge" placeholder="http://localhost:8787"></label>
+      <div id="wiz-result" class="wiz-note"></div>`;
+    document.getElementById('wiz-bridge').value = folio.bridge || 'http://localhost:8787';
+    acts.innerHTML = `<button class="btn ghost back" data-w="install">← 뒤로</button>
+      <button class="btn" data-w="test">연결 확인</button>`;
+  }
+
+  else if(wizStep === 'done'){
+    sub.textContent = '연동 완료';
+    body.innerHTML = `<div class="wiz-warn wiz-ok">
+      <b>연결되었습니다 · 계좌 ${esc(String(bridgeAccount || '?'))}</b><br>
+      상단 메뉴에서 <b>실거래</b>로 바꾸면 주문이 실제 계좌로 나갑니다.</div>
+      <div class="wiz-step" style="margin-top:12px">이어서 할 것</div>
+      <ol class="wiz-ol">
+        <li><b>보유 종목 가져오기</b>로 실제 보유 수량·평균단가를 장부에 불러옵니다.</li>
+        <li>첫 주문은 <b>소액으로</b> 확인해 보세요.</li>
+        <li>브리지를 끄면 실거래는 다시 잠깁니다. 다음에도 <code>python3 build/toss_bridge.py</code> 를 먼저 실행하세요.</li>
+      </ol>`;
+    acts.innerHTML = `<button class="btn ghost" data-w="sync">보유 종목 가져오기</button>
+      <button class="btn" data-w="close">완료</button>`;
+  }
+}
+
+document.getElementById('wiz-x').addEventListener('click', closeWizard);
+document.getElementById('wiz').addEventListener('click', ev => {
+  if(ev.target.id === 'wiz') closeWizard();
+});
+document.getElementById('wiz').addEventListener('click', async ev => {
+  const cp = ev.target.closest('[data-copy]');
+  if(cp){
+    const host = document.getElementById(cp.dataset.copy);
+    const text = [...host.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim();
+    try { await navigator.clipboard.writeText(text); cp.textContent = '복사됨'; }
+    catch(e){ cp.textContent = '복사 실패'; }
+    setTimeout(() => { cp.textContent = '복사'; }, 1400);
+    return;
+  }
+  const b = ev.target.closest('[data-w]');
+  if(!b || b.disabled) return;
+  const w = b.dataset.w;
+  if(w === 'close'){ closeWizard(); return; }
+  if(w === 'dl'){ wizDownload(); return; }
+  if(w === 'install'){ wizDownload(); gotoWiz('install'); return; }
+  if(w === 'sync'){ closeWizard(); openBrokerSettings();
+    setTimeout(() => document.getElementById('bridge-sync')?.click(), 400); return; }
+  if(w === 'test'){
+    const res = document.getElementById('wiz-result');
+    folio.bridge = document.getElementById('wiz-bridge').value.trim();
+    saveFolio();
+    const inp = document.getElementById('set-bridge');
+    if(inp) inp.value = folio.bridge;
+    res.textContent = '확인 중…';
+    const ok = await checkBridge(false);      // 실패 원인을 그대로 보여 준다
+    if(ok){ gotoWiz('done'); return; }
+    res.innerHTML = `<span style="color:var(--down)">연결되지 않았습니다.</span>
+      ${document.getElementById('bridge-status')?.innerHTML || ''}`;
+    return;
+  }
+  gotoWiz(w);
+});
+
+/* 입력받은 키로 toss.json 을 만들어 내려준다. 값은 이 함수 밖으로 나가지 않는다. */
+function wizDownload(){
+  const cfg = { client_id: wizKeys.id, client_secret: wizKeys.secret };
+  const seq = parseInt(document.getElementById('wiz-seq')?.value, 10);
+  if(isFinite(seq)) cfg.account_seq = seq;
+  const blob = new Blob([JSON.stringify(cfg, null, 2) + '\n'], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'toss.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
 /* 계정 메뉴 → 토스 연결: 포트폴리오로 옮겨 설정을 펴고 그 칸을 비춰 준다 */
@@ -6342,7 +6580,12 @@ const acctStores = () => ({ favorites: FAV_KEY, sections: SEC_KEY, folio: FOLIO_
 
 function acctAction(a){
   if(a === 'logout'){ closeAcctMenu(); logout(); return; }
-  if(a === 'broker'){ closeAcctMenu(); openBrokerSettings(); return; }
+  if(a === 'broker'){
+    closeAcctMenu();
+    if(bridgeOk) openBrokerSettings();      // 이미 연결됐으면 설정으로
+    else { setView('folio'); openWizard(); }
+    return;
+  }
 
   if(a === 'export'){
     const dump = { _app: 'money-connection', _version: 1,
