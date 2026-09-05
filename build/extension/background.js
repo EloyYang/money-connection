@@ -14,8 +14,11 @@ const cfg = () => chrome.storage.local.get(['client_id', 'client_secret', 'accou
 async function token(){
   if(tok.value && Date.now() < tok.expires) return tok.value;
   const c = await cfg();
-  if(!c.client_id || !c.client_secret)
-    throw new Error('키가 설정되지 않았습니다. 확장 프로그램 옵션에서 client_id / client_secret 을 넣어 주세요.');
+  if(!c.client_id || !c.client_secret){
+    const e = new Error('확장 프로그램에 키가 없습니다. 설정 창에서 client_id / client_secret 을 넣어 주세요.');
+    e.code = 'NO_KEYS';
+    throw e;
+  }
   const r = await fetch(API + '/oauth2/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -99,7 +102,7 @@ async function handle(msg){
   if(op === 'health'){
     await token();                       // 키가 실제로 통하는지까지 확인
     const s = await seq();
-    return { ok: true, accountSeq: s, accountNo: acct.no };
+    return { ok: true, accountSeq: s, accountNo: acct.no, hasKeys: true };
   }
   if(op === 'get' && path === '/accounts') return await call('GET', '/api/v1/accounts', null, false);
   if(op === 'get' && path === '/holdings'){
@@ -128,7 +131,7 @@ async function handle(msg){
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   handle(msg).then(data => reply({ ok: true, data }))
-             .catch(e => reply({ ok: false, error: String(e.message || e) }));
+             .catch(e => reply({ ok: false, error: String(e.message || e), code: e.code || null }));
   return true;                            // 비동기 응답
 });
 

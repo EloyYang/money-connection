@@ -5138,6 +5138,9 @@ function renderTrades(){
    ===================================================================== */
 let tkSide = 'BUY', tkType = 'MARKET';
 let bridgeOk = false, bridgeAccount = null;
+/* 확장 프로그램 상태 — setBrokerChip 과 bridge() 가 이미 이 값을 읽으므로
+   선언이 그보다 뒤에 있으면 TDZ 로 죽는다. 쓰는 곳보다 앞에 둔다. */
+let extReady = false, extVersion = null;
 
 const bridgeUrl = () => (folio.bridge || '').replace(/\/+$/, '');
 
@@ -5168,7 +5171,7 @@ function setBrokerChip(){
   chip.classList.toggle('on', bridgeOk);
   chip.textContent = bridgeOk
     ? `토스증권 연결됨${bridgeAccount ? ' · ' + bridgeAccount : ''}`
-    : '토스증권 미연결';
+    : extReady ? '확장 설치됨 · 키 없음' : '토스증권 미연결';
 }
 async function checkBridge(quiet){
   const st = document.getElementById('bridge-status');
@@ -5185,8 +5188,13 @@ async function checkBridge(quiet){
     bridgeOk = false; bridgeAccount = null;
     const m = e.message || '';
     // 네트워크 단계에서 죽었는지, 토스가 거절했는지를 나눠서 안내한다
+    if(e.code === 'NO_KEYS'){
+      if(st && !quiet) st.innerHTML = NO_KEYS_HTML;
+      setBrokerChip(); updateTicket();
+      return false;
+    }
     const why = extReady
-      ? '확장 프로그램은 설치되어 있지만 토스 호출이 실패했습니다. 확장 옵션에서 키를 확인하세요.'
+      ? '확장 프로그램은 설치되어 있지만 토스 호출이 실패했습니다. 확장 설정 창에서 키를 확인하세요.'
       : /Failed to fetch|NetworkError|load failed/i.test(m)
       ? '브리지에 닿지 못했습니다. 확장 프로그램을 설치하지 않았다면 내 PC에서 '
         + '<code>python3 ~/Downloads/toss_bridge.py</code> 가 켜져 있는지, '
@@ -5445,6 +5453,13 @@ document.getElementById('bridge-test').addEventListener('click', () => checkBrid
 document.getElementById('bridge-sync').addEventListener('click', async () => {
   if(!requireLogin()) return;
   const st = document.getElementById('bridge-status');
+  // "연결됨" 표시는 낡을 수 있다 — 확장을 다시 올리면 저장된 키가 지워진다.
+  // 그래서 가져오기 직전에 키가 아직 있는지 실제로 물어본다.
+  if(extReady && (await extHasKeys()) === false){
+    bridgeOk = false; setBrokerChip(); updateTicket();
+    st.innerHTML = NO_KEYS_HTML;
+    return;
+  }
   try {
     const r = await bridge('/holdings');
     const items = r.items || [];
@@ -5464,7 +5479,12 @@ document.getElementById('bridge-sync').addEventListener('click', async () => {
     document.querySelectorAll('[data-m]').forEach(x => x.classList.toggle('on', x.dataset.m === 'live'));
     st.textContent = `실거래 장부에 보유 ${applied}종목을 반영했습니다.` +
       (unknown.length ? ` 이 대시보드에 없는 종목은 건너뛰었습니다: ${unknown.join(', ')}` : '');
-  } catch(e){ st.textContent = '가져오기 실패: ' + e.message; }
+  } catch(e){
+    if(e.code === 'NO_KEYS'){
+      bridgeOk = false; setBrokerChip(); updateTicket();
+      st.innerHTML = NO_KEYS_HTML;
+    } else st.textContent = '가져오기 실패: ' + e.message;
+  }
 });
 document.getElementById('folio-export').addEventListener('click', () => {
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -6412,7 +6432,6 @@ const BRIDGE_SRC = /*__BRIDGE__*/;      // 빌드 시 build/toss_bridge.py 가 �
    부탁할 뿐이다.
    ===================================================================== */
 const EXT_FILES = /*__EXT__*/;      // 빌드 시 build/extension/* 이 그대로 들어온다
-let extReady = false, extVersion = null;
 const extWaiters = new Map();
 let extSeq = 0;
 
@@ -6428,7 +6447,8 @@ window.addEventListener('message', ev => {
   if(!w) return;
   extWaiters.delete(d.id);
   clearTimeout(w.timer);
-  d.ok ? w.resolve(d.data) : w.reject(new Error(d.error || '확장 프로그램 오류'));
+  if(d.ok) w.resolve(d.data);
+  else { const e = new Error(d.error || '확장 프로그램 오류'); e.code = d.code || null; w.reject(e); }
 });
 
 function extCall(op, path, body, ms = 20000){
@@ -6444,6 +6464,16 @@ function extCall(op, path, body, ms = 20000){
   });
 }
 
+/* 확장의 첫 인사를 놓쳤을 수 있으므로 페이지에서도 물어본다.
+   content script 는 document_start 에 뜨고 이 스크립트는 그 뒤에 돌기 때문이다. */
+function probeExtension(){
+  if(extReady) return;
+  window.postMessage({ source: 'mc-page', id: 'ping', op: 'ping' }, location.origin);
+}
+probeExtension();
+window.addEventListener('load', probeExtension);
+setTimeout(probeExtension, 600);
+
 function onExtFound(){
   const el = document.getElementById('wiz-ext-state');
   if(el) el.innerHTML = `<span style="color:var(--up)">확장 프로그램이 설치되어 있습니다 (v${esc(String(extVersion))})</span>`
@@ -6454,6 +6484,26 @@ function onExtFound(){
 
 /* 연결 수단: 확장이 있으면 확장, 없으면 로컬 브리지 */
 const linkMode = () => extReady ? 'ext' : 'bridge';
+
+/* 확장에 키가 들어 있는지 — "연결됨" 표시가 낡아서 거짓말하지 않도록 매번 묻는다 */
+async function extHasKeys(){
+  if(!extReady) return null;
+  try { return !!(await extCall('status', null, null, 4000)).configured; }
+  catch(e){ return false; }
+}
+
+/* 키가 없을 때 공통으로 보여 줄 안내 */
+const NO_KEYS_HTML = '<span style="color:var(--down)">확장 프로그램에 키가 없습니다.</span> '
+  + '설정 창에서 client_id / client_secret 을 넣어 주세요. '
+  + '<button class="linkbtn" data-w="open-setup">설정 창 열기</button>';
+
+/* 마법사 밖에서도 "설정 창 열기" 가 동작하게 한다 */
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-w="open-setup"]');
+  if(!b) return;
+  ev.preventDefault();
+  extCall('setup').catch(() => {});
+});
 
 const WIZ = ['ask', 'issue', 'how', 'keys', 'install', 'connect', 'done'];
 let wizStep = 'ask';
@@ -6541,6 +6591,9 @@ function renderWizard(){
         <span style="color:var(--text-muted)">창이 안 뜨면 브라우저 툴바의 확장 아이콘(!)을 누르세요.</span></li>
       <li>이 페이지를 <b>새로고침</b>하면 확장이 인식됩니다.</li>
     </ol>
+    <div class="wiz-note"><b>확장을 지웠다가 다시 올리면 저장된 키도 함께 지워집니다.</b>
+      새 버전으로 교체했다면 설정 창에서 키를 다시 넣어 주세요
+      (툴바 아이콘에 <b>!</b> 배지가 붙어 있으면 키가 없다는 뜻입니다).</div>
     <div id="wiz-ext-state" class="wiz-note"></div>
     <div class="wiz-warn">키는 확장 안에만 저장되고 이 페이지로 넘어오지 않습니다.
       다만 <b>확장이 켜져 있는 동안에는 이 대시보드가 실제 주문을 낼 수 있습니다</b> —
