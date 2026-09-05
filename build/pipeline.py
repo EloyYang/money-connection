@@ -1080,6 +1080,13 @@ def render(corr, px, oh, leaders, fund, macro, members, themes, index_date, prob
         "leaders": leaders,
         "fx": {"KRW": usdkrw},          # 거래대금을 달러로 환산할 때 쓴다
     }
+    auth_path = os.path.join(ROOT, "data", "auth.json")
+    auth = json.load(open(auth_path)) if os.path.exists(auth_path) else {}
+    auth = {k: v for k, v in auth.items() if not k.startswith("_")}
+    have = [k for k, v in auth.items() if isinstance(v, dict) and any(
+        vv for kk, vv in v.items() if not kk.startswith("_"))]
+    log(f"auth providers configured: {', '.join(have) if have else '(none — 비회원 모드만)'}")
+
     blob = lambda o: json.dumps(o, separators=(",", ":"), ensure_ascii=False)
     body = (tpl.replace("/*__CANDLE_ENGINE__*/", engine, 1)
                .replace("/*__CORR__*/", blob(corr))
@@ -1088,7 +1095,8 @@ def render(corr, px, oh, leaders, fund, macro, members, themes, index_date, prob
                .replace("/*__NODES__*/", blob(nodes))
                .replace("/*__FUND__*/", blob(fund))
                .replace("/*__MACRO__*/", blob(macro))
-               .replace("/*__META__*/", blob(meta)))
+               .replace("/*__META__*/", blob(meta))
+               .replace("/*__AUTH__*/", blob(auth)))
 
     # The template is written for the Artifact wrapper, which supplies the
     # document head. A standalone site has to bring its own — without the
