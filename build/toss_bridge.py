@@ -186,7 +186,21 @@ class Handler(BaseHTTPRequestHandler):
                 r = res.get("result") or {}
                 return self._send(200, {"items": r.get("items") or [], "overview": r})
             if path == "/orders":
-                return self._send(200, call("GET", "/api/v1/orders", self.cfg))
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                qs = urllib.parse.urlencode({k: v[0] for k, v in q.items()}) or "status=OPEN"
+                return self._send(200, call("GET", f"/api/v1/orders?{qs}", self.cfg))
+            if path == "/candles":
+                q = {k: v[0] for k, v in
+                     urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).items()}
+                q.setdefault("interval", "1m")
+                q.setdefault("count", "200")
+                return self._send(200, call("GET", "/api/v1/candles?" + urllib.parse.urlencode(q),
+                                            self.cfg, account=False))
+            if path == "/commissions":
+                return self._send(200, call("GET", "/api/v1/commissions", self.cfg, account=False))
+            if path.startswith("/order/"):
+                oid = path[len("/order/"):]
+                return self._send(200, call("GET", f"/api/v1/orders/{urllib.parse.quote(oid)}", self.cfg))
             return self._send(404, {"error": "not found"})
         except Exception as e:                        # noqa: BLE001
             log(f"GET {path} failed: {e}")

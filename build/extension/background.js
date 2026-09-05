@@ -111,6 +111,20 @@ async function handle(msg){
     return { items: r.items || [], overview: r };
   }
   if(op === 'get' && path === '/orders') return await call('GET', '/api/v1/orders');
+  if(op === 'candles'){                  // 분봉·일봉 — 화면에 열린 종목만 부른다
+    const q = new URLSearchParams({ symbol: body.symbol, interval: body.interval || '1m',
+                                    count: String(body.count || 200) });
+    if(body.before) q.set('before', body.before);
+    return await call('GET', `/api/v1/candles?${q}`, null, false);
+  }
+  if(op === 'orderList'){                // 체결 추적용 주문 목록
+    const q = new URLSearchParams({ status: body?.status || 'OPEN' });
+    if(body?.symbol) q.set('symbol', body.symbol);
+    if(body?.limit) q.set('limit', String(body.limit));
+    return await call('GET', `/api/v1/orders?${q}`);
+  }
+  if(op === 'orderDetail') return await call('GET', `/api/v1/orders/${encodeURIComponent(body.orderId)}`);
+  if(op === 'commissions') return await call('GET', '/api/v1/commissions', null, false);
   if(op === 'order'){
     for(const k of ['symbol', 'side', 'orderType', 'quantity'])
       if(!body?.[k]) throw new Error(`${k} 가 필요합니다.`);

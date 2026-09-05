@@ -50,6 +50,7 @@ function drawAllPanes(){
 /* Everything that belongs to "the chart you are working on" is rebound here:
    the header, the indicator toolbar, the summary and the order ticket. */
 function syncChartHeader(){
+  if(typeof syncIvButtons === 'function') syncIvButtons();   // 패널마다 봉 단위가 다르다
   const tk = cTk, node = nodeIndex.get(tk);
   if(!tk) return;
   document.getElementById('m-tk').textContent = tk;
@@ -57,7 +58,7 @@ function syncChartHeader(){
   document.getElementById('m-nm').textContent = node ? node.name : '';
   // the quote used to be written only at the end of drawCandle(), so switching
   // panes left the previous chart's price beside the new ticker
-  const rows = ohlcOf(tk);
+  const rows = chartRows(tk);
   let li = rows.length - 1; while(li >= 0 && !rows[li]) li--;
   let pi = li - 1;          while(pi >= 0 && !rows[pi]) pi--;
   if(li >= 0){
@@ -65,7 +66,7 @@ function syncChartHeader(){
     document.getElementById('m-px').textContent = fmtPx(last[3], node?.currency || 'USD');
     const d = prev && prev[3] ? (last[3] - prev[3]) / prev[3] * 100 : 0;
     const el = document.getElementById('m-chg');
-    el.textContent = `${d >= 0 ? '+' : ''}${d.toFixed(2)}%  (${OH.dates[li]})`;
+    el.textContent = `${d >= 0 ? '+' : ''}${d.toFixed(2)}%  (${barLabel(li)})`;
     el.style.color = d >= 0 ? '#3ddc84' : '#ff5c72';
   }
   selectedTk = tk;
@@ -136,7 +137,7 @@ function endDrag(){
 function onDragMove(ev){
   if(!activeDrag || !geom) return;
   const dx = ev.clientX - activeDrag.px, dy = ev.clientY - activeDrag.py;
-  const rows = ohlcOf(cTk), maxSpan = rows.length - 1;
+  const rows = chartRows(cTk), maxSpan = rows.length - 1;
   const a = activeDrag;
 
   if(a.kind === 'pan'){
@@ -190,7 +191,7 @@ function drawCandle(silent){
   bigSvg.attr('viewBox', `0 0 ${W} ${H}`);
   bigSvg.selectAll('*').remove();
 
-  const rows = ohlcOf(cTk);
+  const rows = chartRows(cTk);
   const i0 = Math.max(0, Math.round(cI0)), i1 = Math.min(rows.length-1, Math.round(cI1));
   const vis = [];
   for(let i=i0;i<=i1;i++) if(rows[i]) vis.push({ i, d: rows[i] });
@@ -232,7 +233,7 @@ function drawCandle(silent){
   });
   const nLab = Math.max(2, Math.min(8, Math.floor(plotW/110)));
   for(let k=0;k<=nLab;k++){
-    const idx = Math.round(i0 + (i1-i0)*k/nLab), lab = OH.dates[idx];
+    const idx = Math.round(i0 + (i1-i0)*k/nLab), lab = barLabel(idx);
     if(!lab) continue;
     bigSvg.append('text').attr('x',x(idx)).attr('y',H-8)
       .attr('text-anchor', k===0?'start':k===nLab?'end':'middle')
@@ -298,7 +299,7 @@ function drawCandle(silent){
       chY.attr('y1',my).attr('y2',my);
       chLab.attr('y',my+3.5).text(invY(my).toFixed(2));
       const chg = (r[3]-r[0])/r[0]*100;
-      readout.innerHTML = `${OH.dates[idx]}  시가 <b>${r[0]}</b>  고가 <b>${r[1]}</b>  저가 <b>${r[2]}</b>  ` +
+      readout.innerHTML = `${barLabel(idx)}  시가 <b>${r[0]}</b>  고가 <b>${r[1]}</b>  저가 <b>${r[2]}</b>  ` +
         `종가 <b style="color:${r[3]>=r[0]?UP:DOWN}">${r[3]}</b>  ` +
         `<span style="color:${chg>=0?UP:DOWN}">${chg>=0?'+':''}${chg.toFixed(2)}%</span>` +
         (r[4] ? `  거래량 ${(r[4]/1000).toFixed(1)}M` : '');
@@ -377,7 +378,7 @@ function drawCandle(silent){
   document.getElementById('m-px').textContent = fmtPx(last[3], nodeIndex.get(cTk)?.currency || 'USD');
   const dChg = prev ? (last[3]-prev[3])/prev[3]*100 : 0;
   const chgEl = document.getElementById('m-chg');
-  chgEl.textContent = `${dChg>=0?'+':''}${dChg.toFixed(2)}%  (${OH.dates[vis[vis.length-1].i]})`;
+  chgEl.textContent = `${dChg>=0?'+':''}${dChg.toFixed(2)}%  (${barLabel(vis[vis.length-1].i)})`;
   chgEl.style.color = dChg >= 0 ? UP : DOWN;
   document.getElementById('m-yfit').classList.toggle('on', !!yManual);
 }
@@ -528,7 +529,7 @@ function rsiSeries(vals, n){
 let _indCache = { tk: null };
 function indicatorsFor(tk){
   if(_indCache.tk === tk) return _indCache;
-  const rows = ohlcOf(tk);
+  const rows = chartRows(tk);
   const close = rows.map(r => r ? r[3] : null);
   const vol = rows.map(r => r ? r[4] : null);
   const ma = {};
