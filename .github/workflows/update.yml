@@ -7,7 +7,7 @@ on:
   workflow_dispatch:        # manual run button
   push:
     branches: [main]
-    paths: ["build/**", "data/themes.json", ".github/workflows/update.yml"]
+    paths: ["build/**", "data/themes.json", "data/auth.json", ".github/workflows/update.yml"]
 
 permissions:
   contents: write           # commit the sector cache / build stamp
