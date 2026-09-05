@@ -286,6 +286,25 @@
   .cpane{ position:relative; min-width:0; min-height:0; border-radius:8px;
     border:1px solid transparent; overflow:hidden; }
   .cpane.active{ border-color:rgba(199,125,255,0.5); }
+  .corner-btn{ position:absolute; top:8px; right:8px; z-index:8; padding:4px 8px; font-size:13px;
+    line-height:1; background:rgba(18,21,27,0.86); backdrop-filter:blur(4px); }
+  /* pane chip: the drag handle, the symbol label and the close button */
+  .pane-chip{ position:absolute; top:6px; left:8px; z-index:7; display:flex; align-items:center; gap:5px;
+    padding:2px 5px 2px 4px; border-radius:6px; background:rgba(18,21,27,0.86); backdrop-filter:blur(4px);
+    border:1px solid var(--border); font-family:'JetBrains Mono',monospace; font-size:11px;
+    font-weight:600; cursor:grab; user-select:none; }
+  .pane-chip:active{ cursor:grabbing; }
+  .pane-chip .grip{ color:var(--text-muted); font-size:10px; letter-spacing:-1px; }
+  .pane-chip .x{ border:none; background:none; color:var(--text-muted); cursor:pointer;
+    font-size:11px; line-height:1; padding:0 1px; font-family:inherit; }
+  .pane-chip .x:hover{ color:var(--down); }
+  .cpane.drop-replace{ border-color:var(--accent); box-shadow:inset 0 0 0 2px rgba(95,208,255,0.25); }
+  .cpane.drop-split{ border-color:var(--up); box-shadow:inset 0 0 0 2px rgba(61,220,132,0.28); }
+  .cpane.drop-swap{ border-color:var(--sel); box-shadow:inset 0 0 0 2px rgba(199,125,255,0.3); }
+  .cpane .drop-hint{ position:absolute; inset:auto 0 8px 0; text-align:center; z-index:9;
+    font-size:11px; color:var(--text-primary); pointer-events:none; }
+  .tv-row[draggable="true"]{ cursor:grab; }
+  .tv-row.dragging{ opacity:0.45; }
   .cpane svg{ display:block; width:100%; height:100%; touch-action:none; }
   .tv-main:fullscreen{ background:var(--panel-solid); border-radius:0; }
   /* fallback when the Fullscreen API is unavailable: the chart takes the tab */
@@ -681,7 +700,7 @@
         <div class="seg-mini seg-wrap" id="tv-list-mode">
           <button data-l="fav" class="on">즐겨찾기</button><button data-l="hold">보유</button><button data-l="lead">주도주</button>
         </div>
-        <div class="ctl-note" style="margin:-2px 0 6px">클릭 = 차트 · ⌘/Ctrl+클릭 = 비교<button class="help" data-h="tvCompare">?</button></div>
+        <div class="ctl-note" style="margin:-2px 0 6px">클릭 = 차트 · ⌘/Ctrl+클릭 = 비교 · 끌어다 놓기 = 분할<button class="help" data-h="tvCompare">?</button></div>
         <div id="tv-list"></div>
       </aside>
 
@@ -699,10 +718,6 @@
           <button class="tool" id="tool-clear">↺ 전체</button>
           <button class="tool" id="m-yfit">⇕ 가격축 자동</button>
           <span class="ind-lab" style="margin-left:2px">분할<button class="help" data-h="chartSplit">?</button></span>
-          <span class="seg" id="split-sel" title="차트 분할">
-            <button data-n="1" class="on">1</button><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button>
-          </span>
-          <button class="tool" id="m-full" title="전체화면 (F)">⛶ 전체화면</button>
         </div>
         <div class="tv-ind">
           <span class="ind-lab">보조지표<button class="help" data-h="indicators">?</button></span>
@@ -715,6 +730,7 @@
           </span>
         </div>
         <div class="modal-body" id="tv-chart">
+          <button class="tool corner-btn" id="m-full" title="전체화면 (F)" aria-label="전체화면">⛶</button>
           <div id="sel-bar" hidden>
             <button id="sel-copy">⧉ 복사</button><button id="sel-del">🗑 삭제</button>
           </div>
@@ -1322,9 +1338,13 @@ const HELP = {
     '주문할 때 적은 근거가 거래와 함께 저장됩니다. 나중에 이 칸을 클릭하면 수정할 수 있고, CSV 내보내기에도 포함됩니다.\n\n' +
     '수익이 난 이유와 손실이 난 이유를 나중에 구분할 수 있는 유일한 기록입니다 — 체결가만 남으면 왜 샀는지는 사라집니다.' },
   chartSplit: { t: '차트 분할 · 전체화면', dir: null, d:
-    '차트를 최대 4개까지 나눠 서로 다른 종목을 동시에 볼 수 있습니다. 각 패널은 종목·기간·확대 상태를 따로 가집니다.\n\n' +
-    '패널을 클릭하면 활성 패널(보라색 테두리)이 되고, 왼쪽 목록에서 종목을 고르거나 보조지표·추세선을 쓰면 활성 패널에 적용됩니다. ' +
-    '⛶ 또는 F 키로 전체화면을 켜고 끕니다.' },
+    '왼쪽 목록의 종목을 차트로 끌어다 놓으면 분할됩니다. 최대 4개.\n\n' +
+    '· 패널 가장자리에 놓으면 → 새 패널 추가 (초록 테두리)\n' +
+    '· 패널 가운데에 놓으면 → 그 패널의 종목 교체 (파란 테두리)\n' +
+    '· 패널 왼쪽 위 이름표(⠿)를 끌어 다른 패널에 놓으면 → 두 패널 위치 교환 (보라 테두리)\n' +
+    '· 이름표의 ✕ 로 패널을 닫습니다\n\n' +
+    '패널마다 종목·기간·확대 상태를 따로 가집니다. 클릭한 패널이 활성 패널(보라색 테두리)이 되고, 보조지표와 추세선은 활성 패널에 적용됩니다. ' +
+    '오른쪽 위 ⛶ 또는 F 키로 전체화면을 켜고 끕니다. 분할 구성은 브라우저에 저장됩니다.' },
   miniTrade: { t: '간편 주문', dir: null, d:
     '최근 종가로 바로 체결되는 시장가 주문입니다. 수량만 넣고 매수 또는 매도를 누르면 됩니다.\n\n' +
     '지정가, 보조지표, 확대·추세선이 필요하면 아래 링크로 트레이딩 탭에서 같은 종목을 열 수 있습니다. ' +
@@ -5098,36 +5118,140 @@ function openTrading(tk){
   setView('trade');
 }
 
-const SPLIT_KEY = 'money-connection.split';
-let splitN = 1;
-try { splitN = Math.min(4, Math.max(1, +localStorage.getItem(SPLIT_KEY) || 1)); } catch(e){}
+const SPLIT_KEY = 'money-connection.splitTickers';
+const MAX_PANES = 4;
 
-/* Build (or rebuild) the pane grid. Panes keep whatever symbol they had; new
-   ones start on the active symbol so a fresh split shows something at once. */
-function buildPanes(n){
+/* The pane grid is built from a list of symbols. There is no split control:
+   dragging a ticker onto the chart adds a pane, its ✕ removes one, and dragging
+   a pane's chip onto another swaps them. */
+function buildPanes(tickers){
   const body = document.getElementById('tv-chart');
-  const prev = PANES.map(p => p.tk);
-  body.className = 'modal-body n' + n;
+  const list = (tickers && tickers.length ? tickers : [cTk]).slice(0, MAX_PANES);
+  body.className = 'modal-body n' + list.length;
   [...body.querySelectorAll('.cpane')].forEach(el => el.remove());
   PANES.length = 0;
-  for(let i = 0; i < n; i++){
+  list.forEach((tk, i) => {
     const host = document.createElement('div');
     host.className = 'cpane';
+    host.dataset.i = i;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     host.appendChild(svg);
+    host.appendChild(paneChip(i, tk, list.length));
     body.appendChild(host);
-    PANES.push({ tk: prev[i] || cTk, i0: 0, i1: 0, yManual: null, host, sel: d3.select(svg) });
-  }
+    wirePaneDnD(host, i);
+    PANES.push({ tk, i0: 0, i1: 0, yManual: null, host, sel: d3.select(svg) });
+  });
   activeP = 0;
   loadPane(0);
   markActivePane();
+  savePanes();
+}
+const savePanes = () => { try { localStorage.setItem(SPLIT_KEY, JSON.stringify(PANES.map(p => p.tk))); } catch(e){} };
+function loadSavedPanes(){
+  try {
+    const a = JSON.parse(localStorage.getItem(SPLIT_KEY) || 'null');
+    if(Array.isArray(a) && a.length) return a.filter(t => nodeIndex.has(t)).slice(0, MAX_PANES);
+  } catch(e){}
+  return null;
+}
+
+function paneChip(i, tk, total){
+  const n = nodeIndex.get(tk);
+  const chip = document.createElement('div');
+  chip.className = 'pane-chip';
+  chip.draggable = true;
+  chip.title = '끌어서 위치 변경';
+  chip.innerHTML = `<span class="grip">⠿</span><span style="color:${n?.color || 'inherit'}">${
+    n?.assetClass === 'kr_stock' ? esc(n.name) : tk}</span>` +
+    (total > 1 ? '<button class="x" title="이 패널 닫기">✕</button>' : '');
+  chip.addEventListener('mousedown', ev => { ev.stopPropagation(); focusPane(i); });
+  chip.addEventListener('dragstart', ev => {
+    ev.dataTransfer.effectAllowed = 'move';
+    try { ev.dataTransfer.setData('text/plain', 'pane:' + i); } catch(e){}
+    dragPayload = { kind: 'pane', from: i };
+  });
+  chip.addEventListener('dragend', clearDropMarks);
+  chip.querySelector('.x')?.addEventListener('click', ev => { ev.stopPropagation(); removePane(i); });
+  return chip;
+}
+
+function currentTickers(){ stashPane(); return PANES.map(p => p.tk); }
+function rebuild(tickers, focusIdx){
+  buildPanes(tickers);
+  PANES.forEach((p, i) => { loadPane(i); setRange(rangeDays()); });
+  loadPane(Math.min(focusIdx ?? 0, PANES.length - 1));
+  activeP = Math.min(focusIdx ?? 0, PANES.length - 1);
+  markActivePane(); syncChartHeader(); renderTvList();
+}
+function addPane(tk){
+  const list = currentTickers();
+  if(list.length >= MAX_PANES){ replacePane(activeP, tk); return; }
+  list.push(tk);
+  rebuild(list, list.length - 1);
+}
+function removePane(i){
+  const list = currentTickers();
+  if(list.length <= 1) return;
+  list.splice(i, 1);
+  rebuild(list, Math.max(0, i - 1));
+}
+function replacePane(i, tk){
+  const list = currentTickers();
+  list[i] = tk;
+  rebuild(list, i);
+}
+function swapPanes(a, b){
+  if(a === b) return;
+  const list = currentTickers();
+  [list[a], list[b]] = [list[b], list[a]];
+  rebuild(list, b);
+}
+
+/* ---- drag and drop ---- */
+let dragPayload = null;
+function clearDropMarks(){
+  document.querySelectorAll('.cpane').forEach(el =>
+    el.classList.remove('drop-replace', 'drop-split', 'drop-swap'));
+  document.querySelectorAll('.tv-row.dragging').forEach(el => el.classList.remove('dragging'));
+  dragPayload = null;
+}
+/* centre = 교체, 가장자리 = 새 패널. A pane chip always swaps. */
+function dropIntent(host, ev){
+  if(dragPayload?.kind === 'pane') return 'swap';
+  const r = host.getBoundingClientRect();
+  const fx = (ev.clientX - r.left) / r.width, fy = (ev.clientY - r.top) / r.height;
+  const edge = fx < 0.22 || fx > 0.78 || fy < 0.22 || fy > 0.78;
+  return (edge && PANES.length < MAX_PANES) ? 'split' : 'replace';
+}
+function wirePaneDnD(host, i){
+  host.addEventListener('dragover', ev => {
+    if(!dragPayload) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'move';
+    const intent = dropIntent(host, ev);
+    host.classList.toggle('drop-replace', intent === 'replace');
+    host.classList.toggle('drop-split', intent === 'split');
+    host.classList.toggle('drop-swap', intent === 'swap');
+  });
+  host.addEventListener('dragleave', ev => {
+    if(!host.contains(ev.relatedTarget)) host.classList.remove('drop-replace', 'drop-split', 'drop-swap');
+  });
+  host.addEventListener('drop', ev => {
+    ev.preventDefault();
+    const intent = dropIntent(host, ev);
+    const pl = dragPayload;
+    clearDropMarks();
+    if(!pl) return;
+    if(pl.kind === 'pane') swapPanes(pl.from, i);
+    else if(intent === 'split') addPane(pl.tk);
+    else replacePane(i, pl.tk);
+  });
 }
 
 function renderTrading(){
   if(!cTk){
     cTk = selectedTk || [...favorites][0] || (leadData().up[0] || {}).t || CORR.tickers[0];
   }
-  document.querySelectorAll('#split-sel button').forEach(b => b.classList.toggle('on', +b.dataset.n === splitN));
   renderTvList();
   renderTvSummary();
   renderIndButtons();
@@ -5137,9 +5261,7 @@ function renderTrading(){
   const tryDraw = (n = 0) => {
     const body = document.getElementById('tv-chart');
     if(body && body.clientWidth > 40 && body.clientHeight > 40){
-      buildPanes(splitN);
-      PANES.forEach((p, i) => { loadPane(i); setRange(rangeDays()); });
-      loadPane(0); markActivePane(); syncChartHeader();
+      rebuild(PANES.length ? currentTickers() : (loadSavedPanes() || [cTk]), activeP);
       return;
     }
     if(n < 30) requestAnimationFrame(() => tryDraw(n + 1));
@@ -5147,15 +5269,6 @@ function renderTrading(){
   tryDraw();
 }
 const rangeDays = () => { const b = document.querySelector('#m-range button.on'); return b ? +b.dataset.d : 252; };
-
-document.querySelectorAll('#split-sel button').forEach(b => b.addEventListener('click', () => {
-  splitN = +b.dataset.n;
-  try { localStorage.setItem(SPLIT_KEY, String(splitN)); } catch(e){}
-  document.querySelectorAll('#split-sel button').forEach(x => x.classList.toggle('on', x === b));
-  buildPanes(splitN);
-  PANES.forEach((p, i) => { loadPane(i); setRange(rangeDays()); });
-  loadPane(0); markActivePane(); syncChartHeader();
-}));
 
 /* ---- 전체화면 ---- */
 /* Embedded contexts (an iframe without allow="fullscreen") reject the API
@@ -5193,7 +5306,7 @@ document.addEventListener('keydown', ev => {
 });
 
 function loadChart(tk){
-  if(PANES[activeP]) PANES[activeP].tk = tk;
+  if(PANES[activeP]){ PANES[activeP].tk = tk; savePanes(); }
   cTk = tk; cTool = null; cPending = null; cSel = null; yManual = null;
   document.getElementById('sel-bar').hidden = true;
   ['tool-trend', 'tool-hline'].forEach(id => document.getElementById(id).classList.remove('on'));
@@ -5241,7 +5354,7 @@ function renderTvList(){
   }
   host.innerHTML = list.map(t => {
     const n = nodeIndex.get(t), r = n.stats.ret_1y ?? 0;
-    return `<div class="tv-row ${t === cTk ? 'on' : ''}" data-tk="${t}">
+    return `<div class="tv-row ${t === cTk ? 'on' : ''}" data-tk="${t}" draggable="true">
       <span class="dot" style="width:7px;height:7px;background:${n.color};box-shadow:none"></span>
       <span class="nm">${n.assetClass === 'kr_stock' ? n.name : t}</span>
       <span class="rt" style="color:${r >= 0 ? 'var(--up)' : 'var(--down)'}">${r >= 0 ? '+' : ''}${r}%</span>
@@ -5260,8 +5373,16 @@ function renderTvList(){
       }
       selectTrading(tk);
     }));
-  host.querySelectorAll('.tv-row').forEach(el =>
-    el.classList.toggle('cmp', compareSet.length > 1 && compareSet.includes(el.dataset.tk)));
+  host.querySelectorAll('.tv-row').forEach(el => {
+    el.classList.toggle('cmp', compareSet.length > 1 && compareSet.includes(el.dataset.tk));
+    el.addEventListener('dragstart', ev => {
+      dragPayload = { kind: 'ticker', tk: el.dataset.tk };
+      el.classList.add('dragging');
+      ev.dataTransfer.effectAllowed = 'copy';
+      try { ev.dataTransfer.setData('text/plain', el.dataset.tk); } catch(e){}
+    });
+    el.addEventListener('dragend', clearDropMarks);
+  });
 }
 
 /* The same stock detail the network shows, floated over whatever tab you are

@@ -349,14 +349,7 @@ function drawCandle(silent){
   positionSelBar();
 
   const last = vis[vis.length-1].d, prev = vis.length > 1 ? vis[vis.length-2].d : null;
-  // a pane label, so a split chart says which symbol is which
-  if(PANES.length > 1){
-    bigSvg.append('text').attr('x', CM.l + 4).attr('y', CM.t + 12).attr('font-size', 11)
-      .attr('font-weight', 600).attr('fill', nodeIndex.get(cTk)?.color || 'var(--text-primary)')
-      .attr('font-family', "'JetBrains Mono',monospace").style('pointer-events', 'none')
-      .text(nodeIndex.get(cTk)?.assetClass === 'kr_stock' ? nodeIndex.get(cTk).name : cTk);
-  }
-  if(silent) return;
+  if(silent) return;      // 패널 이름표는 HTML 칩이 담당한다
   document.getElementById('m-px').textContent = fmtPx(last[3], nodeIndex.get(cTk)?.currency || 'USD');
   const dChg = prev ? (last[3]-prev[3])/prev[3]*100 : 0;
   const chgEl = document.getElementById('m-chg');
