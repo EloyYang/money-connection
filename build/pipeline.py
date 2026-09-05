@@ -902,6 +902,7 @@ def analyse(series, members, themes, index_date, nasdaq_tickers, factors=None, b
         if pd_["days"] == CORR_WINDOW_DAYS:
             period_matrices[pd_["key"]] = matrix
             p_from, p_to = w_dates[0], w_dates[-1]
+            p_rets_for_count = w_rets
         else:
             cut = dates[-1] - datetime.timedelta(days=pd_["days"])
             i0 = next((i for i, d in enumerate(dates) if d > cut), 0)
@@ -911,8 +912,14 @@ def analyse(series, members, themes, index_date, nasdaq_tickers, factors=None, b
             min_ov = min(MIN_OVERLAP, max(20, int(len(p_dates) * 0.25)))
             period_matrices[pd_["key"]] = corr_matrix(tickers, p_rets, p_dates, min_ov)
             p_from, p_to = p_dates[0], p_dates[-1]
+            p_rets_for_count = p_rets
+        # 헤더의 "거래일". 날짜 축은 모든 종목의 합집합이라 암호화폐 때문에
+        # 달력일에 가깝다 — 종목별 실제 관측 수의 중앙값이 맞는 값이다.
+        counts = sorted(sum(1 for v in p_rets_for_count[t] if v is not None) for t in tickers)
+        p_sessions = counts[len(counts) // 2] if counts else 0
         period_meta.append({"key": pd_["key"], "label": pd_["label"],
-                            "from": p_from.isoformat(), "to": p_to.isoformat()})
+                            "from": p_from.isoformat(), "to": p_to.isoformat(),
+                            "sessions": p_sessions})
     log(f"correlation matrices: {', '.join(p['label'] for p in period_meta)}")
 
     corr = {

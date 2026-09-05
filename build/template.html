@@ -494,8 +494,7 @@
   /* ---- 미체결 주문 · 알림 ---- */
   #open-orders{ margin-bottom:12px; }
   #open-orders[hidden]{ display:none; }
-  /* 트레이딩에는 오른쪽에 정식 주문창이 있고 지정가·보조지표도 이미 있다.
-     상세의 간편 주문과 "트레이딩에서 지정가·보조지표" 링크는 여기서 중복이다. */
+  /* 트레이딩에는 오른쪽에 정식 주문창이 있으므로 상세의 간편 주문은 중복이다 */
   body.view-trade #mini-trade{ display:none; }
   .oo-row{ display:grid; grid-template-columns:38px minmax(0,1fr) auto auto 62px 34px;
     gap:9px; align-items:center; padding:6px 2px; font-size:11.5px;
@@ -1211,7 +1210,6 @@
         </div>
       </div>
       <div class="tk-est" id="dt-est">—</div>
-      <button class="linkbtn" id="to-trading">⤢ 트레이딩에서 지정가 · 보조지표 →</button>
     </div>
 
     <div id="season-block">
@@ -2156,8 +2154,18 @@ window.addEventListener('resize', ()=>{
 
 /* ---------- header stats ---------- */
 document.getElementById('stat-nodes').textContent = nodes.length;
-const dayCounts = Object.values(CORR.stats).map(s=>s.days).sort((a,b)=>b-a);
-document.getElementById('stat-days').textContent = dayCounts[Math.floor(dayCounts.length/2)];
+/* 거래일은 지금 고른 기간의 관측 일수다 — 기간을 바꾸면 함께 바뀐다.
+   예전에는 1년 창에서 한 번 계산하고 끝이라 252 로 굳어 있었다. */
+const dayCounts = Object.values(CORR.stats).map(s => s.days).sort((a, b) => b - a);
+const medianDays = dayCounts[Math.floor(dayCounts.length / 2)];
+function renderStatDays(){
+  const p = (CORR.periods || []).find(x => x.key === period.corr);
+  const n = p && p.sessions ? p.sessions : medianDays;
+  const el = document.getElementById('stat-days');
+  el.textContent = n;
+  el.title = p ? `${p.label} · ${p.from} ~ ${p.to}` : '';
+}
+renderStatDays();
 (function renderFreshness(){
   const el = document.getElementById('freshness');
   if(!el || typeof META === 'undefined') return;
@@ -2371,6 +2379,7 @@ function applyRelation(){
     : '';
   document.getElementById('relation-note').textContent = fallback + info.note();
   document.getElementById('brand-sub').textContent = graphSubtitle();
+  renderStatDays();
 
   buildLinks(); drawLinks();
   sim.force('link', linkForce()); sim.alpha(0.5).restart();
@@ -3391,7 +3400,8 @@ function drawFundCmpChart(list){
   }
 
   const steps = Math.max(...rows.map(r => r.pts.length));
-  const W = 298, H = 150, m = { t: 12, r: 38, b: 20, l: 6 };
+  // 주가 비교 차트(CH)와 같은 높이로 — 같은 서랍에 나란히 놓이는 지수화 선 차트다
+  const W = 298, H = CH.h, m = { t: 12, r: 38, b: 20, l: 6 };
   const innerW = W - m.l - m.r, innerH = H - m.t - m.b;
   const vals = rows.flatMap(r => r.pts.map(p => p.v)).filter(v => v != null);
   const hi = Math.max(100, ...vals), lo = Math.min(100, ...vals), pad = (hi - lo) * 0.10 || 1;
@@ -5222,7 +5232,6 @@ document.addEventListener('keydown', ev => {
 // the drawer's chart hands off to the trading view for the same ticker
 document.getElementById('open-candle').addEventListener('click', ev => { ev.stopPropagation(); openTrading(selectedTk); });
 document.getElementById('chart-host').addEventListener('click', ()=> openTrading(selectedTk));
-document.getElementById('to-trading').addEventListener('click', ()=> openTrading(selectedTk));
 
 function setRange(days){
   yManual = null;                       // a new period re-fits the price axis
