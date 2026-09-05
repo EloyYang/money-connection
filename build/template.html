@@ -729,7 +729,7 @@
           <span class="ind-lab" style="margin-left:2px">분할<button class="help" data-h="chartSplit">?</button></span>
         </div>
         <div class="tv-ind">
-          <span class="ind-lab">보조지표<button class="help" data-h="indicators">?</button></span>
+          <span class="ind-lab">보조지표</span>
           <span class="seg-mini seg-wrap" id="ind-ma"></span>
           <span class="seg-mini seg-wrap" id="ind-extra">
             <button data-i="bb">볼린저</button><button data-i="vma">거래량 MA20</button>
@@ -1358,13 +1358,19 @@ const HELP = {
   tradeMemo: { t: '매매 근거 메모', dir: null, d:
     '주문할 때 적은 근거가 거래와 함께 저장됩니다. 나중에 이 칸을 클릭하면 수정할 수 있고, CSV 내보내기에도 포함됩니다.\n\n' +
     '수익이 난 이유와 손실이 난 이유를 나중에 구분할 수 있는 유일한 기록입니다 — 체결가만 남으면 왜 샀는지는 사라집니다.' },
+  indicators: { t: '보조지표', dir: null, d:
+    '이동평균(MA), 볼린저밴드(20,2), 거래량 MA20, 그리고 보조창의 RSI(14) 또는 MACD(12,26,9)입니다.\n\n' +
+    '분할 화면에서는 **클릭한 차트에만** 적용됩니다 — 패널마다 다른 지표를 걸어 둘 수 있습니다. ' +
+    '툴바 왼쪽에 지금 어느 종목에 적용 중인지 표시됩니다.\n\n' +
+    '모든 지표는 전체 이력에서 계산한 뒤 보이는 구간만 잘라 그립니다. 확대할 때마다 다시 시작하는 120일 이동평균은 120일 이동평균이 아니기 때문입니다.' },
   chartSplit: { t: '차트 분할 · 전체화면', dir: null, d:
     '왼쪽 목록의 종목을 차트로 끌어다 놓으면 분할됩니다. 최대 4개.\n\n' +
     '· 패널 가장자리에 놓으면 → 새 패널 추가 (초록 테두리, 최대 4개)\n' +
     '· 패널 가운데에 놓으면 → 그 패널의 종목 교체 (파란 테두리)\n' +
     '· 패널 왼쪽 위 이름표(⠿)를 끌어 다른 패널에 놓으면 → 두 패널 위치 교환 (보라 테두리)\n' +
     '· 이름표의 ✕ 로 패널을 닫습니다\n\n' +
-    '패널마다 종목·기간·확대 상태를 따로 가집니다. 클릭한 패널이 활성 패널(보라색 테두리)이 되고, 보조지표와 추세선은 활성 패널에 적용됩니다. ' +
+    '패널마다 종목·기간·확대·보조지표를 따로 가집니다. 패널을 클릭하면 활성 패널(보라색 테두리)로 고정되고, ' +
+    '오른쪽의 종목 요약과 주문창, 그리고 보조지표·추세선 도구가 모두 그 패널의 종목으로 바뀝니다. ' +
     '오른쪽 위 ⛶ 또는 F 키로 전체화면을 켜고 끕니다. 분할 구성은 브라우저에 저장됩니다.' },
   miniTrade: { t: '간편 주문', dir: null, d:
     '최근 종가로 바로 체결되는 시장가 주문입니다. 수량만 넣고 매수 또는 매도를 누르면 됩니다.\n\n' +
@@ -5197,8 +5203,10 @@ function buildPanes(tickers){
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     host.appendChild(svg);
     host.appendChild(paneChip(i, tk, list.length));
+    host.addEventListener('mousedown', () => focusPane(+host.dataset.i), true);
     body.appendChild(host);
-    PANES.push({ tk, i0: 0, i1: 0, yManual: null, host, sel: d3.select(svg) });
+    PANES.push({ tk, i0: 0, i1: 0, yManual: null, host, sel: d3.select(svg),
+                 ind: { ...IND, ma: [...IND.ma] } });
   });
   activeP = 0;
   loadPane(0);
@@ -5549,11 +5557,13 @@ function renderIndButtons(){
   document.getElementById('ind-ma').innerHTML = MA_DEFS.map(d =>
     `<button data-n="${d.n}" class="${IND.ma.includes(d.n) ? 'on' : ''}" style="${
       IND.ma.includes(d.n) ? `color:${d.c}` : ''}">MA${d.n}</button>`).join('');
-  document.querySelectorAll('#ind-ma button').forEach(b => b.addEventListener('click', () => {
-    const n = +b.dataset.n;
-    IND.ma = IND.ma.includes(n) ? IND.ma.filter(x => x !== n) : [...IND.ma, n];
-    saveInd(); renderIndButtons(); drawCandle();
-  }));
+  document.querySelectorAll('#ind-ma button').forEach(b => {
+    b.onclick = () => {
+      const n = +b.dataset.n;
+      IND.ma = IND.ma.includes(n) ? IND.ma.filter(x => x !== n) : [...IND.ma, n];
+      saveInd(); renderIndButtons(); drawCandle();
+    };
+  });
   document.querySelectorAll('#ind-extra button').forEach(b => {
     b.classList.toggle('on', !!IND[b.dataset.i]);
     b.onclick = () => { IND[b.dataset.i] = !IND[b.dataset.i]; saveInd(); renderIndButtons(); drawCandle(); };
@@ -5562,6 +5572,12 @@ function renderIndButtons(){
     b.classList.toggle('on', IND.sub === b.dataset.s);
     b.onclick = () => { IND.sub = b.dataset.s; saveInd(); renderIndButtons(); drawCandle(); };
   });
+  // say which chart the toolbar is driving once there is more than one
+  const lab = document.querySelector('.tv-ind .ind-lab');
+  if(lab) lab.innerHTML = (PANES.length > 1 && nodeIndex.get(cTk)
+      ? `보조지표 · <b style="color:${nodeIndex.get(cTk).color}">${
+          nodeIndex.get(cTk).assetClass === 'kr_stock' ? esc(nodeIndex.get(cTk).name) : cTk}</b>`
+      : '보조지표') + helpBadge('indicators');
 }
 
 document.querySelectorAll('#tv-list-mode button').forEach(b => b.addEventListener('click', () => {

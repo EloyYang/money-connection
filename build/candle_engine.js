@@ -14,13 +14,16 @@ let activeP = 0;
 
 function stashPane(){
   const p = PANES[activeP];
-  if(p){ p.tk = cTk; p.i0 = cI0; p.i1 = cI1; p.yManual = yManual; }
+  if(p){ p.tk = cTk; p.i0 = cI0; p.i1 = cI1; p.yManual = yManual; p.ind = IND; }
 }
 function loadPane(i){
   const p = PANES[i];
   if(!p) return;
   activeP = i;
   cTk = p.tk; cI0 = p.i0; cI1 = p.i1; yManual = p.yManual;
+  // the same object, not a copy: toggling an indicator writes straight through
+  // to the pane it belongs to
+  if(p.ind) IND = p.ind;
   bigSvg = p.sel;
 }
 function focusPane(i){
@@ -44,12 +47,34 @@ function drawAllPanes(){
   syncChartHeader();
 }
 
+/* Everything that belongs to "the chart you are working on" is rebound here:
+   the header, the indicator toolbar, the summary and the order ticket. */
 function syncChartHeader(){
   const tk = cTk, node = nodeIndex.get(tk);
   if(!tk) return;
   document.getElementById('m-tk').textContent = tk;
   document.getElementById('m-tk').style.color = node ? node.color : 'var(--text-primary)';
   document.getElementById('m-nm').textContent = node ? node.name : '';
+  // the quote used to be written only at the end of drawCandle(), so switching
+  // panes left the previous chart's price beside the new ticker
+  const rows = ohlcOf(tk);
+  let li = rows.length - 1; while(li >= 0 && !rows[li]) li--;
+  let pi = li - 1;          while(pi >= 0 && !rows[pi]) pi--;
+  if(li >= 0){
+    const last = rows[li], prev = pi >= 0 ? rows[pi] : null;
+    document.getElementById('m-px').textContent = fmtPx(last[3], node?.currency || 'USD');
+    const d = prev && prev[3] ? (last[3] - prev[3]) / prev[3] * 100 : 0;
+    const el = document.getElementById('m-chg');
+    el.textContent = `${d >= 0 ? '+' : ''}${d.toFixed(2)}%  (${OH.dates[li]})`;
+    el.style.color = d >= 0 ? '#3ddc84' : '#ff5c72';
+  }
+  selectedTk = tk;
+  // a comparison in progress is the user's, not the pane's — leave it alone
+  if(compareSet.length <= 1) compareSet = [tk];
+  if(typeof renderIndButtons === 'function') renderIndButtons();
+  if(typeof renderTvSummary === 'function') renderTvSummary();
+  if(typeof updateTicket === 'function') updateTicket();
+  if(typeof updateMiniTicket === 'function') updateMiniTicket();
   if(typeof renderTvList === 'function') renderTvList();
 }
 
@@ -265,7 +290,6 @@ function drawCandle(silent){
     .style('cursor', cTool ? 'crosshair' : 'grab')
     .on('mouseleave', ()=> cross.style('display','none'))
     .on('mousemove', function(ev){
-      focusPane(myPane);
       const [mx,my] = d3.pointer(ev, this);
       let idx = idxAt(mx); while(idx > i0 && !rows[idx]) idx--;
       const r = rows[idx]; if(!r) return;
