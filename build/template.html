@@ -297,12 +297,15 @@
   .pane-chip .x:hover{ color:var(--down); }
   .cpane.drop-replace{ border-color:var(--accent); box-shadow:inset 0 0 0 2px rgba(95,208,255,0.25); }
   .cpane.drop-split{ border-color:var(--up); }
-  .cpane.drop-split::after{ content:''; position:absolute; z-index:10; pointer-events:none;
-    border:1px solid var(--up); border-radius:6px; background:rgba(61,220,132,0.16); }
-  .cpane.drop-split.to-top::after{ inset:0 0 50% 0; }
-  .cpane.drop-split.to-bottom::after{ inset:50% 0 0 0; }
-  .cpane.drop-split.to-left::after{ inset:0 50% 0 0; }
-  .cpane.drop-split.to-right::after{ inset:0 0 0 50%; }
+  .cpane.drop-move{ border-color:var(--sel); }
+  .cpane.drop-split::after, .cpane.drop-move::after{ content:''; position:absolute; z-index:10;
+    pointer-events:none; border-radius:6px; }
+  .cpane.drop-split::after{ border:1px solid var(--up);  background:rgba(61,220,132,0.16); }
+  .cpane.drop-move::after{  border:1px solid var(--sel); background:rgba(199,125,255,0.18); }
+  .cpane.to-top::after{ inset:0 0 50% 0; }
+  .cpane.to-bottom::after{ inset:50% 0 0 0; }
+  .cpane.to-left::after{ inset:0 50% 0 0; }
+  .cpane.to-right::after{ inset:0 0 0 50%; }
   .cpane.drop-swap{ border-color:var(--sel); box-shadow:inset 0 0 0 2px rgba(199,125,255,0.3); }
   .cpane .drop-hint{ position:absolute; inset:auto 0 8px 0; text-align:center; z-index:9;
     font-size:11px; color:var(--text-primary); pointer-events:none; }
@@ -1472,7 +1475,10 @@ const HELP = {
     '   아래쪽에 놓으면 위아래로, 옆에 놓으면 좌우로 나뉩니다. 차트 1개에서 아래에 놓으면 \n' +
     '   가로로 긴 차트 2개가 위아래로, 좌우 2개 상태에서 위에 놓으면 위 1개(넓게)·아래 2개가 됩니다.\n' +
     '· 패널 가운데에 놓으면 → 그 패널의 종목 교체 (파란 테두리)\n' +
-    '· 패널 왼쪽 위 이름표(⠿)를 끌어 다른 패널에 놓으면 → 두 패널 위치 교환 (보라 테두리)\n' +
+    '· 이름표(⠿)를 끌어 다른 패널 **가운데**에 놓으면 → 두 패널 자리 교환 (배치는 그대로)\n' +
+    '· 이름표(⠿)를 끌어 다른 패널 **가장자리**에 놓으면 → 그 자리로 이동하며 배치가 다시 짜입니다 (보라색 미리보기)\n' +
+    '   좌우 2개에서 하나를 다른 쪽 아래에 놓으면 상하 2단이 되고, 위 1개(넓게)를 아래 두 개 옆에 \n' +
+    '   놓으면 위아래가 뒤집힙니다.\n' +
     '· 이름표의 ✕ 로 패널을 닫습니다\n\n' +
     '패널마다 종목·기간·확대·보조지표를 따로 가집니다. 패널을 클릭하면 활성 패널(보라색 테두리)로 고정되고, ' +
     '오른쪽의 종목 요약과 주문창, 그리고 보조지표·추세선 도구가 모두 그 패널의 종목으로 바뀝니다. ' +
@@ -5540,6 +5546,21 @@ function swapPanes(a, b){
   rebuild(list, b, paneRows);          // 자리만 바꾸고 배치는 그대로
 }
 
+/* 패널을 빼서 놓은 자리에 다시 넣는다 — 교환과 달리 배치 자체가 바뀐다.
+   좌우 2개에서 하나를 다른 쪽 아래에 놓으면 상하 2단이 되고,
+   위 1개(넓게)를 아래 두 개 옆에 놓으면 위아래가 뒤집힌다. */
+function movePane(from, to, side){
+  if(from === to) return;
+  const list = currentTickers();
+  const tk = list[from];
+  const rows = rowsRemove(paneRows, from);
+  list.splice(from, 1);
+  const t = to > from ? to - 1 : to;    // 앞을 뺐으면 대상 번호가 하나 당겨진다
+  const ins = rowsInsert(rows, t, side);
+  list.splice(ins.at, 0, tk);
+  rebuild(list, ins.at, ins.rows);
+}
+
 /* ---- drag and drop ----
    Pointer-based, not HTML5 drag-and-drop. The native API needs the browser to
    promote a mousedown into a drag, which it declines to do inside some embedded
@@ -5550,7 +5571,8 @@ const DRAG_SLOP = 5;          // px before a press counts as a drag, so clicks s
 
 function clearDropMarks(){
   document.querySelectorAll('.cpane').forEach(el => el.classList.remove(
-    'drop-replace', 'drop-split', 'drop-swap', 'to-top', 'to-bottom', 'to-left', 'to-right'));
+    'drop-replace', 'drop-split', 'drop-swap', 'drop-move',
+    'to-top', 'to-bottom', 'to-left', 'to-right'));
   document.querySelectorAll('.tv-row.dragging, .pane-chip.dragging')
     .forEach(el => el.classList.remove('dragging'));
   if(dragGhost){ dragGhost.remove(); dragGhost = null; }
@@ -5561,13 +5583,18 @@ function clearDropMarks(){
 /* 가운데 = 교체, 가장자리 = 그 방향으로 분할. 패널 칩은 언제나 자리 교환.
    어느 가장자리인지가 새 차트가 놓일 자리를 정하므로 side 까지 돌려준다. */
 function dropIntent(host, x, y){
-  if(dragPayload?.kind === 'pane') return { mode: 'swap' };
   const r = host.getBoundingClientRect();
   const fx = (x - r.left) / r.width, fy = (y - r.top) / r.height;
   // 각 가장자리까지의 거리 중 가장 가까운 쪽이 이긴다
   const d = [['left', fx], ['right', 1 - fx], ['top', fy], ['bottom', 1 - fy]]
               .sort((a, b) => a[1] - b[1])[0];
-  if(d[1] >= 0.22 || PANES.length >= MAX_PANES) return { mode: 'replace' };
+  const onEdge = d[1] < 0.22;
+  if(dragPayload?.kind === 'pane'){
+    // 이미 있는 패널을 옮기는 것이므로 개수 제한과 무관하다
+    if(+host.dataset.i === dragPayload.from) return { mode: 'none' };
+    return onEdge ? { mode: 'move', side: d[0] } : { mode: 'swap' };
+  }
+  if(!onEdge || PANES.length >= MAX_PANES) return { mode: 'replace' };
   return { mode: 'split', side: d[0] };
 }
 function paneAt(x, y){
@@ -5600,10 +5627,12 @@ function onSymbolDragMove(ev){
   dragGhost.style.top = (ev.clientY + 12) + 'px';
 
   document.querySelectorAll('.cpane').forEach(el => el.classList.remove(
-    'drop-replace', 'drop-split', 'drop-swap', 'to-top', 'to-bottom', 'to-left', 'to-right'));
+    'drop-replace', 'drop-split', 'drop-swap', 'drop-move',
+    'to-top', 'to-bottom', 'to-left', 'to-right'));
   const host = paneAt(ev.clientX, ev.clientY);
   if(!host) return;
   const it = dropIntent(host, ev.clientX, ev.clientY);
+  if(it.mode === 'none') return;
   host.classList.add('drop-' + it.mode);
   if(it.side) host.classList.add('to-' + it.side);
 }
@@ -5619,7 +5648,9 @@ function onSymbolDragEnd(ev){
   ev.preventDefault();
   ev.stopPropagation();
   const i = +host.dataset.i;
-  if(pl.kind === 'pane') swapPanes(pl.from, i);
+  if(it.mode === 'none') return;
+  if(it.mode === 'move') movePane(pl.from, i, it.side);
+  else if(it.mode === 'swap') swapPanes(pl.from, i);
   else if(it.mode === 'split') addPane(pl.tk, i, it.side);
   else replacePane(i, pl.tk);
 }
