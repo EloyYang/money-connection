@@ -34,9 +34,13 @@
   }
   .mono{ font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
 
+  /* 헤더는 두 줄로 못박는다. 폭에 따라 무엇이 어디로 넘어갈지 운에 맡기면
+     계정 버튼이 매번 다른 자리에 앉는다.
+       1줄: 브랜드 · 탭 ………………… 장부·상태·계정(오른쪽 끝 고정)
+       2줄: 기간 · 지표 · 검색 · 보기 조작 */
   header{
-    display:flex; align-items:center; gap:12px 18px; flex-wrap:wrap;
-    padding:12px 22px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:10px 18px; flex-wrap:wrap;
+    padding:11px 22px 10px; border-bottom:1px solid var(--border);
     background:rgba(10,12,16,0.72); backdrop-filter: blur(8px);
     z-index:20; flex:0 0 auto;
   }
@@ -488,15 +492,48 @@
     border:1px solid var(--border-strong); background:rgba(255,255,255,0.035); }
   .hdr-period .hp-lab{ display:flex; align-items:center; gap:1px; flex:0 0 auto;
     font-size:11px; font-weight:600; color:var(--text-secondary); letter-spacing:0.02em; }
-  .hdr-period .seg-mini{ margin:0; padding:0; background:none; gap:1px; }
-  .hdr-period .seg-mini button{ font-size:11.5px; font-weight:600; padding:5px 10px;
-    border-radius:7px; color:var(--text-secondary); white-space:nowrap; }
-  .hdr-period .seg-mini button:hover{ background:rgba(255,255,255,0.07); color:var(--text-primary); }
-  .hdr-period .seg-mini button.on{ background:var(--accent); color:#08131c; }
-  @media (max-width:1200px){
-    .hdr-period{ padding:4px 7px; gap:6px; }
-    .hdr-period .seg-mini button{ padding:4px 7px; font-size:11px; }
+  /* 여덟 개짜리 버튼 줄은 헤더 폭을 다 잡아먹고 줄바꿈을 만들었다.
+     고르는 값 하나만 보이면 되는 자리라 드롭다운으로 바꾼다. */
+  .hp-sel{ appearance:none; -webkit-appearance:none;
+    padding:5px 26px 5px 11px; border-radius:8px; cursor:pointer;
+    border:1px solid var(--border-strong); background:var(--panel-solid);
+    color:var(--text-primary); font-family:inherit; font-size:12px; font-weight:600;
+    background-image:linear-gradient(45deg,transparent 50%,var(--text-muted) 50%),
+                     linear-gradient(135deg,var(--text-muted) 50%,transparent 50%);
+    background-position:calc(100% - 14px) calc(50% + 1px), calc(100% - 10px) calc(50% + 1px);
+    background-size:4px 4px, 4px 4px; background-repeat:no-repeat; }
+  .hp-sel:hover{ border-color:var(--accent); }
+  .hp-sel:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim); }
+  @media (max-width:1200px){ .hdr-period{ padding:4px 7px; gap:6px; } }
+
+  /* 헤더는 세 묶음이다: 왼쪽(브랜드·탭·기간) · 가운데(네트워크 전용) ·
+     오른쪽(장부·상태·계정). 가운데가 없어지든 줄바꿈이 일어나든
+     오른쪽 묶음은 언제나 오른쪽 끝에 붙는다. */
+  .hdr-mid{ display:flex; align-items:center; gap:12px 18px; flex-wrap:wrap;
+    flex:1 1 auto; min-width:0; }
+  .hdr-mid .searchwrap{ border-left:1px solid var(--border); padding-left:16px; }
+  .hdr-right{ display:flex; align-items:center; gap:8px; flex:0 0 auto; margin-left:auto; }
+  .hdr-tools{ flex:1 0 100%; display:flex; align-items:center; gap:10px 18px; flex-wrap:wrap;
+    padding-top:9px; border-top:1px solid var(--line); }
+  /* 네트워크가 아닌 화면에서는 도구 줄에 기간 하나만 남는다 — 차트가 쓸
+     세로 공간을 한 줄 통째로 내주지 않고 첫 줄에 같이 앉힌다. */
+  body.view-trade .hdr-tools, body.view-folio .hdr-tools{
+    flex:0 0 auto; padding-top:0; border-top:none; }
+  /* 한 줄로 합쳐지는 순간 DOM 순서(…계정, 도구)가 그대로 보이면 계정이
+     안쪽으로 밀린다. 그 줄에서만 순서를 다시 매겨 계정을 끝으로 보낸다. */
+  body.view-trade .brand,     body.view-folio .brand{     order:1; }
+  body.view-trade .tabs,      body.view-folio .tabs{      order:2; }
+  body.view-trade .hdr-tools, body.view-folio .hdr-tools{ order:3; }
+  body.view-trade .hdr-right, body.view-folio .hdr-right{ order:4; }
+  /* 폭이 줄면 부제와 갱신 상태를 먼저 접는다 — 둘 다 곁다리 정보인데
+     합쳐서 300px 을 먹어 계정 버튼을 다음 줄로 밀어내기 때문이다. */
+  @media (max-width:1320px){
+    .brand .sub{ display:none; }
+    .hdr-right .freshness{ display:none; }
   }
+  .hdr-right .mode-seg{ margin:0; }
+  .hdr-right #auth-box{ margin-left:6px; }
+  .hdr-right .freshness{ margin-left:4px; }
   #auth-box{ position:relative; margin-left:10px; }
   .auth-btn .caret{ font-size:8px; color:var(--text-muted); }
   .acct-menu{ position:absolute; right:0; top:calc(100% + 7px); z-index:130; width:272px;
@@ -965,29 +1002,38 @@
     <button class="tab" data-view="trade">트레이딩</button>
     <button class="tab" data-view="folio">포트폴리오</button>
   </div>
+  <!-- 오른쪽 묶음은 화면이 무엇이든 늘 첫 줄 오른쪽 끝에 붙는다 -->
+  <div class="hdr-right">
+    <span class="seg-mini mode-seg" id="folio-mode" title="주문과 보유 장부를 모의/실거래로 전환">
+      <button data-m="paper" class="on">모의</button><button data-m="live">실거래</button>
+    </span>
+    <button class="help" data-h="folioMode">?</button>
+    <div class="freshness" id="freshness" title="구성종목·시세 자동 갱신 상태">—</div>
+    <button class="help" data-h="usage">?</button>
+    <button class="help" data-h="method">i</button>
+    <div id="auth-box"></div>
+  </div>
+
+  <div class="hdr-tools">
   <div class="hdr-period">
     <span class="hp-lab">기간<button class="help" data-h="corrPeriod">?</button></span>
-    <span class="seg-mini seg-wrap" id="period-sel"></span>
+    <select class="hp-sel" id="period-sel" title="화면 전체가 이 기간을 따릅니다"></select>
   </div>
-  <div class="stat graph-only"><div class="n mono" id="stat-nodes">–</div><div class="l">종목</div></div>
-  <div class="stat graph-only"><div class="n mono" id="stat-links">–</div><div class="l">상관 연결</div></div>
-  <div class="stat graph-only"><div class="n mono" id="stat-days">–</div><div class="l">거래일</div></div>
-  <div class="searchwrap graph-only" style="border-left:1px solid var(--border); padding-left:16px;">
-    <input id="search" placeholder="티커 또는 회사명 검색…" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="search-results" />
-    <div id="search-results" hidden></div>
+
+  <div class="hdr-mid graph-only">
+    <div class="stat"><div class="n mono" id="stat-nodes">–</div><div class="l">종목</div></div>
+    <div class="stat"><div class="n mono" id="stat-links">–</div><div class="l">상관 연결</div></div>
+    <div class="stat"><div class="n mono" id="stat-days">–</div><div class="l">거래일</div></div>
+    <div class="searchwrap">
+      <input id="search" placeholder="티커 또는 회사명 검색…" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="search-results" />
+      <div id="search-results" hidden></div>
+    </div>
+    <div class="sim-controls">
+      <button class="btn ghost" id="mode-reset" title="모든 필터·기간·기준을 처음 상태로">↺ 초기화</button>
+      <button class="btn ghost" id="mode-fit">⤢ 전체보기</button>
+    </div>
   </div>
-  <div class="sim-controls graph-only">
-    <button class="btn ghost" id="mode-reset" title="모든 필터·기간·기준을 처음 상태로">↺ 초기화</button>
-    <button class="btn ghost" id="mode-fit">⤢ 전체보기</button>
   </div>
-  <div id="auth-box"></div>
-  <span class="seg-mini mode-seg" id="folio-mode" title="주문과 보유 장부를 모의/실거래로 전환">
-    <button data-m="paper" class="on">모의</button><button data-m="live">실거래</button>
-  </span>
-  <button class="help" data-h="folioMode" style="margin-left:4px">?</button>
-  <div class="freshness" id="freshness" title="구성종목·시세 자동 갱신 상태">—</div>
-  <button class="help" data-h="usage" style="margin-left:6px">?</button>
-  <button class="help" data-h="method" style="margin-left:2px">i</button>
 </header>
 
 <div class="main">
@@ -1016,8 +1062,6 @@
           <span class="modal-note mono" id="m-span" hidden style="font-size:10px"></span><button class="help" data-h="todayBar" id="m-span-help" hidden>?</button>
           <span class="live-chip" id="m-live" hidden>실시간</span><button class="help" data-h="liveQuotes">?</button>
 
-          <button class="tool" id="tool-order" title="차트에서 가격을 클릭해 주문 (우클릭으로도 열립니다)">⚡ 주문</button><button class="help" data-h="chartOrder">?</button>
-          <button class="tool" id="tool-alert" title="차트에서 가격을 클릭해 알람 걸기">🔔 알람</button>
 
           <button class="tool" id="tool-trend">╱ 추세선</button>
           <button class="tool" id="tool-hline">— 수평선</button>
@@ -1045,7 +1089,8 @@
         </div>
         <div class="modal-foot">
           <span class="ohlc-readout" id="m-readout">—</span>
-          <span class="modal-note" id="m-note">휠·축 드래그 = 확대/축소 · 드래그 = 이동 · <b>우클릭 = 주문·알람</b></span>
+          <span class="modal-note" id="m-note">휠·축 드래그 = 확대/축소 · 드래그 = 이동 ·
+            <b>우클릭(길게 누르기) = 주문·알람</b><button class="help" data-h="chartOrder">?</button></span>
         </div>
       </main>
 
@@ -1738,7 +1783,7 @@ const HELP = {
     '알람이 걸린 종목은 화면에 열려 있지 않아도 함께 따라갑니다.\n\n' +
     '갑자기 끊긴다면 토스 WTS 의 <b>허용 IP</b> 목록을 확인하세요 — 가정용 IP 는 바뀝니다.' },
   priceAlerts: { t: '가격 알람', dir: null, d:
-    '차트에서 <b>🔔 알람</b>을 켜고 가격을 클릭하거나, 차트를 <b>우클릭</b>해 만듭니다. ' +
+    '차트에서 알람을 걸 가격을 <b>우클릭</b>하면 만들 수 있습니다 — 터치 화면이면 <b>길게 누르기</b>입니다. ' +
     '지금 가격보다 위에 걸면 <b>돌파(▲)</b>, 아래에 걸면 <b>이탈(▼)</b> 알람이 됩니다 — 방향은 만들 때 정해집니다.\n\n' +
     '알람이 걸린 종목은 차트에 열려 있지 않아도 실시간 대상에 포함됩니다. ' +
     '토스가 연결되어 있으면 5초마다(확장이 있으면 체결마다) 확인하고, 연결이 없으면 최신 종가로 30초마다 훑습니다.\n\n' +
@@ -1746,7 +1791,8 @@ const HELP = {
     '<b>브라우저를 닫으면 확인하지 않습니다</b> — 서버가 없는 사이트라 알람도 이 브라우저 안에서만 삽니다.\n\n' +
     '한 번 울린 알람은 다시 울리지 않습니다. 목록에서 × 로 지울 수 있습니다.' },
   chartOrder: { t: '차트에서 주문', dir: null, d:
-    '차트를 <b>우클릭</b>하거나 <b>⚡ 주문</b>을 켜고 누르면, 누른 높이의 가격으로 지정가 주문 창이 열립니다. ' +
+    '차트를 <b>우클릭</b>하면 누른 높이의 가격으로 지정가 주문 창이 열립니다 — ' +
+    '터치 화면에서는 그 자리를 <b>길게(0.5초) 누르면</b> 같은 창이 열립니다. ' +
     '차트를 보다가 "여기면 산다" 싶은 자리를 바로 누르라고 만든 기능입니다.\n\n' +
     '<b>누른다고 주문이 나가지는 않습니다.</b> 오른쪽 주문 티켓과 똑같은 경로를 지나므로 수량·금액을 보여 주는 ' +
     '확인 창이 한 번 더 뜨고, 거기서 확인해야 나갑니다. 모의/실거래 구분도 상단 설정을 그대로 따릅니다.\n\n' +
@@ -1841,7 +1887,7 @@ const HELP = {
     '실거래는 토스증권 Open API로 실제 주문을 냅니다. 이 페이지는 공개된 정적 사이트라 API 키를 담을 수 없으므로, ' +
     '본인 PC에서 실행하는 브리지(build/toss_bridge.py)를 거쳐 전송됩니다. 브리지가 없으면 실거래 버튼은 비활성입니다.\n\n' +
     '암호화폐와 금 현물은 토스증권 주식 API 대상이 아니라 모의 거래만 가능합니다.\n\n' +
-    '차트를 우클릭하면 그 높이의 가격으로 바로 지정가 주문 창이 열립니다 — 확인 창은 똑같이 거칩니다.' },
+    '차트를 우클릭(터치는 길게 누르기)하면 그 높이의 가격으로 바로 지정가 주문 창이 열립니다 — 확인 창은 똑같이 거칩니다.' },
   folioMode: { t: '모의 / 실거래', dir: null, d:
     '두 장부는 완전히 분리되어 있습니다. 모의 보유와 실거래 보유가 섞이지 않고, 각각 자기 거래 내역·실현손익·평가손익을 따로 가집니다.\n\n' +
     '가상의 현금으로 산 종목과 실제로 산 종목을 한 줄에 더하는 것은 아무 의미가 없기 때문입니다.\n\n' +
@@ -2494,7 +2540,18 @@ function renderPeriodButtons(){
     host.querySelectorAll('button').forEach(b =>
       b.addEventListener('click', () => onPick(b.dataset.p)));
   };
-  draw('period-sel', period, setPeriod);
+  // 헤더는 자리가 좁아 드롭다운, 주도주 패널은 한눈에 비교하는 자리라 버튼 그대로
+  const drawSel = (id, cur, onPick) => {
+    const host = document.getElementById(id);
+    if(!host) return;
+    host.innerHTML = PERIODS.map(p =>
+      `<option value="${p.key}"${p.key === cur.key ? ' selected' : ''}` +
+      ` title="${meta[p.corr] ? meta[p.corr].from + ' ~ ' + meta[p.corr].to : ''}">${p.label}</option>`).join('');
+    host.value = cur.key;
+    if(!host.dataset.wired){ host.dataset.wired = '1';
+      host.addEventListener('change', () => onPick(host.value)); }
+  };
+  drawSel('period-sel', period, setPeriod);
   draw('lead-period', leadP(), setLeadPeriod);
   const sync = document.getElementById('lead-period-sync');
   if(sync) sync.hidden = !leadPeriod;      // 따로 골랐을 때만 되돌리기 버튼을 보여 준다
@@ -5595,9 +5652,9 @@ async function loadMoreIntraday(){
 }
 document.getElementById('m-more').addEventListener('click', loadMoreIntraday);
 
-['trend','hline','order','alert'].forEach(t=>{
+['trend','hline'].forEach(t=>{
   document.getElementById('tool-'+t).addEventListener('click', ()=>{
-    if(t === 'order' || t === 'alert') closeChartPop();
+    closeChartPop();
     cTool = (cTool === t) ? null : t;
     cPending = null; cSel = null;
     updateToolButtons();
@@ -8222,7 +8279,8 @@ function renderAlertPanel(){
   const done = ALERTS.filter(a => a.fired).sort((x, y) => y.fired - x.fired).slice(0, 4);
   if(cnt) cnt.textContent = live.length ? `${live.length}개 대기` : '';
   if(!ALERTS.length){
-    host.innerHTML = '<div class="cap">차트에서 <b>🔔 알람</b>을 켜고 가격을 클릭하거나, 차트를 우클릭하세요.</div>';
+    host.innerHTML = '<div class="cap">차트에서 알람을 걸 가격을 <b>우클릭</b>하세요. '
+      + '터치 화면이면 그 자리를 <b>길게 누르면</b> 됩니다.</div>';
     return;
   }
   const row = a => {

@@ -9,6 +9,10 @@
    the pane it belongs to and focuses it before doing anything.
    --------------------------------------------------------------------- */
 let geom = null, cSel = null, yManual = null, activeDrag = null;
+let longPress = null;
+function cancelLongPress(){
+  if(longPress){ clearTimeout(longPress.timer); longPress = null; }
+}
 const PANES = [];              // { tk, i0, i1, yManual, host, sel }
 let activeP = 0;
 
@@ -80,7 +84,7 @@ function syncChartHeader(){
 }
 
 function updateToolButtons(){
-  ['trend', 'hline', 'order', 'alert'].forEach(t => {
+  ['trend', 'hline'].forEach(t => {
     const b = document.getElementById('tool-' + t);
     if(b) b.classList.toggle('on', cTool === t);
   });
@@ -312,16 +316,6 @@ function drawCandle(silent){
       focusPane(myPane);
       const [mx,my] = d3.pointer(ev, this);
       if(cTool === 'hline'){ pushDrawing({ type:'hline', y: invY(my) }); cTool = null; updateToolButtons(); drawCandle(); return; }
-      if(cTool === 'order'){
-        cTool = null; updateToolButtons(); drawCandle();
-        if(typeof openChartPop === 'function') openChartPop(cTk, invY(my), ev.clientX, ev.clientY);
-        return;
-      }
-      if(cTool === 'alert'){
-        cTool = null; updateToolButtons();
-        if(typeof addAlert === 'function') addAlert(cTk, invY(my));
-        drawCandle(); return;
-      }
       if(cTool === 'trend'){
         if(!cPending){ cPending = { type:'trend', x1: idxAt(mx), y1: invY(my), x2: idxAt(mx), y2: invY(my) }; }
         else {
@@ -342,6 +336,27 @@ function drawCandle(silent){
       const [, my] = d3.pointer(ev, this);
       if(typeof openChartPop === 'function') openChartPop(cTk, invY(my), ev.clientX, ev.clientY);
     })
+    /* 터치 기기에는 우클릭이 없다. 손가락을 500ms 이상 붙여 두고
+       거의 움직이지 않았으면 같은 창을 연다. */
+    .on('touchstart', function(ev){
+      const t = ev.touches[0];
+      if(!t) return;
+      const self = this;
+      longPress = { x: t.clientX, y: t.clientY, timer: setTimeout(() => {
+        longPress = null;
+        focusPane(myPane);
+        const rect = self.getBoundingClientRect();
+        if(typeof openChartPop === 'function')
+          openChartPop(cTk, invY(t.clientY - rect.top), t.clientX, t.clientY);
+      }, 500) };
+    })
+    .on('touchmove', function(ev){
+      const t = ev.touches[0];
+      if(!longPress || !t) return;
+      if(Math.abs(t.clientX - longPress.x) > 10 || Math.abs(t.clientY - longPress.y) > 10) cancelLongPress();
+    })
+    .on('touchend', cancelLongPress)
+    .on('touchcancel', cancelLongPress)
     .on('wheel', function(ev){
       ev.preventDefault();
       focusPane(myPane);
