@@ -393,7 +393,9 @@ function drawCandle(silent){
     });
 
   drawUserLines(x, y, W);   // above the surface: lines stay selectable
+  if(typeof drawOrderLines === 'function') drawOrderLines(x, y, W);
   if(typeof drawAlertLines === 'function') drawAlertLines(x, y, W);
+  if(typeof drawTradeMarks === 'function') drawTradeMarks(x, y);
 
   /* axis drag zones */
   bigSvg.append('rect').attr('x',CM.l).attr('y',H-CM.b-6).attr('width',plotW).attr('height',CM.b+6)

@@ -630,6 +630,9 @@
   .wiz-panel .close{ position:absolute; right:12px; top:12px; background:none; border:none;
     color:var(--text-muted); font-size:15px; cursor:pointer; padding:4px; }
   .wiz-step{ font-size:12.5px; color:var(--text-secondary); line-height:1.75; }
+  .wiz-more{ margin-top:10px; border:1px solid var(--line); border-radius:9px; padding:8px 11px; }
+  .wiz-more summary{ cursor:pointer; font-size:11.5px; color:var(--text-secondary); }
+  .wiz-more summary:hover{ color:var(--text-primary); }
   .wiz-route{ display:block; width:100%; text-align:left; margin:10px 0 0; padding:13px 15px;
     background:rgba(255,255,255,0.03); border:1px solid var(--border-strong); border-radius:11px;
     color:var(--text-primary); font-family:inherit; cursor:pointer; transition:border-color .12s ease, background .12s ease; }
@@ -745,6 +748,10 @@
   .set-grid input{ background:rgba(255,255,255,0.05); border:1px solid var(--border-strong); border-radius:7px;
     padding:6px 8px; color:var(--text-primary); font-family:'JetBrains Mono',monospace; font-size:12px; }
   .set-actions{ display:flex; gap:7px; margin-top:10px; flex-wrap:wrap; }
+  .set-checks{ display:flex; gap:8px 20px; flex-wrap:wrap; }
+  .set-checks label{ display:flex; align-items:center; gap:6px; font-size:11.5px;
+    color:var(--text-secondary); cursor:pointer; }
+  .set-checks input{ accent-color:var(--accent); cursor:pointer; }
   #folio-table td.tk, #folio-trades td.tk{ font-weight:600; }
   .sell-btn{ background:none; border:1px solid var(--border-strong); color:var(--text-secondary);
     border-radius:6px; font-family:inherit; font-size:10px; padding:2px 6px; cursor:pointer; }
@@ -1175,6 +1182,12 @@
           <label>국내 매도 거래세 (%)<input type="number" id="set-tax" min="0" max="1" step="0.01"></label>
           <label>USD/KRW<input type="number" id="set-fx" min="1" step="1"></label>
         </div>
+        <div class="sec-title" style="margin-top:14px"><span>차트 표시<button class="help" data-h="chartMarks">?</button></span></div>
+        <div class="set-checks">
+          <label><input type="checkbox" id="set-marks"> 내 체결 지점 (△▽)</label>
+          <label><input type="checkbox" id="set-orderlines"> 미체결 지정가 선</label>
+          <label><input type="checkbox" id="set-alertlines"> 가격 알람 선</label>
+        </div>
         <div class="set-actions">
           <button class="btn ghost" id="set-save">저장</button>
           <button class="btn ghost" id="set-reset">모의 계좌 초기화</button>
@@ -1194,6 +1207,10 @@
           <button class="btn ghost" id="bridge-fee">내 수수료율 가져오기</button>
         </div>
         <div class="cap" id="bridge-status"></div>
+        <div class="cap" style="margin-top:6px">가격 알람을 <b>메일로</b> 받으려면
+          <code>~/.money-connection/toss.json</code> 에
+          <code>"alert_email": {"user":"내계정@gmail.com","password":"앱 비밀번호"}</code> 를 넣고
+          브리지를 다시 실행하세요. 자세한 내용은 트레이딩의 <b>가격 알람 ?</b> 에 있습니다.</div>
         </div>
       </div>
     </div>
@@ -1787,9 +1804,19 @@ const HELP = {
     '지금 가격보다 위에 걸면 <b>돌파(▲)</b>, 아래에 걸면 <b>이탈(▼)</b> 알람이 됩니다 — 방향은 만들 때 정해집니다.\n\n' +
     '알람이 걸린 종목은 차트에 열려 있지 않아도 실시간 대상에 포함됩니다. ' +
     '토스가 연결되어 있으면 5초마다(확장이 있으면 체결마다) 확인하고, 연결이 없으면 최신 종가로 30초마다 훑습니다.\n\n' +
-    '울리면 화면에 알림이 뜨고, 브라우저 알림을 허용해 두셨다면 다른 탭에 있어도 알려 드립니다. ' +
-    '<b>브라우저를 닫으면 확인하지 않습니다</b> — 서버가 없는 사이트라 알람도 이 브라우저 안에서만 삽니다.\n\n' +
-    '한 번 울린 알람은 다시 울리지 않습니다. 목록에서 × 로 지울 수 있습니다.' },
+    '<span class="step">지우기</span>' +
+    '차트에 그려진 알람 선 <b>끝의 × 를 누르면</b> 그 자리에서 지워집니다. 오른쪽 목록의 × 도 같습니다.\n\n' +
+    '<span class="step">메일로 받기</span>' +
+    '브리지가 켜져 있으면 알람 목록을 브리지에 넘겨 둡니다. 그러면 <b>브라우저를 닫아 두어도</b> ' +
+    '브리지가 20초마다 값을 지켜보다 닿는 순간 <b>메일을 보냅니다</b>. ' +
+    '켜려면 <code>~/.money-connection/toss.json</code> 에 아래를 넣으세요 — ' +
+    '연동 마법사의 <b>가격 알람을 메일로 받기</b> 를 펴서 입력하면 파일에 함께 들어갑니다.\n' +
+    '<code>"alert_email": { "user": "내계정@gmail.com", "password": "앱 비밀번호 16자" }</code>\n' +
+    '<span class="warn">구글 계정 비밀번호가 아니라 앱 비밀번호입니다 ' +
+    '(myaccount.google.com/apppasswords · 2단계 인증 필요). 이 값은 내 PC 의 설정 파일에만 있고 ' +
+    '이 사이트로는 오지 않습니다.</span>\n\n' +
+    '브리지가 없으면 브라우저가 열려 있는 동안에만 확인합니다 — 화면 알림과 (허용했다면) 브라우저 알림이 뜹니다.\n\n' +
+    '한 번 울린 알람은 다시 울리지 않습니다.' },
   chartOrder: { t: '차트에서 주문', dir: null, d:
     '차트를 <b>우클릭</b>하면 누른 높이의 가격으로 지정가 주문 창이 열립니다 — ' +
     '터치 화면에서는 그 자리를 <b>길게(0.5초) 누르면</b> 같은 창이 열립니다. ' +
@@ -1837,7 +1864,19 @@ const HELP = {
     '무엇이었는지 화면 오른쪽 아래에 알려 줍니다. 실제 체결 수량과 평균가는 장부의 해당 거래에 기록됩니다 ' +
     '— 주문할 때 우리가 가정한 값과 다를 수 있기 때문입니다.\n\n' +
     '이것은 실시간 푸시가 아니라 5초 간격 조회입니다.\n\n' +
-    '폴링은 <b>실거래 모드로 트레이딩이나 포트폴리오 화면을 보고 있을 때만</b> 돕니다.' },
+    '폴링은 <b>실거래 모드로 트레이딩이나 포트폴리오 화면을 보고 있을 때만</b> 돕니다.\n\n' +
+    '<b>모의</b>에서도 지정가를 지금 값과 다른 자리에 걸면 여기서 기다립니다. ' +
+    '값이 닿는 순간 체결되고, 그때까지 차트에 선으로 남습니다. ' +
+    '모의 대기 주문은 현금을 미리 묶어 두지 않으므로, 체결 시점에 현금이 모자라면 채우지 못하고 알려 드립니다.' },
+  chartMarks: { t: '차트 표시', dir: null, d:
+    '차트에 얹히는 <b>내 흔적</b> 세 가지를 켜고 끕니다.\n\n' +
+    '<b>체결 지점(△▽)</b> — 지금 보고 있는 장부(모의/실거래)에서 이 종목을 사고판 자리입니다. ' +
+    '초록 △ 는 매수, 빨강 ▽ 는 매도이고, 노란 점이 붙어 있으면 메모가 달린 거래입니다. ' +
+    '마우스를 올리면 수량·가격·실현손익이, 클릭하면 메모 입력창이 뜹니다.\n\n' +
+    '<b>미체결 지정가 선</b> — 아직 체결되지 않은 주문의 가격입니다. 선 끝의 × 로 바로 취소합니다.\n\n' +
+    '<b>가격 알람 선</b> — 걸어 둔 알람. 역시 선 끝의 × 로 지웁니다.\n\n' +
+    '봉 단위를 바꾸면 좌표를 다시 계산해 붙입니다. 일봉 이상에서는 거래 시각을 ' +
+    '<b>내가 있던 곳의 하루</b>로 보고 그 날 봉에 붙입니다 — 해외 종목은 현지 장 마감과 하루가 어긋날 수 있습니다.' },
   todayBar: { t: '오늘 봉', dir: null, d:
     '심어 둔 일봉은 <b>매일 아침 빌드 시점에서 멈춰</b> 있어 오늘 봉이 없습니다. ' +
     '연동되어 있으면 토스에서 최신 일봉을 받아 차트에 하루를 덧붙이고, ' +
@@ -1887,7 +1926,10 @@ const HELP = {
     '실거래는 토스증권 Open API로 실제 주문을 냅니다. 이 페이지는 공개된 정적 사이트라 API 키를 담을 수 없으므로, ' +
     '본인 PC에서 실행하는 브리지(build/toss_bridge.py)를 거쳐 전송됩니다. 브리지가 없으면 실거래 버튼은 비활성입니다.\n\n' +
     '암호화폐와 금 현물은 토스증권 주식 API 대상이 아니라 모의 거래만 가능합니다.\n\n' +
-    '차트를 우클릭(터치는 길게 누르기)하면 그 높이의 가격으로 바로 지정가 주문 창이 열립니다 — 확인 창은 똑같이 거칩니다.' },
+    '차트를 우클릭(터치는 길게 누르기)하면 그 높이의 가격으로 바로 지정가 주문 창이 열립니다 — 확인 창은 똑같이 거칩니다.\n\n' +
+    '<b>모의 지정가는 이제 기다립니다.</b> 지금 값과 다른 자리에 걸면 즉시 체결로 치지 않고 ' +
+    '차트에 선으로 남아 있다가, 값이 닿는 순간 채워집니다. 실제 지정가와 같은 모양으로 보이도록 바꿨습니다 ' +
+    '— 바로 체결될 수 있는 자리(매수를 현재가 위, 매도를 현재가 아래)에 걸면 예전처럼 즉시 체결됩니다.' },
   folioMode: { t: '모의 / 실거래', dir: null, d:
     '두 장부는 완전히 분리되어 있습니다. 모의 보유와 실거래 보유가 섞이지 않고, 각각 자기 거래 내역·실현손익·평가손익을 따로 가집니다.\n\n' +
     '가상의 현금으로 산 종목과 실제로 산 종목을 한 줄에 더하는 것은 아무 의미가 없기 때문입니다.\n\n' +
@@ -5285,7 +5327,7 @@ function aggregate(tk, iv){
   const key = tk + '|' + iv, cached = AGG.get(key);
   if(cached && cached.ver === st.ver) return cached;
   const m = ivMin(iv), span = m * 60000;
-  const rows = [], labels = [];
+  const rows = [], labels = [], times = [];
   let bucket = null, cur = null, curT = 0;
   const label = t => {
     const d = new Date(t), p = n => String(n).padStart(2, '0');
@@ -5294,7 +5336,7 @@ function aggregate(tk, iv){
   for(let i = 0; i < st.ts.length; i++){
     const b = Math.floor(st.ts[i] / span), r = st.rows[i];
     if(b !== bucket){
-      if(cur){ rows.push(cur); labels.push(label(curT)); }
+      if(cur){ rows.push(cur); labels.push(label(curT)); times.push(curT); }
       bucket = b; curT = b * span;
       cur = [r[0], r[1], r[2], r[3], r[4]];
     } else {
@@ -5304,8 +5346,8 @@ function aggregate(tk, iv){
       cur[4] += r[4];
     }
   }
-  if(cur){ rows.push(cur); labels.push(label(curT)); }
-  const out = { ver: st.ver, rows, labels };
+  if(cur){ rows.push(cur); labels.push(label(curT)); times.push(curT); }
+  const out = { ver: st.ver, rows, labels, times };
   AGG.set(key, out);
   return out;
 }
@@ -5455,7 +5497,7 @@ async function fillTodayBars(){
     if(await loadTodayBar(tk)) any = true;
   }
   if(any){ syncIvButtons(); drawCandle(); }
-  if(typeof sweepAlerts === 'function') sweepAlerts();
+  if(typeof sweepAlerts === 'function'){ sweepAlerts(); sweepPending(); }
 }
 
 /* 받아 둔 구간을 사람이 읽을 수 있게 */
@@ -5794,12 +5836,16 @@ document.querySelectorAll('.left-stack > .panel[data-panel]').forEach(panel => {
    holding and must never be added together — the paper book has invented cash,
    the live book's cash lives at the broker. `book()` is the active one; the
    settings (fees, FX, bridge) are shared. */
-const emptyBook = cash => ({ startCash: cash, cash, positions: {}, trades: [], realized: 0 });
+const emptyBook = cash => ({ startCash: cash, cash, positions: {}, trades: [], realized: 0,
+                             pending: [] });      // 모의 지정가는 여기서 대기한다
 const FOLIO_DEFAULTS = {
   feePct: 0.015,              // 수수료 %
   taxPct: 0.18,               // 국내 매도 거래세 %
   fx: null,                   // null이면 META.fx.KRW 사용
   bridge: 'http://localhost:8787',
+  showMarks: true,            // 차트에 체결 지점
+  showOrderLines: true,       // 차트에 미체결 지정가 선
+  showAlertLines: true,       // 차트에 알람 선
   paper: emptyBook(10000000), // 모의 초기자금 1천만원
   live: emptyBook(0),         // 실거래 현금은 증권사 계좌에 있다
 };
@@ -5814,13 +5860,15 @@ function loadFolio(){
     const raw = localStorage.getItem(FOLIO_KEY);
     if(!raw) return;
     const o = JSON.parse(raw);
-    ['feePct', 'taxPct', 'fx', 'bridge', 'linked'].forEach(k => { if(o[k] != null) folio[k] = o[k]; });
+    ['feePct', 'taxPct', 'fx', 'bridge', 'linked',
+     'showMarks', 'showOrderLines', 'showAlertLines'].forEach(k => { if(o[k] != null) folio[k] = o[k]; });
     // a book saved before the split was a single set of paper holdings
     if(o.positions || o.trades){
       folio.paper = { startCash: o.startCash ?? 10000000, cash: o.cash ?? 0,
                       positions: o.positions || {}, trades: o.trades || [], realized: o.realized || 0 };
     }
     ['paper', 'live'].forEach(k => { if(o[k]) folio[k] = { ...folio[k], ...o[k] }; });
+    ['paper', 'live'].forEach(k => { if(!Array.isArray(folio[k].pending)) folio[k].pending = []; });
   } catch(e){ /* blocked storage: memory only */ }
   try { folioMode = localStorage.getItem(FOLIO_KEY + '.mode') === 'live' ? 'live' : 'paper'; } catch(e){}
 }
@@ -6201,6 +6249,7 @@ async function checkBridge(quiet, retried){
   if(bridgeOk && typeof fetchCommissions === 'function') fetchCommissions();
   if(typeof syncOrderbook === 'function'){ syncOrderbook(); refreshFlow(); }
   if(typeof autoLive === 'function') autoLive();
+  if(bridgeOk && typeof pushAlerts === 'function'){ pushAlerts(); setTimeout(pullAlerts, 1200); }
   return bridgeOk;
 }
 
@@ -6260,7 +6309,7 @@ function updateTicket(){
     note.innerHTML = '<span style="color:var(--down)">실제 주문이 토스증권 계좌로 전송됩니다.</span>';
   } else {
     note.textContent = tkType === 'LIMIT'
-      ? '모의 지정가는 입력한 가격에 즉시 체결된 것으로 가정합니다. 실제로는 체결되지 않을 수 있습니다.'
+      ? '모의 지정가는 값이 닿을 때까지 차트에 걸려 기다립니다. 바로 체결될 수 있는 자리면 즉시 체결됩니다.'
       : '모의 시장가는 최근 종가로 체결된 것으로 가정합니다.';
   }
 }
@@ -6278,10 +6327,17 @@ async function placeOrder({ tk, side, qty, px, type, memo }){
   const gross = px * qty, c = costs(tk, side, gross);
   const net = side === 'BUY' ? gross + c.total : gross - c.total;
 
+  // 모의 지정가가 아직 값에 닿지 않았으면 지금 체결될 수 없다 — 걸어 두는 주문이다
+  const now = (latestClose(tk) || {}).px;
+  const resting = !live && type === 'LIMIT' && now != null &&
+    (side === 'BUY' ? px < now : px > now);
+
   const label = `${isKr(tk) ? n.name : tk} ${qty}주 ${side === 'BUY' ? '매수' : '매도'}` +
     ` · ${type === 'LIMIT' ? '지정가 ' + fmtPx(px, cur) : '시장가 ' + fmtPx(px, cur)}` +
-    ` · ${side === 'BUY' ? '필요' : '수령'} ${fmtPx(net, cur)}`;
-  if(!confirm((live ? '[실제 주문] 토스증권 계좌로 전송됩니다.\n\n' : '[모의 거래]\n\n') + label + '\n\n진행할까요?')) return false;
+    ` · ${side === 'BUY' ? '필요' : '수령'} ${fmtPx(net, cur)}` +
+    (resting ? `\n\n지금 값(${fmtPx(now, cur)})과 달라 바로 체결되지 않습니다.\n값이 닿을 때까지 차트에 걸어 둡니다.` : '');
+  if(!confirm((live ? '[실제 주문] 토스증권 계좌로 전송됩니다.\n\n'
+                    : resting ? '[모의 지정가 대기]\n\n' : '[모의 거래]\n\n') + label + '\n\n진행할까요?')) return false;
 
   if(live){
     try {
@@ -6302,6 +6358,8 @@ async function placeOrder({ tk, side, qty, px, type, memo }){
       alert('주문 실패: ' + e.message);
       return false;
     }
+  } else if(resting){
+    restLimit({ tk, side, qty, px, memo });
   } else {
     const r = applyFill({ tk, side, qty, px, mode: 'paper', memo });
     if(!r.ok){ alert(r.msg); return false; }
@@ -6310,7 +6368,10 @@ async function placeOrder({ tk, side, qty, px, type, memo }){
   updateMiniTicket();
   renderFavorites();
   if(document.body.classList.contains('view-folio')) renderFolio();
-  if(document.body.classList.contains('view-trade')) renderTvSummary();
+  if(document.body.classList.contains('view-trade')){
+    renderTvSummary();
+    drawCandle();        // 방금 생긴 체결 지점·대기 선을 바로 얹는다
+  }
   return true;
 }
 
@@ -6417,6 +6478,9 @@ function openFolioSettings(force){
     document.getElementById('set-tax').value = folio.taxPct;
     document.getElementById('set-fx').value = fxRate();
     document.getElementById('set-bridge').value = folio.bridge || '';
+    document.getElementById('set-marks').checked = folio.showMarks !== false;
+    document.getElementById('set-orderlines').checked = folio.showOrderLines !== false;
+    document.getElementById('set-alertlines').checked = folio.showAlertLines !== false;
     checkBridge(true);
   }
 }
@@ -6430,6 +6494,9 @@ document.getElementById('set-save').addEventListener('click', () => {
   folio.taxPct = num('set-tax', folio.taxPct);
   folio.fx = num('set-fx', fxRate());
   folio.bridge = document.getElementById('set-bridge').value.trim();
+  folio.showMarks      = document.getElementById('set-marks').checked;
+  folio.showOrderLines = document.getElementById('set-orderlines').checked;
+  folio.showAlertLines = document.getElementById('set-alertlines').checked;
   const cash = num('set-cash', folio.paper.startCash);
   if(cash !== folio.paper.startCash){
     // moving the starting capital without resetting would make the return meaningless
@@ -6437,6 +6504,7 @@ document.getElementById('set-save').addEventListener('click', () => {
     folio.paper.startCash = cash;
   }
   saveFolio(); renderFolio(); updateTicket();
+  if(typeof drawAllPanes === 'function' && PANES.length) drawAllPanes();
   document.getElementById('bridge-status').textContent = '저장했습니다.';
 });
 document.getElementById('set-reset').addEventListener('click', () => {
@@ -7920,11 +7988,27 @@ function markOrderFilled(o){
 function renderOpenOrders(){
   const host = document.getElementById('open-orders');
   if(!host) return;
-  const show = folioMode === 'live' && openOrders.length;
+  const pend = folioMode === 'paper' ? (book().pending || []) : [];
+  const show = (folioMode === 'live' && openOrders.length) || pend.length;
   host.hidden = !show;
   if(!show) return;
+  const cnt = folioMode === 'live' ? openOrders.length : pend.length;
   host.innerHTML = `<div class="sec-title"><span>미체결 주문${helpBadge('openOrders')}</span>
-      <span class="mono">${openOrders.length}건 · ${ORDER_POLL_MS / 1000}초마다 확인</span></div>` +
+      <span class="mono">${cnt}건 · ${folioMode === 'live' ? ORDER_POLL_MS / 1000 + '초마다 확인' : '값이 닿으면 체결'}</span></div>` +
+    pend.map(o => {
+      const n = nodeIndex.get(o.tk), cur = n?.currency || 'USD';
+      const nm = n ? (n.assetClass === 'kr_stock' ? esc(n.name) : esc(o.tk)) : esc(o.tk);
+      const now = (latestClose(o.tk) || {}).px;
+      return `<div class="oo-row">
+        <span class="oo-side ${o.side === 'BUY' ? 'buy' : 'sell'}">${o.side === 'BUY' ? '매수' : '매도'}</span>
+        <span class="oo-nm">${nm}</span>
+        <span class="mono">${(+o.qty.toFixed(6)).toLocaleString()}주</span>
+        <span class="mono">${fmtPx(o.px, cur)}</span>
+        <span class="oo-st" style="color:var(--text-secondary)">대기${
+          now ? ` · 현재가 대비 ${((o.px / now - 1) * 100).toFixed(1)}%` : ''}</span>
+        <button class="linkbtn oo-x" data-drop="${esc(o.id)}">취소</button>
+      </div>`;
+    }).join('') +
     openOrders.map(o => {
       const n = nodeIndex.get(o.symbol);
       const nm = n ? (n.assetClass === 'kr_stock' ? esc(n.name) : o.symbol) : esc(o.symbol);
@@ -7941,6 +8025,8 @@ function renderOpenOrders(){
     }).join('');
   host.querySelectorAll('[data-cancel]').forEach(b =>
     b.addEventListener('click', () => cancelOrder(b.dataset.cancel)));
+  host.querySelectorAll('[data-drop]').forEach(b =>
+    b.addEventListener('click', () => cancelChartOrder({ id: b.dataset.drop, live: false, side: 'BUY' })));
 }
 
 async function cancelOrder(id){
@@ -7961,7 +8047,7 @@ function syncOrderPolling(){
     orderTimer = setInterval(pollOrders, ORDER_POLL_MS);
   } else if(!want && orderTimer){
     clearInterval(orderTimer); orderTimer = null;
-    openOrders = []; renderOpenOrders();
+    openOrders = []; renderOpenOrders();     // 모의 대기 주문은 여기서 지워지지 않는다
   }
 }
 
@@ -8079,6 +8165,7 @@ function applyLivePrice(tk, px){
   if(PANES.some(p => p.tk === tk)) drawCandle(true);
   if(tk === selectedTk) paintLiveQuote(tk, px);
   if(typeof checkAlerts === 'function') checkAlerts(tk, px);
+  if(typeof checkPending === 'function') checkPending(tk, px);
 }
 
 function paintLiveQuote(tk, px){
@@ -8161,6 +8248,200 @@ window.addEventListener('message', ev => {
 });
 
 
+
+/* =====================================================================
+   차트에 얹는 내 흔적 — 미체결 지정가 선 · 체결 지점 · 알람 선
+
+   셋 다 "지금 그리는 봉 축" 위에 놓여야 한다. 봉 단위를 바꾸면 축이
+   통째로 달라지므로 좌표는 매 렌더마다 다시 구한다.
+   ===================================================================== */
+
+/* 시각(ms) → 지금 그리는 봉의 번호. 없으면 null. */
+function barIndexForTime(tk, ms){
+  if(!isFinite(ms)) return null;
+  const iv = paneIv();
+  if(isIntraday(iv)){
+    const t = aggregate(tk, iv).times || [];
+    if(!t.length || ms < t[0]) return null;
+    let lo = 0, hi = t.length - 1;                 // 마지막 "시작 시각 ≤ ms" 봉
+    while(lo < hi){ const mid = (lo + hi + 1) >> 1; if(t[mid] <= ms) lo = mid; else hi = mid - 1; }
+    return lo;
+  }
+  // 일봉 이상은 날짜로 찾는다. 거래 시각은 사용자가 있던 곳의 하루로 본다.
+  const d = new Date(ms);
+  const iso = new Date(ms - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  if(isGrouped(iv)){
+    const grp = ivGrp(iv), a = aggregateDaily(tk, grp);
+    let key;
+    if(grp === 'Y') key = iso.slice(0, 4);
+    else if(grp === 'M') key = iso.slice(0, 7);
+    else {
+      const dt = new Date(iso + 'T00:00:00Z');
+      dt.setUTCDate(dt.getUTCDate() - ((dt.getUTCDay() + 6) % 7));
+      key = dt.toISOString().slice(0, 10);
+    }
+    let idx = -1;
+    for(let i = 0; i < a.labels.length; i++){ if(a.labels[i] <= key) idx = i; else break; }
+    return idx < 0 ? null : idx;
+  }
+  const dates = dailyDatesOf(tk);
+  let idx = -1;
+  for(let i = 0; i < dates.length; i++){ if(dates[i] <= iso) idx = i; else break; }
+  return idx < 0 ? null : idx;
+}
+
+/* ---- 미체결 지정가 ----
+   실거래는 토스가 알려 준 목록(openOrders), 모의는 우리 장부의 대기 목록. */
+function chartOrders(tk){
+  if(folioMode === 'live'){
+    return (openOrders || []).filter(o => o.symbol === tk && o.orderType === 'LIMIT')
+      .map(o => ({ id: o.orderId, live: true, side: o.side,
+                   px: parseFloat(o.price), qty: parseFloat(o.quantity) || 0 }));
+  }
+  return (book().pending || []).filter(o => o.tk === tk)
+    .map(o => ({ id: o.id, live: false, side: o.side, px: o.px, qty: o.qty }));
+}
+
+function drawOrderLines(x, y, W){
+  if(!geom || folio.showOrderLines === false) return;
+  const cur = nodeIndex.get(cTk)?.currency || 'USD';
+  chartOrders(cTk).forEach(o => {
+    const py = y(o.px);
+    if(!isFinite(py) || py < CM.t - 2 || py > CM.t + geom.priceH + 2) return;
+    const buy = o.side === 'BUY';
+    const col = buy ? '#3ddc84' : '#ff5c72';
+    const g = bigSvg.append('g');
+    g.append('line').attr('x1', CM.l).attr('x2', W - CM.r).attr('y1', py).attr('y2', py)
+      .attr('stroke', col).attr('stroke-width', 1.4).attr('stroke-dasharray', '7,4').attr('opacity', 0.95);
+    const lab = `${buy ? '매수' : '매도'} 지정가 ${fmtPx(o.px, cur)}${o.qty ? ` · ${o.qty}주` : ''}`;
+    const t = g.append('text').attr('x', CM.l + 5).attr('y', py - 5).attr('font-size', 10)
+      .attr('fill', col).attr('font-family', "'JetBrains Mono',monospace").text(lab);
+    // 선 끝의 ×로 바로 취소한다 — 미체결 목록까지 가지 않아도 되게
+    const bw = (t.node().getComputedTextLength ? t.node().getComputedTextLength() : 90);
+    const cx = CM.l + 5 + bw + 12;
+    const kill = g.append('g').style('cursor', 'pointer')
+      .on('mousedown', ev => { ev.stopPropagation(); cancelChartOrder(o); });
+    kill.append('circle').attr('cx', cx).attr('cy', py - 9).attr('r', 7)
+      .attr('fill', '#141821').attr('stroke', col).attr('stroke-width', 1);
+    kill.append('text').attr('x', cx).attr('y', py - 5.5).attr('text-anchor', 'middle')
+      .attr('font-size', 9).attr('fill', col).text('×');
+    kill.append('title').text('이 주문 취소');
+  });
+}
+
+async function cancelChartOrder(o){
+  if(o.live){ await cancelOrder(o.id); return; }
+  const b = folio.paper;
+  const p = (b.pending || []).find(z => z.id === o.id);
+  if(!p) return;
+  if(!confirm(`대기 중인 ${p.side === 'BUY' ? '매수' : '매도'} 지정가 주문` +
+              ` (${p.qty}주 @ ${fmtPx(p.px, nodeIndex.get(p.tk)?.currency || 'USD')}) 을 취소할까요?`)) return;
+  b.pending = b.pending.filter(z => z.id !== o.id);
+  saveFolio(); renderOpenOrders();
+  if(document.body.classList.contains('view-trade')) drawCandle();
+  toast('대기 주문을 취소했습니다.');
+}
+
+/* ---- 체결 지점 ---- */
+function drawTradeMarks(x, y){
+  if(!geom || folio.showMarks === false) return;
+  const cur = nodeIndex.get(cTk)?.currency || 'USD';
+  const seen = new Map();                     // 같은 봉·같은 방향은 겹쳐 쌓는다
+  (book().trades || []).filter(t => t.tk === cTk).forEach(t => {
+    const i = barIndexForTime(cTk, Date.parse(t.ts));
+    if(i == null || i < geom.i0 || i > geom.i1) return;
+    const px = x(i), py = y(t.px);
+    if(!isFinite(py) || py < CM.t - 40 || py > CM.t + geom.priceH + 40) return;
+    const buy = t.side === 'BUY';
+    const key = `${i}|${t.side}`;
+    const dup = seen.get(key) || 0;
+    seen.set(key, dup + 1);
+    const off = (buy ? 11 : -11) + (buy ? 1 : -1) * dup * 9;
+    const col = buy ? '#3ddc84' : '#ff5c72';
+    const g = bigSvg.append('g').style('cursor', 'pointer')
+      .on('mousedown', ev => { ev.stopPropagation(); editTradeMemo(t.id); });
+    g.append('path')
+      .attr('d', buy ? `M${px},${py + off - 8}L${px - 5.5},${py + off}L${px + 5.5},${py + off}Z`
+                     : `M${px},${py + off + 8}L${px - 5.5},${py + off}L${px + 5.5},${py + off}Z`)
+      .attr('fill', col).attr('stroke', '#0a0c10').attr('stroke-width', 0.8);
+    if(t.memo)                                  // 메모가 있으면 점을 하나 얹어 표시한다
+      g.append('circle').attr('cx', px + 6).attr('cy', py + off + (buy ? -7 : 7)).attr('r', 2)
+        .attr('fill', '#ffd166');
+    g.append('title').text(
+      `${t.ts.slice(0, 16).replace('T', ' ')} · ${buy ? '매수' : '매도'} ${(+t.qty.toFixed(6))}주 @ ${fmtPx(t.px, cur)}`
+      + (t.mode === 'live' ? ' · 실거래' : ' · 모의')
+      + (t.realized != null ? ` · 실현 ${fmtKrw(t.realized)}` : '')
+      + (t.memo ? `\n메모: ${t.memo}` : '\n클릭해서 메모 남기기'));
+  });
+}
+
+function editTradeMemo(id){
+  const t = book().trades.find(x => x.id === id);
+  if(!t) return;
+  const v = prompt(`${t.ts.slice(0, 16).replace('T', ' ')} ${t.tk} ${t.side === 'BUY' ? '매수' : '매도'} 근거`, t.memo || '');
+  if(v == null) return;
+  t.memo = v.slice(0, 300);
+  saveFolio();
+  drawCandle();
+  if(typeof renderTrades === 'function' && document.body.classList.contains('view-folio')) renderTrades();
+}
+
+/* ---- 모의 지정가는 대기한다 ----
+   전에는 누른 즉시 체결된 것으로 쳤는데, 그러면 차트에 걸어 둘 선이 없다.
+   실제 지정가처럼 값이 닿을 때 채워지게 한다. 도달할 수 없는 쪽(즉시 체결
+   가능한 지정가)은 예전처럼 바로 채운다. */
+function restLimit({ tk, side, qty, px, memo }){
+  const b = book();
+  const o = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+              tk, side, qty, px, memo: (memo || '').slice(0, 300), at: Date.now() };
+  (b.pending = b.pending || []).push(o);
+  saveFolio();
+  renderOpenOrders();
+  if(document.body.classList.contains('view-trade')) drawCandle();
+  toast(`${isKr(tk) ? nodeIndex.get(tk)?.name || tk : tk} ${side === 'BUY' ? '매수' : '매도'} 지정가 ` +
+        `${fmtPx(px, nodeIndex.get(tk)?.currency || 'USD')} 대기 중 — 값이 닿으면 체결됩니다.`);
+  return o;
+}
+
+/* 값이 닿았는지 본다. 매수는 가격이 내려와야, 매도는 올라가야 채워진다. */
+function checkPending(tk, price){
+  const b = folio.paper;
+  if(!b.pending || !b.pending.length || !isFinite(price)) return;
+  const hit = b.pending.filter(o => o.tk === tk &&
+    (o.side === 'BUY' ? price <= o.px : price >= o.px));
+  if(!hit.length) return;
+  hit.forEach(o => {
+    const r = applyFillPaper(o);
+    b.pending = b.pending.filter(p => p.id !== o.id);
+    if(r.ok) toast(`모의 체결 · ${isKr(o.tk) ? nodeIndex.get(o.tk)?.name || o.tk : o.tk} ` +
+                   `${o.side === 'BUY' ? '매수' : '매도'} ${o.qty}주 @ ${fmtPx(o.px, nodeIndex.get(o.tk)?.currency || 'USD')}`,
+                   o.side === 'BUY' ? 'up' : '');
+    else toast(`대기 주문을 채우지 못했습니다 — ${r.msg}`, 'down');
+  });
+  saveFolio();
+  renderOpenOrders();
+  if(document.body.classList.contains('view-trade')){ drawCandle(); renderTvSummary(); updateTicket(); }
+  if(document.body.classList.contains('view-folio')) renderFolio();
+}
+/* 대기 주문은 언제나 모의 장부로 들어간다 */
+function applyFillPaper(o){
+  const keep = folioMode;
+  folioMode = 'paper';
+  const r = applyFill({ tk: o.tk, side: o.side, qty: o.qty, px: o.px, mode: 'paper', memo: o.memo });
+  folioMode = keep;
+  return r;
+}
+
+/* 실시간이 없어도 최신 종가로 한 번씩 훑는다 (알람 훑기와 같은 주기) */
+function sweepPending(){
+  const b = folio.paper;
+  if(!b.pending || !b.pending.length) return;
+  [...new Set(b.pending.map(o => o.tk))].forEach(tk => {
+    const p = (latestClose(tk) || {}).px;
+    if(p != null) checkPending(tk, p);
+  });
+}
+
 /* =====================================================================
    차트에서 바로 — 빠른 주문 · 가격 알람
 
@@ -8227,6 +8508,7 @@ function addAlert(tk, rawPx, note){
               base: cur ?? null, note: (note || '').slice(0, 60), made: Date.now(), fired: 0 };
   ALERTS.push(a);
   saveAlerts();
+  pushAlerts();
   askNotify();
   renderAlertPanel();
   declareLive();                     // 알람이 걸린 종목도 실시간으로 따라간다
@@ -8238,7 +8520,7 @@ function removeAlert(id){
   const i = ALERTS.findIndex(a => a.id === id);
   if(i < 0) return;
   ALERTS.splice(i, 1);
-  saveAlerts(); renderAlertPanel(); declareLive();
+  saveAlerts(); pushAlerts(); renderAlertPanel(); declareLive();
   if(document.body.classList.contains('view-trade')) drawCandle();
 }
 
@@ -8260,7 +8542,7 @@ function checkAlerts(tk, px){
     if(a.fired || a.tk !== tk) return;
     if(a.dir === 'up' ? px >= a.px : px <= a.px){ a.fired = Date.now(); hit = true; fireAlert(a, px); }
   });
-  if(hit){ saveAlerts(); renderAlertPanel(); declareLive(); }
+  if(hit){ saveAlerts(); pushAlerts(); renderAlertPanel(); declareLive(); }
 }
 /* 실시간이 없을 때라도 최신 종가로 한 번씩 훑는다 */
 function sweepAlerts(){
@@ -8269,7 +8551,40 @@ function sweepAlerts(){
     if(p != null) checkAlerts(tk, p);
   });
 }
-setInterval(sweepAlerts, 30000);
+setInterval(() => { sweepAlerts(); sweepPending(); pullAlerts(); }, 30000);
+
+/* 알람 목록을 브리지에도 넘겨 둔다. 브라우저가 닫혀 있어도 브리지가
+   1분봉으로 값을 지켜보다 메일을 보낸다 — 알람의 존재 이유가 그것이다.
+   확장 프로그램 경로에는 /alerts 가 없으므로 브리지일 때만 보낸다. */
+let alertPushTimer = null, alertMail = null;
+function pushAlerts(){
+  clearTimeout(alertPushTimer);
+  alertPushTimer = setTimeout(async () => {
+    if(!bridgeOk || extReady) return;
+    try {
+      const r = await bridge('/alerts', { method: 'POST', body: JSON.stringify({
+        items: ALERTS.map(a => ({ id: a.id, symbol: a.tk, price: a.px, dir: a.dir,
+                                  name: alName(a.tk), note: a.note || '', fired: a.fired || 0 })) }) });
+      if(r && r.ok) alertMail = alertMail || {};
+    } catch(e){ /* 브리지가 잠깐 없어도 브라우저 쪽 감시는 계속 돈다 */ }
+  }, 400);
+}
+
+/* 브리지가 먼저 울렸으면 그 사실을 가져온다 */
+async function pullAlerts(){
+  if(!bridgeOk || extReady) return;
+  let r;
+  try { r = await bridge('/alerts'); } catch(e){ return; }
+  alertMail = { on: !!r.email, to: r.to, every: r.every };
+  let changed = false;
+  (r.items || []).forEach(it => {
+    if(!it.fired) return;
+    const a = ALERTS.find(x => x.id === it.id);
+    if(a && !a.fired){ a.fired = it.fired; changed = true; fireAlert(a, it.firedPrice ?? a.px); }
+  });
+  if(changed){ saveAlerts(); declareLive(); if(document.body.classList.contains('view-trade')) drawCandle(); }
+  renderAlertPanel();
+}
 
 function renderAlertPanel(){
   const host = document.getElementById('tv-alerts');
@@ -8277,7 +8592,11 @@ function renderAlertPanel(){
   const cnt = document.getElementById('tv-alert-count');
   const live = ALERTS.filter(a => !a.fired);
   const done = ALERTS.filter(a => a.fired).sort((x, y) => y.fired - x.fired).slice(0, 4);
-  if(cnt) cnt.textContent = live.length ? `${live.length}개 대기` : '';
+  if(cnt) cnt.textContent = (live.length ? `${live.length}개 대기` : '')
+    + (alertMail ? (alertMail.on ? ' · 메일 켜짐' : ' · 메일 꺼짐') : '');
+  if(cnt) cnt.title = !alertMail ? ''
+    : alertMail.on ? `울리면 ${alertMail.to} 로 메일이 갑니다 — 브라우저를 닫아도 브리지가 지켜봅니다.`
+    : 'toss.json 에 alert_email 을 넣으면 메일로도 받을 수 있습니다.';
   if(!ALERTS.length){
     host.innerHTML = '<div class="cap">차트에서 알람을 걸 가격을 <b>우클릭</b>하세요. '
       + '터치 화면이면 그 자리를 <b>길게 누르면</b> 됩니다.</div>';
@@ -8299,16 +8618,28 @@ function renderAlertPanel(){
 
 /* 차트 위의 알람 선 — 사용자가 그은 선과 구분되게 점선·노란색으로 */
 function drawAlertLines(x, y, W){
-  if(!geom) return;
+  if(!geom || folio.showAlertLines === false) return;
   alertsOf(cTk).forEach(a => {
     const py = y(a.px);
     if(!isFinite(py) || py < CM.t - 2 || py > CM.t + geom.priceH + 2) return;
-    const g = bigSvg.append('g').style('pointer-events', 'none');
+    const g = bigSvg.append('g');
     g.append('line').attr('x1', CM.l).attr('x2', W - CM.r).attr('y1', py).attr('y2', py)
-      .attr('stroke', '#ffd166').attr('stroke-width', 1).attr('stroke-dasharray', '2,5').attr('opacity', 0.9);
-    g.append('text').attr('x', CM.l + 5).attr('y', py - 4).attr('font-size', 9.5)
+      .attr('stroke', '#ffd166').attr('stroke-width', 1).attr('stroke-dasharray', '2,5')
+      .attr('opacity', 0.9).style('pointer-events', 'none');
+    const t = g.append('text').attr('x', CM.l + 5).attr('y', py - 4).attr('font-size', 9.5)
       .attr('fill', '#ffd166').attr('font-family', "'JetBrains Mono',monospace")
+      .style('pointer-events', 'none')
       .text('🔔 ' + fmtPx(a.px, alCur(cTk)) + (a.note ? ' · ' + a.note : ''));
+    // 선 끝의 ×로 그 자리에서 지운다 — 만든 곳에서 없앨 수 있어야 한다
+    const bw = (t.node().getComputedTextLength ? t.node().getComputedTextLength() : 80);
+    const cx = CM.l + 5 + bw + 12;
+    const kill = g.append('g').style('cursor', 'pointer')
+      .on('mousedown', ev => { ev.stopPropagation(); removeAlert(a.id); });
+    kill.append('circle').attr('cx', cx).attr('cy', py - 8).attr('r', 7)
+      .attr('fill', '#141821').attr('stroke', '#ffd166').attr('stroke-width', 1);
+    kill.append('text').attr('x', cx).attr('y', py - 4.5).attr('text-anchor', 'middle')
+      .attr('font-size', 9).attr('fill', '#ffd166').text('×');
+    kill.append('title').text('이 알람 지우기');
   });
 }
 
@@ -8512,6 +8843,17 @@ function renderWizard(){
         <input type="password" id="wiz-secret" placeholder="발급받은 시크릿" autocomplete="off" spellcheck="false"></label>
       <label class="wiz-field">계좌 번호 (선택 · 계좌가 여러 개일 때만)
         <input type="number" id="wiz-seq" placeholder="비워 두면 첫 종합매매 계좌"></label>
+      <details class="wiz-more"><summary>가격 알람을 메일로 받기 (선택)</summary>
+        <div class="wiz-step" style="margin:6px 0 8px">브리지가 값을 지켜보다 알람이 울리면 메일을 보냅니다 —
+          <b>브라우저를 닫아 두어도 울립니다.</b> 구글 계정 비밀번호가 아니라
+          <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer"
+             style="color:var(--accent)">앱 비밀번호 ↗</a> 16자를 넣으세요 (2단계 인증이 켜져 있어야 만들 수 있습니다).</div>
+        <label class="wiz-field">보내는 Gmail 주소
+          <input type="text" id="wiz-mail" placeholder="${esc((isLoggedIn() && user.email) || 'me@gmail.com')}"
+                 autocomplete="off" spellcheck="false"></label>
+        <label class="wiz-field">앱 비밀번호 (16자)
+          <input type="password" id="wiz-mailpw" placeholder="xxxx xxxx xxxx xxxx" autocomplete="off"></label>
+      </details>
       <div class="wiz-warn ${isLoggedIn() && user.provider === 'google' ? 'wiz-ok' : ''}">${
         isLoggedIn() && user.provider === 'google'
         ? `이 브리지는 <b>${esc(user.email || user.name)}</b> 계정으로만 열립니다. ` +
@@ -8732,6 +9074,11 @@ function wizDownload(){
   // 브리지는 이 구글 계정으로만 열린다 — 터널로 인터넷에 내놓아도 안전하도록
   cfg.google_client_id = (AUTH.google && AUTH.google.clientId) || '';
   cfg.allowed_email = (isLoggedIn() && user.provider === 'google' && user.email) || '';
+  // 알람 메일은 선택이다. 넣은 경우에만 파일에 적는다 — 여기서도 저장·전송하지 않는다.
+  const mu = (document.getElementById('wiz-mail')?.value || '').trim()
+             || ((isLoggedIn() && user.email) || '');
+  const mp = (document.getElementById('wiz-mailpw')?.value || '').replace(/\s+/g, '');
+  if(mp) cfg.alert_email = { user: mu, password: mp, to: cfg.allowed_email || mu };
   const blob = new Blob([JSON.stringify(cfg, null, 2) + '\n'], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);

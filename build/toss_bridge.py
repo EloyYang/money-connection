@@ -15,8 +15,21 @@ localhost 의 이 프로세스에만 요청한다.
       "client_secret":    "발급받은 시크릿",
       "account_seq":      0,        // 생략하면 첫 BROKERAGE 계좌를 자동 사용
       "google_client_id": "대시보드가 쓰는 OAuth 웹 클라이언트 ID",
-      "allowed_email":    "이 브리지를 쓸 내 구글 계정"
+      "allowed_email":    "이 브리지를 쓸 내 구글 계정",
+
+      // 가격 알람을 메일로 받고 싶을 때만 (선택)
+      "alert_email": {
+        "user":     "내구글계정@gmail.com",
+        "password": "구글 앱 비밀번호 16자",   // 계정 비밀번호가 아니다
+        "to":       "받을 주소 (생략하면 allowed_email)"
+      }
     }
+
+가격 알람
+--------
+대시보드가 알람 목록을 브리지에 넘겨 두면, 브리지가 1분봉으로 값을 지켜보다
+닿는 순간 메일을 보낸다. 브라우저를 닫아 두어도 울린다 — 브리지만 켜져
+있으면 된다. alert_email 이 없으면 울린 사실만 기록하고 메일은 건너뛴다.
 
 누가 쓸 수 있나
 --------------
@@ -35,12 +48,15 @@ allowed_email 과 다른 계정이면 거절한다.
 127.0.0.1 에만 바인딩한다. 외부에 노출하지 말 것 — 이 포트에 닿을 수 있는
 모든 프로그램이 당신의 계좌로 주문을 낼 수 있다.
 """
-import argparse, gzip, hmac, json, os, re, shutil, signal, subprocess, sys, threading, time
+import argparse, gzip, hmac, json, os, re, shutil, signal, smtplib, subprocess, sys, threading, time
 import urllib.error, urllib.parse, urllib.request
+from email.message import EmailMessage
+from email.utils import formataddr
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 API = "https://openapi.tossinvest.com"
 CONFIG = os.path.expanduser("~/.money-connection/toss.json")
+ALERTS = os.path.expanduser("~/.money-connection/alerts.json")
 DEFAULT_ORIGINS = ["https://eloyyang.github.io", "http://localhost:8778", "http://127.0.0.1:8778"]
 TOKENINFO = "https://oauth2.googleapis.com/tokeninfo?id_token="
 
@@ -53,6 +69,122 @@ _account = {"seq": None, "no": None}
 
 def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
+# ---------------------------------------------------------------- 가격 알람
+_alerts = {"items": [], "rev": 0}
+_alerts_lock = threading.Lock()
+ALERT_EVERY = 20            # 초. 토스 레이트리밋을 생각해 종목당 이 간격으로만 묻는다
+
+
+def alerts_load():
+    try:
+        with open(ALERTS) as f:
+            d = json.load(f)
+        if isinstance(d, dict) and isinstance(d.get("items"), list):
+            _alerts["items"] = d["items"]
+            _alerts["rev"] = int(d.get("rev") or 0)
+            log(f"알람 {len(_alerts['items'])}개를 불러왔습니다.")
+    except FileNotFoundError:
+        pass
+    except Exception as e:                                    # noqa: BLE001
+        log(f"알람 파일을 읽지 못했습니다: {e}")
+
+
+def alerts_save():
+    try:
+        os.makedirs(os.path.dirname(ALERTS), exist_ok=True)
+        tmp = ALERTS + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(_alerts, f, ensure_ascii=False)
+        os.replace(tmp, ALERTS)                               # 쓰다 죽어도 반쪽 파일이 남지 않는다
+    except Exception as e:                                    # noqa: BLE001
+        log(f"알람 파일을 쓰지 못했습니다: {e}")
+
+
+def send_mail(cfg, subject, body):
+    """가격 알람을 메일로. 설정이 없으면 조용히 건너뛴다."""
+    m = cfg.get("alert_email") or {}
+    user, pw = m.get("user"), m.get("password")
+    to = m.get("to") or cfg.get("allowed_email")
+    if not (user and pw and to):
+        return False, "alert_email 설정이 없습니다"
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = formataddr(("머니 커넥션", user))
+    msg["To"] = to
+    msg.set_content(body)
+    host, port = m.get("host", "smtp.gmail.com"), int(m.get("port", 587))
+    try:
+        with smtplib.SMTP(host, port, timeout=20) as smtp:
+            smtp.starttls()
+            smtp.login(user, pw)
+            smtp.send_message(msg)
+        return True, to
+    except Exception as e:                                    # noqa: BLE001
+        return False, str(e)
+
+
+def last_price(symbol, cfg):
+    r = call("GET", "/api/v1/candles?" + urllib.parse.urlencode(
+        {"symbol": symbol, "interval": "1m", "count": "1"}), cfg, account=False)
+    res = r.get("result") or r
+    arr = res.get("candles") or res.get("items") or []
+    if not arr:
+        return None
+    try:
+        return float(arr[0].get("closePrice"))
+    except (TypeError, ValueError):
+        return None
+
+
+def alert_watcher(cfg, stop):
+    """브라우저가 닫혀 있어도 값을 지켜본다 — 알람의 존재 이유가 그것이다."""
+    while not stop.is_set():
+        stop.wait(ALERT_EVERY)
+        if stop.is_set():
+            break
+        with _alerts_lock:
+            pend = [a for a in _alerts["items"] if not a.get("fired")]
+        if not pend:
+            continue
+        for sym in sorted({a["symbol"] for a in pend if a.get("symbol")}):
+            if stop.is_set():
+                break
+            try:
+                px = last_price(sym, cfg)
+            except Exception as e:                            # noqa: BLE001
+                log(f"알람 시세 조회 실패 {sym}: {e}")
+                continue
+            if px is None:
+                continue
+            hit = []
+            with _alerts_lock:
+                for a in _alerts["items"]:
+                    if a.get("fired") or a.get("symbol") != sym:
+                        continue
+                    try:
+                        target = float(a["price"])
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    up = a.get("dir") != "down"
+                    if (px >= target) if up else (px <= target):
+                        a["fired"] = int(time.time() * 1000)
+                        a["firedPrice"] = px
+                        hit.append((a, target, up))
+                if hit:
+                    _alerts["rev"] += 1
+                    alerts_save()
+            for a, target, up in hit:
+                name = a.get("name") or sym
+                subj = f"[머니 커넥션] {name} {target:g} {'돌파' if up else '이탈'}"
+                body = (f"{name} ({sym})\n"
+                        f"현재가 {px:g} — 걸어 두신 {target:g} 을 {'넘었습니다' if up else '밑돌았습니다'}.\n"
+                        + (f"메모: {a['note']}\n" if a.get("note") else "")
+                        + f"\n{time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        "이 메일은 본인 PC 에서 도는 머니 커넥션 브리지가 보냈습니다.")
+                ok, why = send_mail(cfg, subj, body)
+                log(f"알람: {subj} — " + (f"메일 보냄 → {why}" if ok else f"메일 안 보냄 ({why})"))
 
 
 # 맥은 앱 안에 CLI 가 들어 있어 PATH 에 없을 수 있다
@@ -351,6 +483,13 @@ class Handler(BaseHTTPRequestHandler):
                 q.setdefault("currency", "KRW")
                 return self._send(200, call("GET", "/api/v1/buying-power?"
                                             + urllib.parse.urlencode(q), self.cfg))
+            if path == "/alerts":
+                with _alerts_lock:
+                    m = self.cfg.get("alert_email") or {}
+                    return self._send(200, {"items": _alerts["items"], "rev": _alerts["rev"],
+                                            "email": bool(m.get("user") and m.get("password")),
+                                            "to": m.get("to") or self.cfg.get("allowed_email"),
+                                            "every": ALERT_EVERY})
             if path == "/commissions":
                 return self._send(200, call("GET", "/api/v1/commissions", self.cfg, account=False))
             if path.startswith("/order/"):
@@ -383,6 +522,38 @@ class Handler(BaseHTTPRequestHandler):
                     f"{order['orderType']}{' @' + order['price'] if order.get('price') else ''}")
                 res = call("POST", "/api/v1/orders", self.cfg, body=order)
                 return self._send(200, (res.get("result") or res))
+            if path == "/alerts":
+                # 대시보드가 가진 목록이 곧 진실이다. 통째로 갈아 끼우되,
+                # 브리지가 이미 울렸다고 표시한 것은 그대로 지킨다.
+                b = self._body()
+                items = b.get("items")
+                if not isinstance(items, list):
+                    return self._send(400, {"error": "items 배열이 필요합니다."})
+                clean = []
+                for a in items[:200]:
+                    try:
+                        clean.append({"id": str(a["id"])[:64], "symbol": str(a["symbol"])[:20],
+                                      "price": float(a["price"]),
+                                      "dir": "down" if a.get("dir") == "down" else "up",
+                                      "name": str(a.get("name") or "")[:60],
+                                      "note": str(a.get("note") or "")[:120],
+                                      "fired": int(a.get("fired") or 0)})
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                with _alerts_lock:
+                    was = {a["id"]: a for a in _alerts["items"]}
+                    for a in clean:
+                        old = was.get(a["id"])
+                        if old and old.get("fired") and not a["fired"]:
+                            a["fired"] = old["fired"]
+                            a["firedPrice"] = old.get("firedPrice")
+                    _alerts["items"] = clean
+                    _alerts["rev"] += 1
+                    alerts_save()
+                    rev = _alerts["rev"]
+                log(f"알람 {len(clean)}개를 받았습니다 (대기 "
+                    f"{sum(1 for a in clean if not a['fired'])}개).")
+                return self._send(200, {"ok": True, "rev": rev, "count": len(clean)})
             if path.startswith("/order/") and path.endswith("/cancel"):
                 oid = path[len("/order/"):-len("/cancel")]
                 log(f"CANCEL {oid}")
@@ -408,6 +579,7 @@ def main():
 
     Handler.cfg = load_config()
     Handler.origins = a.origin + DEFAULT_ORIGINS
+    alerts_load()
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     who = Handler.cfg.get("allowed_email")
 
@@ -441,6 +613,14 @@ def main():
     print()
     log(f"listening on 127.0.0.1:{a.port}  (origins: {', '.join(Handler.origins)})")
     log(f"구글 계정 확인이 켜져 있습니다 — {who} 로 로그인한 브라우저만 통과합니다.")
+    mail = Handler.cfg.get("alert_email") or {}
+    if mail.get("user") and mail.get("password"):
+        log(f"가격 알람을 {mail.get('to') or who} 로 메일 발송합니다 "
+            f"({ALERT_EVERY}초마다 확인 · 브라우저를 닫아도 울립니다).")
+    else:
+        log("가격 알람 메일은 꺼져 있습니다 — toss.json 에 alert_email 을 넣으면 켜집니다.")
+    stop = threading.Event()
+    threading.Thread(target=alert_watcher, args=(Handler.cfg, stop), daemon=True).start()
     log("주문은 대시보드에서 확인 버튼을 눌러야 전송됩니다. 종료: Ctrl+C")
     # Ctrl+C 뿐 아니라 터미널을 닫거나 kill 로 끝낼 때도 funnel 을 정리한다.
     # 노출을 켠 채로 프로세스만 사라지는 상황을 만들지 않기 위해서다.
@@ -457,6 +637,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        stop.set()
         if public:
             funnel_down(a.port)          # 창을 닫으면 인터넷 노출도 함께 닫는다
         log("bye")
