@@ -1772,9 +1772,18 @@ const HELP = {
     '토스증권 WTS(PC 웹) 로그인 → <b>설정 → Open API</b> → 신청하고 ' +
     '<code>client_id</code> 와 <code>client_secret</code> 을 받습니다.\n' +
     '<span class="warn">secret은 비밀번호입니다. 이 사이트나 깃허브에 절대 넣지 마세요.</span>\n' +
+    '<span class="step">브리지는 내 구글 계정으로 잠깁니다</span>' +
+    '모든 요청은 구글 ID 토큰을 함께 보내고, 브리지가 그것을 <b>구글에 직접 물어</b> 확인합니다. ' +
+    '설정에 적힌 계정과 다르면 거절합니다 — 그래서 터널로 인터넷에 열어도 ' +
+    '<b>주소를 아는 것만으로는 아무것도 할 수 없습니다.</b>\n' +
+    '<span class="step">폰·태블릿에서 쓰려면</span>' +
+    '<code>tailscale funnel --bg 8787</code> 을 실행하면 <code>https://…ts.net</code> 주소가 생깁니다. ' +
+    '그 주소를 브리지 주소에 넣으면 어느 기기에서든 연결됩니다. ' +
+    'Tailscale 은 맥·윈도우·리눅스 모두 지원하고 무료입니다. 이때도 내 구글 계정만 통과합니다.\n' +
     '<span class="step">2. 키를 내 PC에 저장</span>' +
     '<code>~/.money-connection/toss.json</code> 파일을 만들고 아래를 넣습니다.\n' +
-    '<code>{"client_id": "발급받은ID", "client_secret": "발급받은시크릿"}</code>\n' +
+    '<code>{"client_id": "…", "client_secret": "…", "google_client_id": "…", "allowed_email": "…"}</code>\n' +
+    '연동 마법사가 만들어 주는 파일에는 <b>구글 두 값이 자동으로</b> 들어갑니다.\n' +
     '계좌가 여러 개면 <code>"account_seq": 1</code> 을 추가하세요. 없으면 첫 종합매매 계좌를 씁니다.\n' +
     '<span class="step">3. 브리지 내려받아 실행</span>' +
     '<b>[토스증권 연동하기]</b> 마법사의 3단계에서 <code>toss_bridge.py</code> 를 바로 내려받을 수 있습니다 ' +
@@ -5869,6 +5878,32 @@ let bridgeOk = false, bridgeAccount = null;
 let extReady = false, extVersion = null;
 
 const bridgeUrl = () => (folio.bridge || '').replace(/\/+$/, '');
+/* 브리지에 보낼 구글 신원. 만료가 가까우면 조용히 새로 받아 둔다. */
+const googleIdToken = () => (user && user.provider === 'google' && user.idToken) ? user.idToken : '';
+let refreshing = null;
+async function refreshGoogleId(){
+  if(!user || user.provider !== 'google') return false;
+  if(refreshing) return refreshing;
+  refreshing = (async () => {
+    try {
+      // 구글 창이 안 뜨거나 사용자가 그냥 두면 영영 안 끝난다 — 시간을 끊는다
+      const u = await Promise.race([
+        loginGoogle(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000)),
+      ]);
+      if(u && u.idToken && u.id === user.id){
+        user.idToken = u.idToken; user.idExp = u.idExp;
+        try { localStorage.setItem(AUTH_KEY, JSON.stringify(user)); } catch(e){}
+        return true;
+      }
+    } catch(e){ /* 사용자가 창을 닫았을 수 있다 */ }
+    return false;
+  })();
+  const ok = await refreshing;
+  refreshing = null;
+  return ok;
+}
+
 /* "/candles?symbol=X&interval=1m" 처럼 붙은 질의를 객체로 — 확장은 객체를 받는다 */
 const qsObj = path => Object.fromEntries(new URLSearchParams(path.split('?')[1] || ''));
 
@@ -5896,10 +5931,16 @@ async function bridge(path, opts){
   if(!base) throw new Error('브리지 주소가 비어 있습니다. 확장 프로그램을 설치했거나 브리지를 실행했는지 확인하세요.');
   const r = await fetch(base + path, {
     ...opts,
-    headers: { 'Content-Type': 'application/json', ...(opts?.headers || {}) },
+    headers: { 'Content-Type': 'application/json',
+               ...(googleIdToken() ? { 'X-MC-Auth': googleIdToken() } : {}),
+               ...(opts?.headers || {}) },
   });
   const body = await r.json().catch(() => ({}));
-  if(!r.ok) throw new Error(body.error || `${r.status} ${r.statusText}`);
+  if(!r.ok){
+    const e = new Error(body.error || `${r.status} ${r.statusText}`);
+    e.code = body.code || (r.status === 401 ? 'auth' : null);
+    throw e;
+  }
   return body;
 }
 function setBrokerChip(){
@@ -5911,7 +5952,7 @@ function setBrokerChip(){
     ? `토스증권 연결됨${bridgeAccount ? ' · ' + bridgeAccount : ''}`
     : extReady ? '확장 설치됨 · 키 없음' : '토스증권 미연결';
 }
-async function checkBridge(quiet){
+async function checkBridge(quiet, retried){
   const st = document.getElementById('bridge-status');
   try {
     const r = await bridge('/health');
@@ -5919,7 +5960,8 @@ async function checkBridge(quiet){
     bridgeAccount = r.accountNo || null;
     if(st) st.innerHTML = bridgeOk
       ? `<span style="color:var(--up)">연결됨</span> · 계좌 ${esc(String(r.accountNo || '?'))} (seq ${r.accountSeq ?? '?'})
-         · 경로 ${extReady ? '확장 프로그램' : '로컬 브리지'}
+         · 경로 ${extReady ? '확장 프로그램' : '로컬 브리지'}${
+           r.allowedEmail ? ` · 계정 ${esc(String(r.allowedEmail))}` : ''}
          — 이제 상단에서 <b>실거래</b>로 바꾸면 실제 주문이 나갑니다.`
       : '응답은 왔지만 계좌 인증에 실패했습니다.';
   } catch(e){
@@ -5928,6 +5970,17 @@ async function checkBridge(quiet){
     // 네트워크 단계에서 죽었는지, 토스가 거절했는지를 나눠서 안내한다
     if(e.code === 'NO_KEYS'){
       if(st && !quiet) st.innerHTML = NO_KEYS_HTML;
+      setBrokerChip(); updateTicket();
+      return false;
+    }
+    if(e.code === 'auth'){
+      // 구글 토큰은 한 시간쯤이면 만료된다. 한 번은 조용히 새로 받아 다시 시도한다.
+      if(!retried && await refreshGoogleId()) return checkBridge(quiet, true);
+      if(st && !quiet) st.innerHTML =
+        `<span style="color:var(--down)">계정이 맞지 않습니다</span> — ${esc(m)}<br>` +
+        (isLoggedIn() && user.provider === 'google'
+          ? '<button class="linkbtn" data-w="relogin">구글 다시 로그인</button>'
+          : '이 브리지는 <b>구글 계정</b>으로만 열립니다. 상단에서 구글로 로그인해 주세요.');
       setBrokerChip(); updateTicket();
       return false;
     }
@@ -7089,7 +7142,9 @@ async function loginGoogle(){
       callback: res => {
         try {
           const p = decodeJwt(res.credential);
-          resolve({ provider: 'google', id: p.sub, name: p.name || p.email, email: p.email, pic: p.picture });
+          // 브리지가 이 토큰을 구글에 물어 신원을 확인한다. 한 시간쯤 유효하다.
+          resolve({ provider: 'google', id: p.sub, name: p.name || p.email, email: p.email,
+                    pic: p.picture, idToken: res.credential, idExp: (p.exp || 0) * 1000 });
         } catch(e){ reject(new Error('Google 응답을 읽지 못했습니다.')); }
       },
     });
@@ -7345,9 +7400,9 @@ const NO_KEYS_HTML = '<span style="color:var(--down)">확장 프로그램에 키
 /* 마법사 밖에서도 "설정 창 열기" 가 동작하게 한다 */
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-w="open-setup"]');
-  if(!b) return;
-  ev.preventDefault();
-  extCall('setup').catch(() => {});
+  if(b){ ev.preventDefault(); extCall('setup').catch(() => {}); return; }
+  const r = ev.target.closest('[data-w="relogin"]');
+  if(r){ ev.preventDefault(); refreshGoogleId().then(ok => { if(ok) checkBridge(false); }); }
 });
 
 
@@ -7965,6 +8020,12 @@ function renderWizard(){
         <li><b>브리지 실행</b> ${wizCmd('python3 ~/Downloads/toss_bridge.py', 'wiz-c2')}
           <span style="color:var(--text-muted)">거래하는 동안 이 터미널 창은 켜 두어야 합니다.</span></li>
       </ol>
+      <div class="wiz-note"><b>폰·태블릿에서도 쓰려면</b> — 이 창을 켜 둔 채 다른 터미널에서
+        ${wizCmd('tailscale funnel --bg 8787', 'wiz-c3')}
+        <a href="https://tailscale.com/download" target="_blank" rel="noopener noreferrer"
+           style="color:var(--accent)">Tailscale 설치 ↗</a> — 맥·윈도우·리눅스 모두 지원하고 무료입니다.
+        <code>https://…ts.net</code> 주소가 생기면 그것을 브리지 주소로 쓰면 됩니다.
+        인터넷에 열리지만 <b>내 구글 계정으로 로그인한 브라우저만</b> 통과합니다.</div>
       <div class="wiz-note">실행하면 터미널에 <b>브리지 주소</b>가 표시됩니다 — 다음 단계에서 씁니다.<br>
         <code>python3: command not found</code> 가 나오면 맥에서
         <code>xcode-select --install</code> 을 먼저 실행하세요.<br>

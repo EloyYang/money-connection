@@ -11,10 +11,21 @@ localhost 의 이 프로세스에만 요청한다.
 
     ~/.money-connection/toss.json
     {
-      "client_id":     "발급받은 클라이언트 ID",
-      "client_secret": "발급받은 시크릿",
-      "account_seq":   0            // 생략하면 첫 BROKERAGE 계좌를 자동 사용
+      "client_id":        "발급받은 클라이언트 ID",
+      "client_secret":    "발급받은 시크릿",
+      "account_seq":      0,        // 생략하면 첫 BROKERAGE 계좌를 자동 사용
+      "google_client_id": "대시보드가 쓰는 OAuth 웹 클라이언트 ID",
+      "allowed_email":    "이 브리지를 쓸 내 구글 계정"
     }
+
+누가 쓸 수 있나
+--------------
+모든 요청은 X-MC-Auth 헤더에 구글 ID 토큰을 실어야 하고, 브리지는 그것을
+구글에 직접 물어 검증한다(서명·만료는 구글이, aud 와 이메일은 우리가).
+allowed_email 과 다른 계정이면 거절한다.
+
+이 검증이 있어야 Tailscale Funnel 로 인터넷에 열어도 안전하다 —
+주소를 아는 것만으로는 아무것도 할 수 없다.
 
 실행
 ----
@@ -24,12 +35,15 @@ localhost 의 이 프로세스에만 요청한다.
 127.0.0.1 에만 바인딩한다. 외부에 노출하지 말 것 — 이 포트에 닿을 수 있는
 모든 프로그램이 당신의 계좌로 주문을 낼 수 있다.
 """
-import argparse, gzip, json, os, sys, threading, time, urllib.error, urllib.parse, urllib.request
+import argparse, gzip, hmac, json, os, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 API = "https://openapi.tossinvest.com"
 CONFIG = os.path.expanduser("~/.money-connection/toss.json")
 DEFAULT_ORIGINS = ["https://eloyyang.github.io", "http://localhost:8778", "http://127.0.0.1:8778"]
+TOKENINFO = "https://oauth2.googleapis.com/tokeninfo?id_token="
+
+_gcache = {}          # id_token -> exp(초). 검증에 성공한 토큰만 만료까지 재사용한다
 
 _lock = threading.Lock()
 _token = {"value": None, "expires": 0}
@@ -49,7 +63,56 @@ def load_config():
     for k in ("client_id", "client_secret"):
         if not cfg.get(k):
             sys.exit(f"{CONFIG} 에 {k} 가 없습니다.")
+    # 인터넷에 노출될 수 있으므로(터널) 어느 구글 계정만 쓸 수 있는지 반드시 정한다
+    for k in ("google_client_id", "allowed_email"):
+        if not cfg.get(k):
+            sys.exit(
+                f"{CONFIG} 에 {k} 가 없습니다.\n\n"
+                "이 브리지는 구글 계정으로만 열립니다. 아래 두 값을 추가해 주세요:\n"
+                '  "google_client_id": "대시보드에 쓰는 OAuth 웹 클라이언트 ID",\n'
+                '  "allowed_email":    "허용할 내 구글 계정 이메일"\n\n'
+                "클라이언트 ID 는 대시보드 → 포트폴리오 → 설정 → 토스증권 연결 의 안내에 있습니다.")
     return cfg
+
+
+def verify_google(id_token, cfg):
+    """구글 ID 토큰을 구글에 직접 물어 검증한다.
+       서명·만료는 구글이 확인해 주고, 우리는 이 대시보드용 토큰인지(aud)와
+       허용한 계정인지(email)를 확인한다. 표준 라이브러리만으로 가능한 방법이다."""
+    if not id_token:
+        return False, "구글 로그인이 필요합니다."
+    now = time.time()
+    with _lock:
+        exp = _gcache.get(id_token)
+        for t, e in list(_gcache.items()):
+            if e < now:
+                _gcache.pop(t, None)
+    if exp and exp > now:
+        return True, None
+    try:
+        with urllib.request.urlopen(TOKENINFO + urllib.parse.quote(id_token), timeout=10) as r:
+            d = json.loads(read_body(r))
+    except urllib.error.HTTPError:
+        return False, "구글 토큰이 유효하지 않습니다. 대시보드에서 다시 로그인해 주세요."
+    except Exception:                                    # noqa: BLE001
+        return False, "구글 검증 서버에 연결하지 못했습니다."
+    if d.get("aud") != cfg["google_client_id"]:
+        return False, "다른 앱에서 발급된 토큰입니다."
+    if d.get("email_verified") not in (True, "true"):
+        return False, "이메일이 확인되지 않은 구글 계정입니다."
+    want = str(cfg["allowed_email"]).strip().lower()
+    got = str(d.get("email", "")).strip().lower()
+    if not hmac.compare_digest(want, got):
+        return False, f"허용되지 않은 계정입니다. 이 브리지는 {want} 로만 열립니다."
+    try:
+        exp = float(d.get("exp", 0))
+    except (TypeError, ValueError):
+        exp = 0
+    if exp <= now:
+        return False, "구글 토큰이 만료되었습니다. 다시 로그인해 주세요."
+    with _lock:
+        _gcache[id_token] = exp
+    return True, None
 
 
 def read_body(resp):
@@ -148,7 +211,7 @@ class Handler(BaseHTTPRequestHandler):
         allow = origin if origin in self.origins else self.origins[0]
         self.send_header("Access-Control-Allow-Origin", allow)
         self.send_header("Vary", "Origin")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-MC-Auth")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 
     def _send(self, code, payload):
@@ -159,6 +222,14 @@ class Handler(BaseHTTPRequestHandler):
         self._cors()
         self.end_headers()
         self.wfile.write(body)
+
+    def _guard(self):
+        """구글 계정이 맞아야 통과한다. 터널로 인터넷에 열려 있어도
+           주소만 알아서는 아무것도 할 수 없게 하는 유일한 장치다."""
+        ok, why = verify_google(self.headers.get("X-MC-Auth"), self.cfg)
+        if not ok:
+            self._send(401, {"error": why, "code": "auth"})
+        return ok
 
     def _body(self):
         n = int(self.headers.get("Content-Length") or 0)
@@ -172,13 +243,16 @@ class Handler(BaseHTTPRequestHandler):
     # ---- routes ----
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
+        if not self._guard():
+            return
         try:
             if path == "/health":
                 # 키가 실제로 통하는지까지 확인한다. account_seq 가 설정에 박혀 있으면
                 # 계좌 조회를 건너뛰므로, 토큰을 받아 봐야 "연결됨" 이 거짓말이 아니게 된다.
                 token(self.cfg)
                 seq = account_seq(self.cfg)
-                return self._send(200, {"ok": True, "accountSeq": seq, "accountNo": _account["no"]})
+                return self._send(200, {"ok": True, "accountSeq": seq, "accountNo": _account["no"],
+                                        "allowedEmail": self.cfg.get("allowed_email")})
             if path == "/accounts":
                 return self._send(200, call("GET", "/api/v1/accounts", self.cfg, account=False))
             if path == "/holdings":
@@ -233,6 +307,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
+        if not self._guard():
+            return
         try:
             if path == "/order":
                 b = self._body()
@@ -272,15 +348,23 @@ def main():
     Handler.cfg = load_config()
     Handler.origins = a.origin + DEFAULT_ORIGINS
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
-    addr = f"http://localhost:{a.port}"
+    who = Handler.cfg.get("allowed_email")
     print()
-    print("  " + "─" * 56)
-    print(f"  브리지 주소:  {addr}")
-    print("  이 주소를 대시보드 → 포트폴리오 → 설정 → '브리지 주소' 에 넣고")
-    print("  [연결 확인] 을 누르세요.")
-    print("  " + "─" * 56)
+    print("  " + "─" * 62)
+    print(f"  브리지 주소 (이 컴퓨터에서만):  http://localhost:{a.port}")
+    print(f"  허용된 구글 계정:              {who}")
+    print("  " + "─" * 62)
+    print("  대시보드 → 포트폴리오 → 설정 → 브리지 주소 에 넣고 [연결 확인].")
+    print(f"  같은 계정으로 로그인되어 있어야 합니다.")
+    print()
+    print("  폰에서도 쓰려면 이 창을 켜 둔 채 다른 터미널에서:")
+    print(f"      tailscale funnel --bg {a.port}")
+    print("  그러면 https://<컴퓨터>.<테일넷>.ts.net 주소가 생깁니다.")
+    print("  그 주소를 브리지 주소에 넣으면 폰·태블릿에서도 연결됩니다.")
+    print("  " + "─" * 62)
     print()
     log(f"listening on 127.0.0.1:{a.port}  (origins: {', '.join(Handler.origins)})")
+    log(f"구글 계정 확인이 켜져 있습니다 — {who} 로 로그인한 브라우저만 통과합니다.")
     log("주문은 대시보드에서 확인 버튼을 눌러야 전송됩니다. 종료: Ctrl+C")
     try:
         srv.serve_forever()
