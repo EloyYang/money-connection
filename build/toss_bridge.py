@@ -35,7 +35,8 @@ allowed_email 과 다른 계정이면 거절한다.
 127.0.0.1 에만 바인딩한다. 외부에 노출하지 말 것 — 이 포트에 닿을 수 있는
 모든 프로그램이 당신의 계좌로 주문을 낼 수 있다.
 """
-import argparse, gzip, hmac, json, os, sys, threading, time, urllib.error, urllib.parse, urllib.request
+import argparse, gzip, hmac, json, os, re, shutil, signal, subprocess, sys, threading, time
+import urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 API = "https://openapi.tossinvest.com"
@@ -52,6 +53,61 @@ _account = {"seq": None, "no": None}
 
 def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
+# 맥은 앱 안에 CLI 가 들어 있어 PATH 에 없을 수 있다
+TS_PATHS = ["tailscale",
+            "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+            "/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale",
+            r"C:\Program Files\Tailscale\tailscale.exe"]
+
+
+def tailscale_bin():
+    for c in TS_PATHS:
+        found = shutil.which(c) if os.sep not in c else (c if os.path.exists(c) else None)
+        if found:
+            return found
+    return None
+
+
+def funnel_up(port):
+    """tailscale funnel 을 켜고 공개 주소를 돌려준다. 실패해도 브리지는 계속 돈다."""
+    ts = tailscale_bin()
+    if not ts:
+        log("tailscale 을 찾지 못했습니다 — 폰 접속은 건너뜁니다. https://tailscale.com/download")
+        return None
+    cmd = [ts, "funnel", "--bg", "--https=443", f"localhost:{port}"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    except Exception as e:                                # noqa: BLE001
+        log(f"tailscale 실행 실패: {e}")
+        return None
+    out = (r.stdout or "") + (r.returncode and (r.stderr or "") or "")
+    if r.returncode != 0:
+        log("tailscale funnel 을 켜지 못했습니다:")
+        for line in (r.stderr or r.stdout or "").strip().splitlines()[:6]:
+            log("  " + line)
+        return None
+    m = re.search(r"https://[\w.-]+\.ts\.net", out)
+    if not m:                                             # 이미 켜져 있으면 조용할 수 있다
+        try:
+            st = subprocess.run([ts, "funnel", "status"], capture_output=True, text=True, timeout=20)
+            m = re.search(r"https://[\w.-]+\.ts\.net", (st.stdout or "") + (st.stderr or ""))
+        except Exception:                                 # noqa: BLE001
+            m = None
+    return m.group(0) if m else None
+
+
+def funnel_down(port):
+    ts = tailscale_bin()
+    if not ts:
+        return
+    try:
+        subprocess.run([ts, "funnel", "--https=443", f"localhost:{port}", "off"],
+                       capture_output=True, text=True, timeout=30)
+        log("tailscale funnel 을 껐습니다.")
+    except Exception:                                     # noqa: BLE001
+        log("funnel 을 끄지 못했습니다 — 'tailscale funnel --https=443 off' 로 직접 꺼 주세요.")
 
 
 def load_config():
@@ -343,32 +399,66 @@ def main():
     ap.add_argument("--port", type=int, default=8787)
     ap.add_argument("--origin", action="append", default=[],
                     help="허용할 브라우저 origin (여러 번 지정 가능)")
+    ap.add_argument("--funnel", action="store_true",
+                    help="Tailscale Funnel 을 함께 켜서 폰·태블릿에서도 접속 (인터넷에 열립니다)")
+    ap.add_argument("--no-funnel", dest="funnel", action="store_false",
+                    help="--funnel 을 끕니다")
+    ap.set_defaults(funnel=None)
     a = ap.parse_args()
 
     Handler.cfg = load_config()
     Handler.origins = a.origin + DEFAULT_ORIGINS
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     who = Handler.cfg.get("allowed_email")
+
+    # 설정 파일에 적어 두면 매번 옵션을 붙이지 않아도 된다
+    want_funnel = a.funnel
+    if want_funnel is None:
+        want_funnel = bool(Handler.cfg.get("funnel"))
+    public = funnel_up(a.port) if want_funnel else None
     print()
     print("  " + "─" * 62)
-    print(f"  브리지 주소 (이 컴퓨터에서만):  http://localhost:{a.port}")
-    print(f"  허용된 구글 계정:              {who}")
+    if public:
+        print(f"  브리지 주소 (어디서나):  {public}")
+        print(f"  이 컴퓨터에서만:         http://localhost:{a.port}")
+    else:
+        print(f"  브리지 주소:  http://localhost:{a.port}")
+    print(f"  허용된 구글 계정:  {who}")
     print("  " + "─" * 62)
     print("  대시보드 → 포트폴리오 → 설정 → 브리지 주소 에 넣고 [연결 확인].")
-    print(f"  같은 계정으로 로그인되어 있어야 합니다.")
-    print()
-    print("  폰에서도 쓰려면 이 창을 켜 둔 채 다른 터미널에서:")
-    print(f"      tailscale funnel --bg {a.port}")
-    print("  그러면 https://<컴퓨터>.<테일넷>.ts.net 주소가 생깁니다.")
-    print("  그 주소를 브리지 주소에 넣으면 폰·태블릿에서도 연결됩니다.")
+    print("  같은 구글 계정으로 로그인되어 있어야 합니다.")
+    if public:
+        print()
+        print("  이 주소는 인터넷에 열려 있지만, 위 구글 계정으로 로그인한")
+        print("  브라우저만 통과합니다. 창을 닫으면 함께 닫힙니다.")
+    elif want_funnel:
+        print()
+        print("  폰 접속(Funnel)은 켜지 못했습니다 — 위 로그를 확인하세요.")
+    else:
+        print()
+        print(f"  폰·태블릿에서도 쓰려면:  python3 {os.path.basename(sys.argv[0])} --funnel")
     print("  " + "─" * 62)
     print()
     log(f"listening on 127.0.0.1:{a.port}  (origins: {', '.join(Handler.origins)})")
     log(f"구글 계정 확인이 켜져 있습니다 — {who} 로 로그인한 브라우저만 통과합니다.")
     log("주문은 대시보드에서 확인 버튼을 눌러야 전송됩니다. 종료: Ctrl+C")
+    # Ctrl+C 뿐 아니라 터미널을 닫거나 kill 로 끝낼 때도 funnel 을 정리한다.
+    # 노출을 켠 채로 프로세스만 사라지는 상황을 만들지 않기 위해서다.
+    def _stop(*_):
+        threading.Thread(target=srv.shutdown, daemon=True).start()
+    for sig in ("SIGTERM", "SIGHUP", "SIGINT"):
+        try:
+            signal.signal(getattr(signal, sig), _stop)
+        except (AttributeError, ValueError, OSError):
+            pass                                   # 윈도우에는 없는 신호가 있다
+
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
+        pass
+    finally:
+        if public:
+            funnel_down(a.port)          # 창을 닫으면 인터넷 노출도 함께 닫는다
         log("bye")
 
 
