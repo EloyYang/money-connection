@@ -80,8 +80,10 @@ function syncChartHeader(){
 }
 
 function updateToolButtons(){
-  document.getElementById('tool-trend').classList.toggle('on', cTool === 'trend');
-  document.getElementById('tool-hline').classList.toggle('on', cTool === 'hline');
+  ['trend', 'hline', 'order', 'alert'].forEach(t => {
+    const b = document.getElementById('tool-' + t);
+    if(b) b.classList.toggle('on', cTool === t);
+  });
 }
 
 /* ---- selection toolbar (복사 / 삭제) ---- */
@@ -310,6 +312,16 @@ function drawCandle(silent){
       focusPane(myPane);
       const [mx,my] = d3.pointer(ev, this);
       if(cTool === 'hline'){ pushDrawing({ type:'hline', y: invY(my) }); cTool = null; updateToolButtons(); drawCandle(); return; }
+      if(cTool === 'order'){
+        cTool = null; updateToolButtons(); drawCandle();
+        if(typeof openChartPop === 'function') openChartPop(cTk, invY(my), ev.clientX, ev.clientY);
+        return;
+      }
+      if(cTool === 'alert'){
+        cTool = null; updateToolButtons();
+        if(typeof addAlert === 'function') addAlert(cTk, invY(my));
+        drawCandle(); return;
+      }
       if(cTool === 'trend'){
         if(!cPending){ cPending = { type:'trend', x1: idxAt(mx), y1: invY(my), x2: idxAt(mx), y2: invY(my) }; }
         else {
@@ -323,9 +335,17 @@ function drawCandle(silent){
       if(cSel){ clearSelection(); return; }
       beginDrag('pan', ev, { i0:cI0, i1:cI1 });
     })
+    .on('contextmenu', function(ev){
+      // 브라우저 메뉴 대신 그 높이의 가격으로 주문·알람을 연다
+      ev.preventDefault();
+      focusPane(myPane);
+      const [, my] = d3.pointer(ev, this);
+      if(typeof openChartPop === 'function') openChartPop(cTk, invY(my), ev.clientX, ev.clientY);
+    })
     .on('wheel', function(ev){
       ev.preventDefault();
       focusPane(myPane);
+      if(typeof closeChartPop === 'function') closeChartPop();
       const [mx] = d3.pointer(ev, this);
       const maxSpan = rows.length - 1, minSpan = 12;
 
@@ -358,6 +378,7 @@ function drawCandle(silent){
     });
 
   drawUserLines(x, y, W);   // above the surface: lines stay selectable
+  if(typeof drawAlertLines === 'function') drawAlertLines(x, y, W);
 
   /* axis drag zones */
   bigSvg.append('rect').attr('x',CM.l).attr('y',H-CM.b-6).attr('width',plotW).attr('height',CM.b+6)
