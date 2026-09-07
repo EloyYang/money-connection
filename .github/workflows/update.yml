@@ -2,8 +2,10 @@ name: Update dashboard
 
 on:
   schedule:
-    # 22:00 UTC on weekdays = 07:00 KST the next morning, ~2h after the US close.
-    - cron: "0 22 * * 1-5"
+    # 22:23 UTC on weekdays = 07:23 KST the next morning, ~2h after the US close.
+    # 정각(:00)은 전 세계 워크플로가 몰려 깃허브 큐에서 1~2시간씩 밀린다.
+    # 어중간한 분으로 옮겨 두면 예약 시각에 훨씬 가깝게 돈다.
+    - cron: "23 22 * * 1-5"
   workflow_dispatch:        # manual run button
   push:
     branches: [main]

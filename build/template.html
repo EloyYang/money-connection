@@ -562,8 +562,10 @@
   .hdr-stats b{ font-size:13px; font-weight:600; color:var(--text-primary); margin-right:2px; }
   .btn.icon{ padding:6px 9px; font-size:13px; line-height:1; }
   /* 폭이 줄면 곁다리부터 접는다 — 계정 버튼이 다음 줄로 밀리지 않게 */
-  @media (max-width:1460px){ .hdr-right .freshness{ display:none; } }
-  @media (max-width:1360px){ .hdr-stats{ display:none; } }
+  /* 좁아지면 통계를 먼저 접는다 — "거래일이 시장마다 다르다" 는 사실이
+     종목 수보다 훨씬 자주 필요한 정보이기 때문이다. */
+  @media (max-width:1560px){ .hdr-stats{ display:none; } }
+  @media (max-width:1340px){ .hdr-right .freshness{ display:none; } }
   @media (max-width:1120px){ .brand .title span{ display:none; } }
   @media (max-width:1020px){ .searchwrap{ border-left:none; padding-left:0; } #search{ width:140px; } }
   .hdr-right .mode-seg{ margin:0; }
@@ -1048,6 +1050,7 @@
     </span>
     <button class="help" data-h="folioMode">?</button>
     <div class="freshness" id="freshness" title="구성종목·시세 자동 갱신 상태">—</div>
+    <button class="help" data-h="freshness">?</button>
     <button class="help" data-h="usage">?</button>
     <button class="help" data-h="method">i</button>
     <div id="auth-box"></div>
@@ -2024,6 +2027,20 @@ const HELP = {
     '<b>주소를 아는 것만으로는 아무것도 할 수 없습니다.</b>\n\n' +
     '<span class="warn">그래도 브리지를 켜 둔 동안에는 내 계좌로 주문이 가능한 상태입니다. ' +
     '쓰지 않을 때는 터미널을 닫으세요.</span>' },
+  freshness: { t: '데이터 갱신', dir: null, d:
+    '이 사이트는 서버가 없습니다. 하루 한 번 <b>GitHub Actions</b> 가 시세를 받아 페이지를 통째로 다시 만들고, ' +
+    '그것을 정적 파일로 올립니다. 머리글의 <b>갱신</b>은 그 페이지가 만들어진 시각입니다.\n\n' +
+    '<span class="step">거래일이 시장마다 다릅니다</span>' +
+    '미국이 쉬는 날(노동절·추수감사절 등)에는 <b>한국만</b> 새 봉이 생깁니다. ' +
+    '예: 2026-09-07은 미국 노동절이라 미국 종목은 9/4가 마지막 거래일이고 한국 종목은 9/7입니다. ' +
+    '갱신이 멈춘 것이 아니라 그날 거래가 없었던 것입니다.\n\n' +
+    '<span class="step">미국은 낮에 보면 늘 하루 전입니다</span>' +
+    '뉴욕 증시는 한국 시간 <b>새벽 5시</b>(서머타임)에 닫힙니다. 갱신은 그 뒤에 돌므로, ' +
+    '한국의 낮 동안 보이는 미국 종가는 <b>전날</b> 것입니다. 오늘 값을 보시려면 토스를 연동하세요 — ' +
+    '연동하면 오늘 봉을 실시간으로 덧붙입니다.\n\n' +
+    '<span class="step">예약 실행은 늦을 수 있습니다</span>' +
+    '깃허브의 예약 실행은 공용 러너 대기열을 타서 예정 시각보다 늦게 도는 일이 흔합니다. ' +
+    '갱신 시각이 조금씩 흔들리는 것은 그 때문입니다.' },
   savedViews: { t: '저장된 화면', dir: null, d:
     '지금 보고 있는 네트워크 화면을 통째로 저장합니다 — 노드를 끌어다 놓은 배치, 확대·이동 위치, 분류(테마/시장/성격)와 켜 둔 그룹, ' +
     '연결 기준, 기간, 상관계수 임계값, 주도주 기준, 필터 상태까지 전부.\n\n' +
@@ -2446,12 +2463,24 @@ renderStatDays();
   const when = built ? built.toLocaleString('ko-KR', { dateStyle:'short', timeStyle:'short' }) : '—';
   const problems = (META.problems || []).length;
   // 머리글이 한 줄이므로 여기도 한 줄이다 — 자세한 내용은 툴팁에 둔다
-  const short = built ? built.toLocaleString('ko-KR', { month:'numeric', day:'numeric',
-                                                       hour:'2-digit', minute:'2-digit' }) : '—';
+  const p2 = v => String(v).padStart(2, '0');
+  const short = built ? `${built.getMonth() + 1}/${built.getDate()} ` +
+                        `${p2(built.getHours())}:${p2(built.getMinutes())}` : '—';
+  // 시장마다 마지막 거래일이 다르다. 미국 휴장일에는 한국만 새 봉이 생기는데,
+  // 그 사실을 적어 두지 않으면 "갱신이 안 된다" 로 보인다.
+  const ss = META.sessions || {};
+  const md = d => d ? d.slice(5).replace('-', '/').replace(/\b0/g, '') : '—';
+  const mkt = [ss.us && `미 ${md(ss.us)}`, ss.kr && `한 ${md(ss.kr)}`].filter(Boolean).join(' · ');
   el.innerHTML = `갱신 <b>${short}</b>`
+    + (mkt ? ` · 거래일 ${mkt}` : '')
     + (problems ? ` · <span class="warn">보정 ${problems}건</span>` : '');
-  el.title = `구성종목 ${META.count}개 · 지수 기준일 ${META.index_date || '—'} · 갱신 ${when}`
-    + (problems ? '\n' + (META.problems || []).map(p => p.ticker + ': ' + p.note).join('\n') : '');
+  el.title = `구성종목 ${META.count}개 · 지수 기준일 ${META.index_date || '—'}\n`
+    + `데이터 갱신 ${when}\n`
+    + `마지막 거래일 — 미국 ${ss.us || '—'} · 한국 ${ss.kr || '—'}`
+    + (ss.crypto ? ` · 암호화폐 ${ss.crypto}` : '')
+    + '\n\n시장이 쉰 날(공휴일·주말)에는 그 시장만 날짜가 그대로입니다.'
+    + '\n미국 장은 한국 시간 새벽에 닫히므로, 낮에는 늘 하루 전 종가입니다.'
+    + (problems ? '\n\n' + (META.problems || []).map(p => p.ticker + ': ' + p.note).join('\n') : '');
 })();
 
 /* 부제 줄을 없앤 대신, 그 문장은 기간 드롭다운의 툴팁으로 남긴다 —

@@ -1085,9 +1085,33 @@ def render(corr, px, oh, leaders, fund, macro, members, themes, index_date, prob
                       "cap": m["market_cap"], "currency": m.get("currency", "USD"),
                       "assetClass": m.get("asset_class", "us_stock"),
                       "yield": div_yield(t)})
+    # 시장마다 마지막 거래일이 다르다. 미국이 휴장한 날(노동절 등)에는
+    # 한국만 새 봉이 생기는데, 그때 "왜 미국은 안 갱신되지?" 로 보이지 않도록
+    # 시장별 최신 거래일을 페이지에 함께 싣는다.
+    def latest_session(pred):
+        best = None
+        for n in nodes:
+            if not pred(n):
+                continue
+            row = oh["data"].get(n["id"]) or []
+            for k in range(len(row) - 1, -1, -1):
+                if row[k]:
+                    d = oh["dates"][k]
+                    if best is None or d > best:
+                        best = d
+                    break
+        return best
+
+    sessions = {
+        "us": latest_session(lambda n: n["currency"] == "USD"
+                             and n["assetClass"] in ("us_stock", "etf")),
+        "kr": latest_session(lambda n: n["currency"] == "KRW"),
+        "crypto": latest_session(lambda n: n["assetClass"] == "crypto"),
+    }
     meta = {
         "built": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "index_date": index_date,
+        "sessions": {k: v for k, v in sessions.items() if v},
         "count": len(nodes),
         "problems": [{"ticker": t, "note": p} for t, p in problems],
         "themes": {g: cfg["themes"][g]["label"] for g in cfg["themes"]},
