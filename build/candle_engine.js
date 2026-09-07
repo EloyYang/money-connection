@@ -57,22 +57,8 @@ function syncChartHeader(){
   if(typeof syncIvButtons === 'function') syncIvButtons();   // 패널마다 봉 단위가 다르다
   const tk = cTk, node = nodeIndex.get(tk);
   if(!tk) return;
-  document.getElementById('m-tk').textContent = tk;
-  document.getElementById('m-tk').style.color = node ? node.color : 'var(--text-primary)';
-  document.getElementById('m-nm').textContent = node ? node.name : '';
-  // the quote used to be written only at the end of drawCandle(), so switching
-  // panes left the previous chart's price beside the new ticker
-  const rows = chartRows(tk);
-  let li = rows.length - 1; while(li >= 0 && !rows[li]) li--;
-  let pi = li - 1;          while(pi >= 0 && !rows[pi]) pi--;
-  if(li >= 0){
-    const last = rows[li], prev = pi >= 0 ? rows[pi] : null;
-    document.getElementById('m-px').textContent = fmtPx(last[3], node?.currency || 'USD');
-    const d = prev && prev[3] ? (last[3] - prev[3]) / prev[3] * 100 : 0;
-    const el = document.getElementById('m-chg');
-    el.textContent = `${d >= 0 ? '+' : ''}${d.toFixed(2)}%  (${barLabel(li)})`;
-    el.style.color = d >= 0 ? '#3ddc84' : '#ff5c72';
-  }
+  // 종목 정보는 패널마다 자기 차트 위에 있다 — 활성 패널만이 아니라 전부 다시 그린다
+  if(typeof paintAllLegends === 'function') paintAllLegends();
   selectedTk = tk;
   // a comparison in progress is the user's, not the pane's — leave it alone
   if(compareSet.length <= 1) compareSet = [tk];
@@ -411,16 +397,9 @@ function drawCandle(silent){
 
   positionSelBar();
 
-  const last = vis[vis.length-1].d, prev = vis.length > 1 ? vis[vis.length-2].d : null;
-  if(silent) return;      // 패널 이름표는 HTML 칩이 담당한다
-  document.getElementById('m-px').textContent = fmtPx(last[3], nodeIndex.get(cTk)?.currency || 'USD');
-  const dChg = prev ? (last[3]-prev[3])/prev[3]*100 : 0;
-  const chgEl = document.getElementById('m-chg');
-  chgEl.textContent = `${dChg>=0?'+':''}${dChg.toFixed(2)}%  (${barLabel(vis[vis.length-1].i)})`;
-  chgEl.style.color = dChg >= 0 ? UP : DOWN;
   // 가격축은 자동이 기본이다 — 축을 끌어 손으로 맞췄을 때만 범례로 알린다
-  const lg = document.getElementById('chart-legend');
-  if(lg) lg.classList.toggle('ymanual', !!yManual);
+  host.classList.toggle('ymanual', !!yManual);
+  if(typeof paintPaneLegend === 'function') paintPaneLegend(myPane);
 }
 
 function svgLine(x1,y1,x2,y2,stroke,w){

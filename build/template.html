@@ -39,8 +39,8 @@
        1줄: 브랜드 · 탭 ………………… 장부·상태·계정(오른쪽 끝 고정)
        2줄: 기간 · 지표 · 검색 · 보기 조작 */
   header{
-    display:flex; align-items:center; gap:10px 18px; flex-wrap:wrap;
-    padding:11px 22px 10px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap;
+    padding:9px 18px; border-bottom:1px solid var(--border);
     background:rgba(10,12,16,0.72); backdrop-filter: blur(8px);
     z-index:20; flex:0 0 auto;
   }
@@ -48,14 +48,13 @@
   .brand .title{ font-family:'Space Grotesk', system-ui, sans-serif; font-size:18px; font-weight:600;
                  letter-spacing:0.2px; white-space:nowrap; display:flex; align-items:center; gap:7px; }
   .brand .logo{ width:24px; height:24px; flex:0 0 auto; }
-  .brand .sub{ font-size:11.5px; color:var(--text-muted); white-space:nowrap; }
   .stat{ display:flex; flex-direction:column; gap:1px; padding:0 14px; border-left:1px solid var(--border); flex:0 0 auto; white-space:nowrap; }
   .stat .n{ font-size:16px; font-weight:600; }
   .stat .l{ font-size:10.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; }
   .sim-controls{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
   .searchwrap{ position:relative; flex:0 0 auto; }
   #search{
-    width:210px; background:var(--panel-solid); border:1px solid var(--border-strong);
+    width:164px; background:var(--panel-solid); border:1px solid var(--border-strong);
     color:var(--text-primary); border-radius:8px; padding:8px 12px 8px 32px; font-size:13px;
     font-family:inherit; outline:none;
   }
@@ -227,12 +226,12 @@
 
   /* view tabs */
   .freshness{ font-size:10.5px; color:var(--text-muted); line-height:1.35; white-space:nowrap;
-              border-left:1px solid var(--border); padding-left:14px; flex:0 0 auto; }
+              border-left:1px solid var(--border); padding-left:12px; flex:0 0 auto; cursor:help; }
   .freshness b{ color:var(--text-secondary); font-weight:600; }
   .freshness .warn{ color:var(--fav); }
   .tabs{ display:flex; gap:2px; background:rgba(255,255,255,0.05); padding:3px; border-radius:9px; flex:0 0 auto; }
   .tab{ border:none; background:none; color:var(--text-secondary); font-family:inherit; font-size:12.5px;
-        font-weight:600; padding:7px 14px; border-radius:7px; cursor:pointer; white-space:nowrap; }
+        font-weight:600; padding:6px 12px; border-radius:7px; cursor:pointer; white-space:nowrap; }
   .tab:hover{ color:var(--text-primary); }
   .tab.active{ background:var(--panel-solid); color:var(--text-primary); box-shadow:0 1px 6px rgba(0,0,0,0.3); }
   .tab:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
@@ -298,20 +297,26 @@
   /* ---- 차트 위 오버레이: 왼쪽 위는 종목 정보, 오른쪽 위는 조작 ----
      머리글 두 줄(종목·시세·도구 + 보조지표)을 없애고 그 세로 공간을
      차트에 돌려준 자리다. */
-  #chart-legend{ position:absolute; top:7px; left:10px; z-index:9; display:flex; align-items:baseline;
-    gap:7px; flex-wrap:wrap; max-width:calc(100% - 240px); pointer-events:none;
-    padding:4px 9px; border-radius:9px; background:rgba(12,15,20,0.78); backdrop-filter:blur(6px); }
-  #chart-legend > *{ pointer-events:auto; }
-  #chart-legend .tk{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:16px; line-height:1.1; }
-  #chart-legend .nm{ font-size:11px; color:var(--text-secondary); }
-  #chart-legend .px{ font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:700; }
-  #chart-legend .chg{ font-family:'JetBrains Mono',monospace; font-size:11.5px; font-weight:600; }
-  #chart-legend .lg-span{ font-size:10px; color:var(--text-muted); }
-  #chart-legend .lg-ind{ font-size:10px; color:var(--text-muted); font-family:'JetBrains Mono',monospace; }
-  #chart-legend .star{ font-size:14px; }
-  #chart-legend.ymanual::after{ content:'가격축 수동 · 축 더블클릭 = 자동'; font-size:9.5px;
-    color:var(--fav); }
-  #chart-tools{ position:absolute; top:7px; right:10px; z-index:9; display:flex; align-items:center; gap:6px; }
+  /* 범례는 패널마다 자기 차트 위에 — 분할해도 어느 차트가 무엇인지 바로 보인다 */
+  .pane-legend{ position:absolute; top:5px; left:7px; z-index:9; display:flex; align-items:baseline;
+    gap:5px; flex-wrap:wrap; max-width:calc(100% - 14px); pointer-events:none;
+    padding:2px 7px; border-radius:7px; background:rgba(12,15,20,0.74); backdrop-filter:blur(6px);
+    line-height:1.35; }
+  .pane-legend > *{ pointer-events:auto; }
+  .pane-legend .tk{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:12px; }
+  .pane-legend .nm{ font-size:9.5px; color:var(--text-secondary); max-width:150px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pane-legend .px{ font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:700; }
+  .pane-legend .chg{ font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:600; }
+  .pane-legend .lg-span, .pane-legend .lg-ind{ font-size:9px; color:var(--text-muted);
+    font-family:'JetBrains Mono',monospace; }
+  .pane-legend .star{ font-size:11px; padding:0; }
+  .pane-legend .live-chip{ font-size:8.5px; padding:1px 6px; }
+  .pane-legend .help{ width:13px; height:13px; font-size:8.5px; }
+  .cpane.ymanual .pane-legend::after{ content:'가격축 수동'; font-size:9px; color:var(--fav); }
+  #chart-tools{ position:absolute; top:6px; right:9px; z-index:11; display:flex; align-items:center; gap:5px; }
+  #m-close{ color:var(--down); border-color:rgba(255,92,114,0.4); }
+  #m-close:hover{ background:rgba(255,92,114,0.14); color:var(--down); }
   #chart-tools .tool, #chart-tools .mini-sel{ padding:4px 9px; font-size:11.5px;
     background:rgba(12,15,20,0.82); backdrop-filter:blur(6px); }
   #ind-pop{ position:absolute; top:42px; right:10px; z-index:10; width:230px; padding:11px 12px;
@@ -328,8 +333,6 @@
   #ind-pop .ip-x{ position:absolute; top:6px; right:8px; background:none; border:none;
     color:var(--text-muted); font-size:13px; cursor:pointer; line-height:1; padding:2px 4px; }
   @media (max-width:820px){
-    #chart-legend{ max-width:calc(100% - 20px); position:static; background:none; backdrop-filter:none;
-      padding:6px 10px 0; }
     #chart-tools{ position:static; padding:6px 10px; justify-content:flex-end; }
     #ind-pop{ top:auto; }
   }
@@ -557,24 +560,19 @@
     flex:1 1 auto; min-width:0; }
   .hdr-mid .searchwrap{ border-left:1px solid var(--border); padding-left:16px; }
   .hdr-right{ display:flex; align-items:center; gap:8px; flex:0 0 auto; margin-left:auto; }
-  .hdr-tools{ flex:1 0 100%; display:flex; align-items:center; gap:10px 18px; flex-wrap:wrap;
-    padding-top:9px; border-top:1px solid var(--line); }
-  /* 네트워크가 아닌 화면에서는 도구 줄에 기간 하나만 남는다 — 차트가 쓸
-     세로 공간을 한 줄 통째로 내주지 않고 첫 줄에 같이 앉힌다. */
-  body.view-trade .hdr-tools, body.view-folio .hdr-tools{
-    flex:0 0 auto; padding-top:0; border-top:none; }
-  /* 한 줄로 합쳐지는 순간 DOM 순서(…계정, 도구)가 그대로 보이면 계정이
-     안쪽으로 밀린다. 그 줄에서만 순서를 다시 매겨 계정을 끝으로 보낸다. */
-  body.view-trade .brand,     body.view-folio .brand{     order:1; }
-  body.view-trade .tabs,      body.view-folio .tabs{      order:2; }
-  body.view-trade .hdr-tools, body.view-folio .hdr-tools{ order:3; }
-  body.view-trade .hdr-right, body.view-folio .hdr-right{ order:4; }
-  /* 폭이 줄면 부제와 갱신 상태를 먼저 접는다 — 둘 다 곁다리 정보인데
-     합쳐서 300px 을 먹어 계정 버튼을 다음 줄로 밀어내기 때문이다. */
-  @media (max-width:1320px){
-    .brand .sub{ display:none; }
-    .hdr-right .freshness{ display:none; }
-  }
+  /* 머리글은 한 줄이다. DOM 순서가 (…계정, 도구) 이므로 그 줄에서만
+     순서를 다시 매겨 계정을 오른쪽 끝으로 보낸다. */
+  .hdr-tools{ display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap; flex:0 0 auto; }
+  .brand{ order:1; } .tabs{ order:2; } .hdr-tools{ order:3; } .hdr-right{ order:4; }
+  .hdr-stats{ display:flex; align-items:baseline; gap:11px; flex:0 0 auto; white-space:nowrap;
+    font-size:10.5px; color:var(--text-muted); padding-left:14px; border-left:1px solid var(--border); }
+  .hdr-stats b{ font-size:13px; font-weight:600; color:var(--text-primary); margin-right:2px; }
+  .btn.icon{ padding:6px 9px; font-size:13px; line-height:1; }
+  /* 폭이 줄면 곁다리부터 접는다 — 계정 버튼이 다음 줄로 밀리지 않게 */
+  @media (max-width:1460px){ .hdr-right .freshness{ display:none; } }
+  @media (max-width:1360px){ .hdr-stats{ display:none; } }
+  @media (max-width:1120px){ .brand .title span{ display:none; } }
+  @media (max-width:1020px){ .searchwrap{ border-left:none; padding-left:0; } #search{ width:140px; } }
   .hdr-right .mode-seg{ margin:0; }
   .hdr-right #auth-box{ margin-left:6px; }
   .hdr-right .freshness{ margin-left:4px; }
@@ -611,8 +609,7 @@
     background:var(--panel-solid); color:var(--text-primary); font-family:inherit;
     font-size:11.5px; cursor:pointer; }
   .mini-sel:disabled{ opacity:0.5; cursor:default; }
-  #m-live.on{ color:var(--up); border-color:rgba(61,220,132,0.45); }
-  #m-px.tick{ animation:pxTick .45s ease; }
+  .pane-legend .px.tick{ animation:pxTick .45s ease; }
   @keyframes pxTick{ from{ color:var(--accent); } to{ color:inherit; } }
   /* ---- 호가창 · 수급 ---- */
   .ob-row{ position:relative; display:flex; align-items:center; gap:8px; padding:2px 6px;
@@ -1017,7 +1014,7 @@
   @media (max-width: 760px), (max-height: 560px){
     header{ padding:9px 13px; gap:8px 12px; }
     .brand .title{ font-size:15px; }
-    .brand .sub, .stat, .freshness{ display:none; }
+    .hdr-stats, .freshness{ display:none; }
     #search{ width:140px; }
     #search-results{ width:min(320px, 92vw); right:0; left:auto; }
     .btn{ padding:6px 9px; font-size:11.5px; }
@@ -1045,7 +1042,6 @@
         <circle cx="24.5" cy="11" r="3.1" fill="#3ddc84"/><circle cx="11" cy="25" r="3.1" fill="#f7931a"/>
       </svg><span>머니 커넥션</span>
     </div>
-    <div class="sub" id="brand-sub">최근 1년 일별 종가 수익률 상관계수 · 상승/하락 연쇄 시뮬레이션</div>
   </div>
   <div class="tabs">
     <button class="tab active" data-view="graph">종목 네트워크</button>
@@ -1071,16 +1067,18 @@
   </div>
 
   <div class="hdr-mid graph-only">
-    <div class="stat"><div class="n mono" id="stat-nodes">–</div><div class="l">종목</div></div>
-    <div class="stat"><div class="n mono" id="stat-links">–</div><div class="l">상관 연결</div></div>
-    <div class="stat"><div class="n mono" id="stat-days">–</div><div class="l">거래일</div></div>
+    <div class="hdr-stats">
+      <span><b class="mono" id="stat-nodes">–</b> 종목</span>
+      <span><b class="mono" id="stat-links">–</b> 연결</span>
+      <span><b class="mono" id="stat-days">–</b> 거래일</span>
+    </div>
     <div class="searchwrap">
       <input id="search" placeholder="티커 또는 회사명 검색…" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="search-results" />
       <div id="search-results" hidden></div>
     </div>
     <div class="sim-controls">
-      <button class="btn ghost" id="mode-reset" title="모든 필터·기간·기준을 처음 상태로">↺ 초기화</button>
-      <button class="btn ghost" id="mode-fit">⤢ 전체보기</button>
+      <button class="btn ghost icon" id="mode-reset" title="모든 필터·기간·기준을 처음 상태로" aria-label="초기화">↺</button>
+      <button class="btn ghost icon" id="mode-fit" title="전체보기" aria-label="전체보기">⤢</button>
     </div>
   </div>
   </div>
@@ -1105,21 +1103,11 @@
 
       <main class="tv-main">
         <div class="modal-body" id="tv-chart">
-          <!-- 종목 정보는 차트 위에 얹는다 — 머리글 두 줄을 차트에 돌려주기 위해서 -->
-          <div id="chart-legend">
-            <span class="tk" id="m-tk">—</span>
-            <button class="star" id="m-fav" title="즐겨찾기 추가/해제" aria-pressed="false">☆</button>
-            <span class="nm" id="m-nm">—</span>
-            <span class="px" id="m-px">—</span>
-            <span class="chg" id="m-chg">—</span>
-            <span class="live-chip" id="m-live" hidden>실시간</span><button class="help" data-h="liveQuotes">?</button>
-            <span class="mono lg-span" id="m-span" hidden></span>
-            <button class="help" data-h="todayBar" id="m-span-help" hidden>?</button>
-            <span class="lg-ind" id="m-ind-legend"></span>
-          </div>
+          <!-- 종목 정보는 패널마다 자기 차트 왼쪽 위에 얹는다 (buildPanes 가 만든다) -->
           <div id="chart-tools">
             <select id="m-iv" class="mini-sel" title="봉 단위"></select><button class="help" data-h="barInterval">?</button>
             <button class="tool" id="m-ind" title="보조지표 고르기">⌁ 보조지표</button>
+            <button class="tool" id="m-close" hidden title="이 차트 닫기">✕ 닫기</button>
             <button class="tool" id="m-full" title="전체화면 (F)" aria-label="전체화면">⛶</button>
           </div>
           <div id="ind-pop" hidden></div>
@@ -1962,10 +1950,11 @@ const HELP = {
     '· 이름표(⠿)를 끌어 다른 패널 <b>가장자리</b>에 놓으면 → 그 자리로 이동하며 배치가 다시 짜입니다 (보라색 미리보기)\n' +
     '   좌우 2개에서 하나를 다른 쪽 아래에 놓으면 상하 2단이 되고, 위 1개(넓게)를 아래 두 개 옆에 \n' +
     '   놓으면 위아래가 뒤집힙니다.\n' +
-    '· 이름표의 ✕ 로 패널을 닫습니다\n\n' +
+    '· 오른쪽 위 <b>✕ 닫기</b> 로 지금 고른 차트를 닫습니다 (차트를 한 번 눌러 고른 뒤)\n\n' +
     '패널마다 종목·기간·확대·보조지표를 따로 가집니다. 패널을 클릭하면 활성 패널(보라색 테두리)로 고정되고, ' +
-    '왼쪽 위 종목 정보와 오른쪽의 요약·주문창, 보조지표가 모두 그 패널의 종목으로 바뀝니다. ' +
-    '패널 이름표(⠿)는 각 차트의 왼쪽 아래에 있습니다 — 왼쪽 위는 종목 정보가 씁니다. ' +
+    '오른쪽의 요약·주문창과 보조지표, 오른쪽 위 ✕ 닫기가 모두 그 패널의 종목을 가리킵니다. ' +
+    '<b>종목 정보(티커·이름·현재가·등락·보조지표)는 차트마다 자기 왼쪽 위에</b> 있어 ' +
+    '어느 차트가 무엇인지 바로 보입니다. 끌어서 자리를 바꾸는 손잡이(⠿)는 왼쪽 아래입니다. ' +
     '오른쪽 위 ⛶ 또는 F 키로 전체화면을 켜고 끕니다. 분할 구성은 브라우저에 저장됩니다.' },
   miniTrade: { t: '간편 주문', dir: null, d:
     '최근 종가로 바로 체결되는 시장가 주문입니다. 수량만 넣고 매수 또는 매도를 누르면 됩니다.\n\n' +
@@ -2463,10 +2452,21 @@ renderStatDays();
   const built = META.built ? new Date(META.built) : null;
   const when = built ? built.toLocaleString('ko-KR', { dateStyle:'short', timeStyle:'short' }) : '—';
   const problems = (META.problems || []).length;
-  el.innerHTML = `구성종목 <b>${META.count}</b>개 · 지수 기준일 <b>${META.index_date || '—'}</b><br>`
-    + `갱신 ${when}` + (problems ? ` · <span class="warn" title="${(META.problems||[]).map(p=>p.ticker+': '+p.note).join(' / ')}">보정 ${problems}건</span>` : '');
+  // 머리글이 한 줄이므로 여기도 한 줄이다 — 자세한 내용은 툴팁에 둔다
+  const short = built ? built.toLocaleString('ko-KR', { month:'numeric', day:'numeric',
+                                                       hour:'2-digit', minute:'2-digit' }) : '—';
+  el.innerHTML = `갱신 <b>${short}</b>`
+    + (problems ? ` · <span class="warn">보정 ${problems}건</span>` : '');
+  el.title = `구성종목 ${META.count}개 · 지수 기준일 ${META.index_date || '—'} · 갱신 ${when}`
+    + (problems ? '\n' + (META.problems || []).map(p => p.ticker + ': ' + p.note).join('\n') : '');
 })();
 
+/* 부제 줄을 없앤 대신, 그 문장은 기간 드롭다운의 툴팁으로 남긴다 —
+   머리글은 한 줄이어야 하고, 기간 범위는 기간을 고르는 자리에 있으면 된다. */
+function syncPeriodTitle(){
+  const sel = document.getElementById('period-sel');
+  if(sel) sel.title = graphSubtitle() + ' · 화면 전체가 이 기간을 따릅니다';
+}
 function graphSubtitle(){
   if(relationMode === 'macro') return `매크로 팩터 민감도 유사도 · 최근 1년 일별 회귀`;
   if(relationMode === 'fund')  return `펀더멘털 프로필 유사도 · 최신 연간 재무제표`;
@@ -2474,7 +2474,6 @@ function graphSubtitle(){
   return p ? `${p.from} ~ ${p.to} ${p.label} · 일별 수익률 상관계수 네트워크`
            : `${CORR.meta.range_from} ~ ${CORR.meta.range_to} · 일별 수익률 상관계수 네트워크`;
 }
-document.getElementById('brand-sub').textContent = graphSubtitle();
 HELP.method = { t: '계산 방법과 출처', dir: null,
   d: `${CORR.meta.method}\n\n출처: ${CORR.meta.sources}\n\n상관관계는 인과관계가 아니며, 모두 과거 데이터 기준입니다.` };
 
@@ -2693,7 +2692,7 @@ function applyRelation(){
     ? `상관계수는 최소 1개월 관측이 필요해 ${period.label} 대신 1개월 창으로 계산합니다. `
     : '';
   document.getElementById('relation-note').textContent = fallback + info.note();
-  document.getElementById('brand-sub').textContent = graphSubtitle();
+  syncPeriodTitle();
   renderStatDays();
 
   buildLinks(); drawLinks();
@@ -5045,9 +5044,6 @@ document.getElementById('fav-only').addEventListener('click', ()=>{
 document.getElementById('fav-toggle').addEventListener('click', ev=>{
   ev.stopPropagation(); toggleFav(selectedTk);
 });
-document.getElementById('m-fav').addEventListener('click', ev=>{
-  ev.stopPropagation(); toggleFav(cTk);
-});
 
 function renderFavorites(){
   document.getElementById('fav-count').textContent = favorites.size;
@@ -5116,10 +5112,7 @@ function renderFavorites(){
   dStar.textContent = isFav(selectedTk) ? '★' : '☆';
   dStar.classList.toggle('on', isFav(selectedTk));
   dStar.setAttribute('aria-pressed', String(isFav(selectedTk)));
-  const mStar = document.getElementById('m-fav');
-  mStar.textContent = isFav(cTk) ? '★' : '☆';
-  mStar.classList.toggle('on', isFav(cTk));
-  mStar.setAttribute('aria-pressed', String(isFav(cTk)));
+  if(typeof paintAllLegends === 'function') paintAllLegends();
 
   renderFavRings();
   syncSelectionHighlight();
@@ -5429,14 +5422,14 @@ function rowsForIv(tk, iv){
 }
 /* 차트가 그리는 봉. 차트 밖(계절성·상세·상관)은 언제나 심어 둔 일봉을 쓴다. */
 const chartRows = tk => rowsForIv(tk, paneIv());
-const barLabel = i => {
-  const iv = paneIv();
-  if(isIntraday(iv)) return aggregate(cTk, iv).labels[i] || '';
-  if(isGrouped(iv)) return aggregateDaily(cTk, ivGrp(iv)).labels[i] || '';
-  const t = TODAY.get(cTk);
-  if(t && i === (OH.data[cTk] || []).length) return t.date;
+function barLabelFor(tk, iv, i){
+  if(isIntraday(iv)) return aggregate(tk, iv).labels[i] || '';
+  if(isGrouped(iv)) return aggregateDaily(tk, ivGrp(iv)).labels[i] || '';
+  const t = TODAY.get(tk);
+  if(t && i === (OH.data[tk] || []).length) return t.date;
   return OH.dates[i];
-};
+}
+const barLabel = i => barLabelFor(cTk, paneIv(), i);
 /* 분봉을 지원하지 않는 자산 — 토스는 주식·ETF 만 준다 */
 const canMinute = tk => {
   const n = nodeIndex.get(tk);
@@ -5710,27 +5703,20 @@ function syncIvButtons(){
     sel.innerHTML = IVS.map(v => `<option value="${v.k}">${v.label}</option>`).join('');
   const iv = paneIv();
   sel.value = iv;
-  const span = document.getElementById('m-span');
-  if(span){
-    if(isIntraday(iv)){
-      span.hidden = false;
-      span.textContent = intradaySpan(cTk) + (backfilling.has(cTk) ? ' · 과거 채우는 중…' : '');
-    }
-    else {
-      const t = TODAY.get(cTk);
-      span.hidden = !t;
-      span.textContent = t ? `${t.date} 봉 포함 (토스)` : '';
-      const hb = document.getElementById('m-span-help');
-      if(hb) hb.hidden = !t;
-    }
+  // 받아 둔 구간·오늘 봉 표시는 패널 범례가 담당한다
+  if(typeof paintAllLegends === 'function') paintAllLegends();
+  const close = document.getElementById('m-close');
+  if(close){
+    close.hidden = PANES.length <= 1;
+    close.title = `이 차트 닫기 — ${cTk || ''}`;
   }
 }
 /* 장수가 많아지면 몇 초 걸린다 — 멈춘 것처럼 보이지 않게 알려 준다 */
 function showLoadProgress(i, n){
   const sel = document.getElementById('m-iv');
   if(sel) sel.title = `불러오는 중… ${i}/${n}장`;
-  const span = document.getElementById('m-span');
-  if(span){ span.hidden = false; span.textContent = `분봉 불러오는 중 ${i}/${n}장`; }
+  const el = PANES[activeP]?.host?.querySelector('.pane-legend .lg-span');
+  if(el) el.textContent = `분봉 ${i}/${n}장`;
 }
 let ivBusy = false;
 async function setInterval1(iv){
@@ -5808,17 +5794,13 @@ function setView(v){
   document.body.className = 'view-' + v;
   if(typeof autoLive === 'function') autoLive();      // 실시간은 보고 있는 화면을 따라간다
   if(typeof closeChartPop === 'function') closeChartPop();
-  const sub = document.getElementById('brand-sub');
   if(v === 'folio'){
-    sub.textContent = '모의 · 실거래 포트폴리오';
     renderFolio();
   } else if(v === 'trade'){
-    sub.textContent = '차트 · 보조지표 · 주문';
     renderTrading();
     if(typeof renderAlertPanel === 'function') renderAlertPanel();
   } else {
     closeDetailOverlay();
-    sub.textContent = graphSubtitle();
     hideTooltip();
     // the canvas was display:none a moment ago — read its size back first
     setTimeout(() => { remeasureGraph(); fitToView(300); }, 60);
@@ -6779,6 +6761,7 @@ function buildPanes(tickers, rows){
     host.dataset.i = i;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     host.appendChild(svg);
+    host.appendChild(paneLegend(i));
     host.appendChild(paneChip(i, tk, list.length));
     host.addEventListener('mousedown', () => focusPane(+host.dataset.i), true);
     body.appendChild(host);
@@ -6806,21 +6789,73 @@ function loadSavedPanes(){
   return null;
 }
 
+/* 패널마다 자기 종목 정보를 자기 차트 위에 그린다. 분할했을 때
+   어느 차트가 무엇인지 눈으로 바로 알 수 있어야 하기 때문이다.
+   각 패널이 자기 봉 단위·보조지표를 따로 갖고 있으므로 값도 패널 것을 읽는다. */
+function paneLegend(i){
+  const el = document.createElement('div');
+  el.className = 'pane-legend';
+  el.dataset.i = i;
+  return el;
+}
+function paintPaneLegend(i){
+  const p = PANES[i];
+  const el = p?.host?.querySelector('.pane-legend');
+  if(!p || !el) return;
+  const tk = p.tk, n = nodeIndex.get(tk);
+  // 활성 패널은 전역(cI0/IND…)이 곧 패널 상태다 — stashPane 이 맞춰 준다
+  const iv = (i === activeP ? paneIv() : p.iv) || '1d';
+  const ind = (i === activeP ? IND : p.ind) || IND;
+  const rows = rowsForIv(tk, iv);
+  let li = rows.length - 1; while(li >= 0 && !rows[li]) li--;
+  let pi = li - 1;          while(pi >= 0 && !rows[pi]) pi--;
+  const last = li >= 0 ? rows[li] : null, prev = pi >= 0 ? rows[pi] : null;
+  const d = last && prev && prev[3] ? (last[3] - prev[3]) / prev[3] * 100 : 0;
+  const cur = n?.currency || 'USD';
+  const onInd = [
+    ...MA_DEFS.filter(x => (ind.ma || []).includes(x.n)).map(x => `<b style="color:${x.c}">MA${x.n}</b>`),
+    ...(ind.bb ? ['볼린저'] : []),
+    ...(ind.vma ? ['거래량MA20'] : []),
+    ...(ind.sub && ind.sub !== 'none' ? [SUB_LABEL[ind.sub] || ind.sub] : []),
+  ];
+  const span = isIntraday(iv) ? intradaySpan(tk) + (backfilling.has(tk) ? ' · 채우는 중…' : '')
+             : (TODAY.get(tk) ? `${TODAY.get(tk).date} 봉 포함` : '');
+  el.innerHTML =
+    `<span class="tk" style="color:${n?.color || 'inherit'}">${esc(tk)}</span>` +
+    `<button class="star${isFav(tk) ? ' on' : ''}" data-fav="${esc(tk)}" title="즐겨찾기 추가/해제"` +
+    ` aria-pressed="${isFav(tk)}">${isFav(tk) ? '★' : '☆'}</button>` +
+    `<span class="nm">${esc(n?.name || '')}</span>` +
+    (last ? `<span class="px">${fmtPx(last[3], cur)}</span>` +
+            `<span class="chg" style="color:${d >= 0 ? '#3ddc84' : '#ff5c72'}">${
+              d >= 0 ? '+' : ''}${d.toFixed(2)}% (${esc(String(barLabelFor(tk, iv, li) || ''))})</span>` : '') +
+    (liveOn ? `<span class="live-chip${extReady ? '' : ' stale'}">${
+      extReady ? '실시간 ●' : `실시간 · ${QUOTE_MS / 1000}초`}</span>${helpBadge('liveQuotes')}` : '') +
+    (span ? `<span class="lg-span">${esc(span)}</span>` : '') +
+    (onInd.length ? `<span class="lg-ind">${onInd.join(' · ')}</span>` : '');
+  el.querySelector('[data-fav]')?.addEventListener('click', ev => {
+    ev.stopPropagation(); toggleFav(el.querySelector('[data-fav]').dataset.fav);
+  });
+  // 오른쪽 위 도구줄과 같은 줄에 있는 패널은 범례가 그 밑으로 파고들지 않게 줄인다
+  const tools = document.getElementById('chart-tools');
+  const pr = p.host.getBoundingClientRect(), tr = tools?.getBoundingClientRect();
+  el.style.maxWidth = (tr && tr.width && tr.top < pr.top + 34 && tr.left < pr.right - 8)
+    ? Math.max(90, tr.left - pr.left - 14) + 'px' : '';
+}
+const paintAllLegends = () => PANES.forEach((_, i) => paintPaneLegend(i));
+
 function paneChip(i, tk, total){
   const n = nodeIndex.get(tk);
   const chip = document.createElement('div');
   chip.className = 'pane-chip';
   chip.title = '끌어서 위치 변경';
   chip.innerHTML = `<span class="grip">⠿</span><span style="color:${n?.color || 'inherit'}">${
-    n?.assetClass === 'kr_stock' ? esc(n.name) : tk}</span>` +
-    (total > 1 ? '<button class="x" title="이 패널 닫기">✕</button>' : '');
+    n?.assetClass === 'kr_stock' ? esc(n.name) : tk}</span>`;
   chip.addEventListener('mousedown', ev => {
     if(ev.target.closest('.x')) return;
     ev.stopPropagation();
     focusPane(i);
     if(ev.button === 0) beginSymbolDrag({ kind: 'pane', from: i, tk }, ev, chip);
   });
-  chip.querySelector('.x')?.addEventListener('click', ev => { ev.stopPropagation(); removePane(i); });
   return chip;
 }
 
@@ -7045,9 +7080,7 @@ function loadChart(tk){
   document.getElementById('sel-bar').hidden = true;
   updateToolButtons();
   const node = nodeIndex.get(tk);
-  document.getElementById('m-tk').textContent = tk;
-  document.getElementById('m-tk').style.color = node ? node.color : 'var(--text-primary)';
-  document.getElementById('m-nm').textContent = node ? node.name : '';
+  if(typeof paintAllLegends === 'function') paintAllLegends();
   document.getElementById('m-note').innerHTML = ((OH.closeOnly || []).includes(tk)
     ? '이 종목은 종가만 제공되어 봉이 아닌 선으로 표시됩니다 · 휠·축 드래그 = 확대/축소'
     : '휠·핀치·축 드래그 = 확대/축소 · 드래그 = 이동 · 선 클릭 = 선택')
@@ -7250,17 +7283,7 @@ function renderTvSummary(){
 const SUB_LABEL = { none: '없음', rsi: 'RSI(14)', macd: 'MACD' };
 
 function renderIndButtons(){
-  const leg = document.getElementById('m-ind-legend');
-  if(leg){
-    const on = [
-      ...MA_DEFS.filter(d => IND.ma.includes(d.n))
-                .map(d => `<b style="color:${d.c}">MA${d.n}</b>`),
-      ...(IND.bb ? ['볼린저'] : []),
-      ...(IND.vma ? ['거래량MA20'] : []),
-      ...(IND.sub !== 'none' ? [SUB_LABEL[IND.sub] || IND.sub] : []),
-    ];
-    leg.innerHTML = on.length ? on.join(' · ') : '';
-  }
+  if(typeof paintAllLegends === 'function') paintAllLegends();
   const btn = document.getElementById('m-ind');
   if(btn){
     const n = IND.ma.length + (IND.bb ? 1 : 0) + (IND.vma ? 1 : 0) + (IND.sub !== 'none' ? 1 : 0);
@@ -7307,6 +7330,9 @@ function toggleIndPop(on){
   renderIndButtons();
 }
 document.getElementById('m-ind').addEventListener('click', ev => { ev.stopPropagation(); toggleIndPop(); });
+document.getElementById('m-close').addEventListener('click', () => {
+  if(PANES.length > 1) removePane(activeP);      // 활성 패널 = 마지막으로 누른 차트
+});
 document.addEventListener('mousedown', ev => {
   const host = document.getElementById('ind-pop');
   if(host && !host.hidden && !host.contains(ev.target) && ev.target.id !== 'm-ind') toggleIndPop(false);
@@ -8232,16 +8258,7 @@ function declareLive(){
    보고 있으면 켜진다 — 끄고 켜는 스위치가 아니라, 연결의 결과다. */
 function setLive(on){
   liveOn = !!on && (extReady || bridgeOk);
-  const b = document.getElementById('m-live');
-  if(b){
-    b.hidden = !liveOn;
-    // 확장이 있으면 체결마다, 없으면 브리지로 QUOTE_MS 마다 — 어느 쪽인지 밝힌다
-    b.textContent = extReady ? '실시간 ●' : `실시간 · ${QUOTE_MS / 1000}초`;
-    b.classList.toggle('stale', !extReady);
-    b.title = extReady
-      ? '확장 프로그램이 체결을 실시간으로 밀어 주고 있습니다.'
-      : `브리지로 ${QUOTE_MS / 1000}초마다 최신 1분봉을 받아 갱신합니다.`;
-  }
+  if(typeof paintAllLegends === 'function') paintAllLegends();
   if(!liveOn) LIVE.clear();
   declareLive();
 }
@@ -8296,17 +8313,22 @@ function applyLivePrice(tk, px){
 }
 
 function paintLiveQuote(tk, px){
-  const el = document.getElementById('m-px');
-  if(!el) return;
-  const n = nodeIndex.get(tk);
-  el.textContent = (n?.currency === 'KRW' ? '₩' : '$') + px.toLocaleString();
-  el.classList.remove('tick');
-  void el.offsetWidth;                    // 애니메이션 재시작
-  el.classList.add('tick');
+  PANES.forEach((p, i) => {
+    if(p.tk !== tk) return;
+    paintPaneLegend(i);
+    const el = p.host?.querySelector('.pane-legend .px');
+    if(!el) return;
+    el.classList.remove('tick');
+    void el.offsetWidth;                  // 애니메이션 재시작
+    el.classList.add('tick');
+  });
 }
 function paintLiveDot(open){
-  const b = document.getElementById('m-live');
-  if(b && liveOn && extReady) b.textContent = open ? '실시간 ●' : '실시간 ○';
+  if(!liveOn || !extReady) return;
+  PANES.forEach(p => {
+    const b = p.host?.querySelector('.pane-legend .live-chip');
+    if(b) b.textContent = open ? '실시간 ●' : '실시간 ○';
+  });
 }
 
 /* ---- 확장이 없을 때: 브리지로 최신 1분봉을 되풀이해 받는다 ----
@@ -9382,6 +9404,7 @@ document.getElementById('login-guest').addEventListener('click', closeLoginModal
 scopeKeys();
 renderAuth();
 applyGates();
+syncPeriodTitle();
 loadAlerts();
 renderAlertPanel();
 autoLive();
