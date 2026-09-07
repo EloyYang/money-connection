@@ -83,11 +83,10 @@ function syncChartHeader(){
   if(typeof renderTvList === 'function') renderTvList();
 }
 
+/* 도구 버튼 줄은 없어졌다 — 그리는 중이라는 것은 커서와 안내로만 알린다 */
 function updateToolButtons(){
-  ['trend', 'hline'].forEach(t => {
-    const b = document.getElementById('tool-' + t);
-    if(b) b.classList.toggle('on', cTool === t);
-  });
+  const host = document.getElementById('tv-chart');
+  if(host) host.classList.toggle('drawing', !!cTool);
 }
 
 /* ---- selection toolbar (복사 / 삭제) ---- */
@@ -419,7 +418,9 @@ function drawCandle(silent){
   const chgEl = document.getElementById('m-chg');
   chgEl.textContent = `${dChg>=0?'+':''}${dChg.toFixed(2)}%  (${barLabel(vis[vis.length-1].i)})`;
   chgEl.style.color = dChg >= 0 ? UP : DOWN;
-  document.getElementById('m-yfit').classList.toggle('on', !!yManual);
+  // 가격축은 자동이 기본이다 — 축을 끌어 손으로 맞췄을 때만 범례로 알린다
+  const lg = document.getElementById('chart-legend');
+  if(lg) lg.classList.toggle('ymanual', !!yManual);
 }
 
 function svgLine(x1,y1,x2,y2,stroke,w){
