@@ -298,11 +298,17 @@
      머리글 두 줄(종목·시세·도구 + 보조지표)을 없애고 그 세로 공간을
      차트에 돌려준 자리다. */
   /* 범례는 패널마다 자기 차트 위에 — 분할해도 어느 차트가 무엇인지 바로 보인다 */
+  /* 종목 정보 줄이 곧 패널 손잡이다 — 끌면 자리가 바뀌고, ✕ 로 닫는다 */
   .pane-legend{ position:absolute; top:5px; left:7px; z-index:9; display:flex; align-items:baseline;
-    gap:5px; flex-wrap:wrap; max-width:calc(100% - 14px); pointer-events:none;
+    gap:5px; flex-wrap:wrap; max-width:calc(100% - 14px); cursor:grab; user-select:none;
     padding:2px 7px; border-radius:7px; background:rgba(12,15,20,0.74); backdrop-filter:blur(6px);
-    line-height:1.35; }
-  .pane-legend > *{ pointer-events:auto; }
+    line-height:1.35; border:1px solid transparent; }
+  .pane-legend:hover{ border-color:var(--border); background:rgba(12,15,20,0.9); }
+  .pane-legend:active{ cursor:grabbing; }
+  /* 닫기는 다른 도구 버튼과 같은 색이다 — 빨강은 실거래 주문에만 쓴다 */
+  .pane-legend .lg-x{ border:none; background:none; color:var(--text-muted); cursor:pointer;
+    font-family:inherit; font-size:10px; line-height:1; padding:0 3px 0 0; align-self:center; }
+  .pane-legend .lg-x:hover{ color:var(--text-primary); }
   .pane-legend .tk{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:12px; }
   .pane-legend .nm{ font-size:9.5px; color:var(--text-secondary); max-width:150px;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -315,8 +321,6 @@
   .pane-legend .help{ width:13px; height:13px; font-size:8.5px; }
   .cpane.ymanual .pane-legend::after{ content:'가격축 수동'; font-size:9px; color:var(--fav); }
   #chart-tools{ position:absolute; top:6px; right:9px; z-index:11; display:flex; align-items:center; gap:5px; }
-  #m-close{ color:var(--down); border-color:rgba(255,92,114,0.4); }
-  #m-close:hover{ background:rgba(255,92,114,0.14); color:var(--down); }
   #chart-tools .tool, #chart-tools .mini-sel{ padding:4px 9px; font-size:11.5px;
     background:rgba(12,15,20,0.82); backdrop-filter:blur(6px); }
   #ind-pop{ position:absolute; top:42px; right:10px; z-index:10; width:230px; padding:11px 12px;
@@ -336,17 +340,6 @@
     #chart-tools{ position:static; padding:6px 10px; justify-content:flex-end; }
     #ind-pop{ top:auto; }
   }
-  /* pane chip: the drag handle, the symbol label and the close button.
-     범례가 왼쪽 위를 쓰므로 칩은 아래로 내려간다. */
-  .pane-chip{ position:absolute; bottom:6px; left:8px; z-index:7; display:flex; align-items:center; gap:5px;
-    padding:2px 5px 2px 4px; border-radius:6px; background:rgba(18,21,27,0.86); backdrop-filter:blur(4px);
-    border:1px solid var(--border); font-family:'JetBrains Mono',monospace; font-size:11px;
-    font-weight:600; cursor:grab; user-select:none; }
-  .pane-chip:active{ cursor:grabbing; }
-  .pane-chip .grip{ color:var(--text-muted); font-size:10px; letter-spacing:-1px; }
-  .pane-chip .x{ border:none; background:none; color:var(--text-muted); cursor:pointer;
-    font-size:11px; line-height:1; padding:0 1px; font-family:inherit; }
-  .pane-chip .x:hover{ color:var(--down); }
   .cpane.drop-replace{ border-color:var(--accent); box-shadow:inset 0 0 0 2px rgba(95,208,255,0.25); }
   .cpane.drop-split{ border-color:var(--up); }
   .cap code{ font-family:'JetBrains Mono',monospace; font-size:10px; padding:1px 4px;
@@ -369,7 +362,7 @@
   .cpane .drop-hint{ position:absolute; inset:auto 0 8px 0; text-align:center; z-index:9;
     font-size:11px; color:var(--text-primary); pointer-events:none; }
   .tv-row{ cursor:grab; }
-  .tv-row.dragging, .pane-chip.dragging{ opacity:0.4; }
+  .tv-row.dragging, .pane-legend.dragging{ opacity:0.4; }
   body.dragging-sym{ cursor:grabbing; user-select:none; }
   body.dragging-sym .cpane{ transition:border-color .1s ease; }
   .drag-ghost{ position:fixed; z-index:200; pointer-events:none; padding:3px 8px; border-radius:6px;
@@ -1107,7 +1100,6 @@
           <div id="chart-tools">
             <select id="m-iv" class="mini-sel" title="봉 단위"></select><button class="help" data-h="barInterval">?</button>
             <button class="tool" id="m-ind" title="보조지표 고르기">⌁ 보조지표</button>
-            <button class="tool" id="m-close" hidden title="이 차트 닫기">✕ 닫기</button>
             <button class="tool" id="m-full" title="전체화면 (F)" aria-label="전체화면">⛶</button>
           </div>
           <div id="ind-pop" hidden></div>
@@ -1946,15 +1938,16 @@ const HELP = {
     '   아래쪽에 놓으면 위아래로, 옆에 놓으면 좌우로 나뉩니다. 차트 1개에서 아래에 놓으면 \n' +
     '   가로로 긴 차트 2개가 위아래로, 좌우 2개 상태에서 위에 놓으면 위 1개(넓게)·아래 2개가 됩니다.\n' +
     '· 패널 가운데에 놓으면 → 그 패널의 종목 교체 (파란 테두리)\n' +
-    '· 이름표(⠿)를 끌어 다른 패널 <b>가운데</b>에 놓으면 → 두 패널 자리 교환 (배치는 그대로)\n' +
-    '· 이름표(⠿)를 끌어 다른 패널 <b>가장자리</b>에 놓으면 → 그 자리로 이동하며 배치가 다시 짜입니다 (보라색 미리보기)\n' +
+    '· <b>왼쪽 위 종목 정보를 끌어</b> 다른 패널 <b>가운데</b>에 놓으면 → 두 패널 자리 교환 (배치는 그대로)\n' +
+    '· <b>종목 정보를 끌어</b> 다른 패널 <b>가장자리</b>에 놓으면 → 그 자리로 이동하며 배치가 다시 짜입니다 (보라색 미리보기)\n' +
     '   좌우 2개에서 하나를 다른 쪽 아래에 놓으면 상하 2단이 되고, 위 1개(넓게)를 아래 두 개 옆에 \n' +
     '   놓으면 위아래가 뒤집힙니다.\n' +
-    '· 오른쪽 위 <b>✕ 닫기</b> 로 지금 고른 차트를 닫습니다 (차트를 한 번 눌러 고른 뒤)\n\n' +
+    '· 종목 정보 맨 앞의 <b>✕</b> 로 그 차트를 닫습니다\n\n' +
     '패널마다 종목·기간·확대·보조지표를 따로 가집니다. 패널을 클릭하면 활성 패널(보라색 테두리)로 고정되고, ' +
-    '오른쪽의 요약·주문창과 보조지표, 오른쪽 위 ✕ 닫기가 모두 그 패널의 종목을 가리킵니다. ' +
-    '<b>종목 정보(티커·이름·현재가·등락·보조지표)는 차트마다 자기 왼쪽 위에</b> 있어 ' +
-    '어느 차트가 무엇인지 바로 보입니다. 끌어서 자리를 바꾸는 손잡이(⠿)는 왼쪽 아래입니다. ' +
+    '오른쪽의 요약·주문창과 보조지표가 그 패널의 종목을 가리킵니다.\n\n' +
+    '<b>차트마다 왼쪽 위의 종목 정보 줄</b>(✕ · 티커 · 즐겨찾기 · 이름 · 현재가 · 등락 · 보조지표)이 ' +
+    '그 패널의 모든 것을 담당합니다 — 어느 차트가 무엇인지 보여 주고, <b>끌면 자리가 바뀌고</b>, ' +
+    '맨 앞 ✕ 로 닫힙니다. 별과 ✕ 를 누를 때는 끌리지 않습니다.\n\n' +
     '오른쪽 위 ⛶ 또는 F 키로 전체화면을 켜고 끕니다. 분할 구성은 브라우저에 저장됩니다.' },
   miniTrade: { t: '간편 주문', dir: null, d:
     '최근 종가로 바로 체결되는 시장가 주문입니다. 수량만 넣고 매수 또는 매도를 누르면 됩니다.\n\n' +
@@ -5705,11 +5698,6 @@ function syncIvButtons(){
   sel.value = iv;
   // 받아 둔 구간·오늘 봉 표시는 패널 범례가 담당한다
   if(typeof paintAllLegends === 'function') paintAllLegends();
-  const close = document.getElementById('m-close');
-  if(close){
-    close.hidden = PANES.length <= 1;
-    close.title = `이 차트 닫기 — ${cTk || ''}`;
-  }
 }
 /* 장수가 많아지면 몇 초 걸린다 — 멈춘 것처럼 보이지 않게 알려 준다 */
 function showLoadProgress(i, n){
@@ -6762,7 +6750,6 @@ function buildPanes(tickers, rows){
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     host.appendChild(svg);
     host.appendChild(paneLegend(i));
-    host.appendChild(paneChip(i, tk, list.length));
     host.addEventListener('mousedown', () => focusPane(+host.dataset.i), true);
     body.appendChild(host);
     PANES.push({ tk, i0: 0, i1: 0, yManual: null, host, sel: d3.select(svg),
@@ -6796,6 +6783,16 @@ function paneLegend(i){
   const el = document.createElement('div');
   el.className = 'pane-legend';
   el.dataset.i = i;
+  el.title = '끌어서 자리 옮기기';
+  // 종목 정보 줄이 곧 손잡이다 — 아래쪽에 따로 두던 이름표를 없앴다
+  el.addEventListener('mousedown', ev => {
+    if(ev.target.closest('[data-close]') || ev.target.closest('[data-fav]')
+       || ev.target.closest('.help')) return;
+    ev.stopPropagation();
+    const me = +el.dataset.i;
+    focusPane(me);
+    if(ev.button === 0) beginSymbolDrag({ kind: 'pane', from: me, tk: PANES[me]?.tk }, ev, el);
+  });
   return el;
 }
 function paintPaneLegend(i){
@@ -6821,6 +6818,7 @@ function paintPaneLegend(i){
   const span = isIntraday(iv) ? intradaySpan(tk) + (backfilling.has(tk) ? ' · 채우는 중…' : '')
              : (TODAY.get(tk) ? `${TODAY.get(tk).date} 봉 포함` : '');
   el.innerHTML =
+    (PANES.length > 1 ? `<button class="lg-x" data-close="${i}" title="이 차트 닫기">✕</button>` : '') +
     `<span class="tk" style="color:${n?.color || 'inherit'}">${esc(tk)}</span>` +
     `<button class="star${isFav(tk) ? ' on' : ''}" data-fav="${esc(tk)}" title="즐겨찾기 추가/해제"` +
     ` aria-pressed="${isFav(tk)}">${isFav(tk) ? '★' : '☆'}</button>` +
@@ -6835,6 +6833,9 @@ function paintPaneLegend(i){
   el.querySelector('[data-fav]')?.addEventListener('click', ev => {
     ev.stopPropagation(); toggleFav(el.querySelector('[data-fav]').dataset.fav);
   });
+  el.querySelector('[data-close]')?.addEventListener('click', ev => {
+    ev.stopPropagation(); removePane(+el.querySelector('[data-close]').dataset.close);
+  });
   // 오른쪽 위 도구줄과 같은 줄에 있는 패널은 범례가 그 밑으로 파고들지 않게 줄인다
   const tools = document.getElementById('chart-tools');
   const pr = p.host.getBoundingClientRect(), tr = tools?.getBoundingClientRect();
@@ -6842,22 +6843,6 @@ function paintPaneLegend(i){
     ? Math.max(90, tr.left - pr.left - 14) + 'px' : '';
 }
 const paintAllLegends = () => PANES.forEach((_, i) => paintPaneLegend(i));
-
-function paneChip(i, tk, total){
-  const n = nodeIndex.get(tk);
-  const chip = document.createElement('div');
-  chip.className = 'pane-chip';
-  chip.title = '끌어서 위치 변경';
-  chip.innerHTML = `<span class="grip">⠿</span><span style="color:${n?.color || 'inherit'}">${
-    n?.assetClass === 'kr_stock' ? esc(n.name) : tk}</span>`;
-  chip.addEventListener('mousedown', ev => {
-    if(ev.target.closest('.x')) return;
-    ev.stopPropagation();
-    focusPane(i);
-    if(ev.button === 0) beginSymbolDrag({ kind: 'pane', from: i, tk }, ev, chip);
-  });
-  return chip;
-}
 
 function currentTickers(){ stashPane(); return PANES.map(p => p.tk); }
 function rebuild(tickers, focusIdx, rows){
@@ -6924,7 +6909,7 @@ function clearDropMarks(){
   document.querySelectorAll('.cpane').forEach(el => el.classList.remove(
     'drop-replace', 'drop-split', 'drop-swap', 'drop-move',
     'to-top', 'to-bottom', 'to-left', 'to-right'));
-  document.querySelectorAll('.tv-row.dragging, .pane-chip.dragging')
+  document.querySelectorAll('.tv-row.dragging, .pane-legend.dragging')
     .forEach(el => el.classList.remove('dragging'));
   if(dragGhost){ dragGhost.remove(); dragGhost = null; }
   dragPayload = null; dragStart = null;
@@ -7071,10 +7056,6 @@ document.addEventListener('keydown', ev => {
 function loadChart(tk){
   if(PANES[activeP]){
     PANES[activeP].tk = tk; savePanes();
-    // 패널 이름표는 buildPanes 에서 한 번 그려지고 끝이라, 목록에서 종목만
-    // 바꾸면 옛 이름이 남아 있었다. 여기서 다시 그린다.
-    const p = PANES[activeP], old = p.host?.querySelector('.pane-chip');
-    if(old){ old.replaceWith(paneChip(activeP, tk, PANES.length)); }
   }
   cTk = tk; cTool = null; cPending = null; cSel = null; yManual = null;
   document.getElementById('sel-bar').hidden = true;
@@ -7330,9 +7311,6 @@ function toggleIndPop(on){
   renderIndButtons();
 }
 document.getElementById('m-ind').addEventListener('click', ev => { ev.stopPropagation(); toggleIndPop(); });
-document.getElementById('m-close').addEventListener('click', () => {
-  if(PANES.length > 1) removePane(activeP);      // 활성 패널 = 마지막으로 누른 차트
-});
 document.addEventListener('mousedown', ev => {
   const host = document.getElementById('ind-pop');
   if(host && !host.hidden && !host.contains(ev.target) && ev.target.id !== 'm-ind') toggleIndPop(false);
