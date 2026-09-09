@@ -563,25 +563,110 @@ def fetch_one_series(tk, member, frm, to):
     return fetch_history(tk, frm.isoformat(), to.isoformat(), assetclass=assetclass)
 
 
-def fetch_all_prices(members, workers):
+# 나스닥이 그날 종가를 몇 시간 늦게 확정하는 일이 있다 — 야후는 실시간
+# 시세를 쓰는 쪽이라 그 사이를 먼저 채워 줄 때가 많다. 최근 창에만 적용한다
+# (야후는 종가 전용이라 과거 전체를 이걸로 받으면 시가·고가·저가를 잃는다).
+TOPOFF_SOURCES = ("nasdaq_stock", "nasdaq_etf")
+# 나스닥에서 받은 가장 최근 날짜가 오늘보다 이만큼 넘게 오래되었을 때만
+# 야후를 추가로 부른다. 주말 이틀 정도는 정상이니 여유를 둔다 — 매번
+# 부르면(캐시 재사용의 요청 수가 얼마 안 되는데 여기서 절반 가까이를
+# 다시 늘려 버려) 캐싱으로 아낀 시간을 도로 까먹는다.
+TOPOFF_STALE_DAYS = 3
+
+# 캐시에 있는 종목은 이 기간만 새로 받는다 — 주말·연휴가 이어져도
+# 겹치도록 넉넉히 잡는다. 새 종목(캐시에 없음)은 여전히 5년 전체를 받는다.
+INCR_DAYS = 12
+
+
+def _load_price_cache(path):
+    if not path or not os.path.exists(path):
+        return {}
+    try:
+        raw = json.load(open(path))
+    except Exception as e:                            # noqa: BLE001
+        log(f"가격 캐시를 읽지 못해 전체를 새로 받습니다: {e}")
+        return {}
+    out = {}
+    for tk, rows in raw.items():
+        d = {}
+        for ds, row in rows.items():
+            try:
+                d[datetime.date.fromisoformat(ds)] = row
+            except ValueError:
+                continue
+        if d:
+            out[tk] = d
+    return out
+
+
+def _save_price_cache(path, series, members):
+    """다음 실행이 다시 5년 전체를 받지 않도록 저장해 둔다. 티커별로
+    굴러가는 5년 창을 유지하기 위해 그보다 오래된 날짜는 잘라 낸다 —
+    그러지 않으면 캐시가 매일 조금씩 무한히 자란다."""
+    if not path:
+        return
+    cutoff = datetime.date.today() - datetime.timedelta(days=int(YEARS * 365.25) + 10)
+    out = {}
+    for tk, rows in series.items():
+        if tk not in members:                          # 지수에서 빠진 종목은 캐시에서도 뺀다
+            continue
+        out[tk] = {d.isoformat(): row for d, row in rows.items() if d >= cutoff}
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(out, f, separators=(",", ":"), sort_keys=True)
+    os.replace(tmp, path)
+
+
+def fetch_all_prices(members, workers, cache_path=None):
     to = datetime.date.today()
-    frm = to - datetime.timedelta(days=int(YEARS * 365.25) + 5)
+    full_frm = to - datetime.timedelta(days=int(YEARS * 365.25) + 5)
+    cache = _load_price_cache(cache_path)
+    if cache:
+        log(f"가격 캐시: {len(cache)}개 종목 — 캐시에 있는 종목은 최근 {INCR_DAYS}일만 새로 받습니다")
     series, problems = {}, []
 
+    def fetch_fresh(tk, m, frm):
+        """기본 소스로 받고, 그 결과가 눈에 띄게 오래됐을 때만(TOPOFF_STALE_DAYS)
+        미국 주식·ETF 에 한해 야후로 최근 며칠을 추가로 받아 빈 날짜를 채운다.
+        나스닥 값이 있으면 그대로 둔다 — 야후는 종가만 있어 시가·고가·저가가
+        부정확할 수 있기 때문이다. 매번 야후까지 부르면 캐시로 아낀 요청 수를
+        도로 절반 가까이 늘리게 되므로, 정말 뒤처졌을 때만 부른다."""
+        rows = dict(fetch_one_series(tk, m, frm, to))
+        if m.get("source") in TOPOFF_SOURCES:
+            newest = max(rows) if rows else None
+            if newest is None or (to - newest).days > TOPOFF_STALE_DAYS:
+                try:
+                    extra = fetch_yahoo(tk, frm, to)
+                except Exception:                      # noqa: BLE001
+                    extra = {}
+                for d, row in extra.items():
+                    rows.setdefault(d, row)
+        return rows
+
     def one(tk):
+        m = members[tk]
+        cached = cache.get(tk)
+        frm = (to - datetime.timedelta(days=INCR_DAYS)) if cached else full_frm
         try:
-            rows = fetch_one_series(tk, members[tk], frm, to)
+            fresh = fetch_fresh(tk, m, frm)
         except Exception as e:                        # noqa: BLE001
-            return tk, {}, f"historical failed: {e}"
+            fresh, err = {}, f"historical failed: {e}"
+        else:
+            err = None if (fresh or cached) else "no rows"
+        rows = {**cached, **fresh} if cached else fresh
         if not rows:
-            return tk, {}, "no rows"
+            return tk, {}, err or "no rows"
+        # 오늘 갱신은 실패했지만 캐시로 버틴 경우 — 종목은 그대로 내보내되
+        # 무슨 일이 있었는지는 바깥 루프가 (조용히) 알 수 있게 err 를 함께 준다.
+        if err:
+            return tk, rows, ("stale:" + err)
         # Sanity gate: the historical series must agree with today's quote.
         # Nasdaq's endpoint has resolved a symbol to an unrelated instrument
         # before, and a silently wrong series would poison every correlation.
         # Skipped when quote_px is unknown (ETF/crypto/gold: no separate quote
         # call for those, so nothing to cross-check against, and none of them
         # share Nasdaq's stock-symbol-collision failure mode anyway).
-        quote = members[tk].get("quote_px")
+        quote = m.get("quote_px")
         last = rows[max(rows)][3]
         if quote and last and abs(last - quote) / quote > 0.25:
             return tk, rows, f"series/quote mismatch (hist {last} vs quote {quote})"
@@ -589,13 +674,22 @@ def fetch_all_prices(members, workers):
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
         for tk, rows, problem in ex.map(one, list(members)):
+            if problem and problem.startswith("stale:"):
+                # 오늘 갱신은 실패했지만 캐시로 이어 간다 — 사용자에게 보이는
+                # "보정" 경고는 진짜 새 문제일 때만 남기고, 이건 로그에만 적는다.
+                log(f"  ! {tk}: {problem[6:]} (어제까지 값으로 유지)")
+                series[tk] = rows
+                continue
             if problem and "mismatch" in problem:
                 log(f"  ! {tk}: {problem} -> trying Yahoo")
+                cached = cache.get(tk)
+                frm = (to - datetime.timedelta(days=INCR_DAYS)) if cached else full_frm
                 try:
                     alt = fetch_yahoo(tk, frm, to)
                 except Exception as e:                # noqa: BLE001
                     alt = {}
                     log(f"    Yahoo failed too: {e}")
+                alt = {**cached, **alt} if cached else alt
                 if alt:
                     series[tk] = alt
                     problems.append((tk, "nasdaq symbol mismatch — using Yahoo"))
@@ -608,6 +702,7 @@ def fetch_all_prices(members, workers):
                 continue
             series[tk] = rows
     log(f"prices: {len(series)}/{len(members)} tickers")
+    _save_price_cache(cache_path, series, members)
 
     # Backfill size/quote for assets whose membership source had none:
     #  - ETF / gold: no AUM endpoint, so approximate size with recent dollar
@@ -1231,7 +1326,8 @@ def main():
     themes.update({t: (12 if m["asset_class"] == "crypto" else 13 if m["asset_class"] == "commodity" else 11)
                    for t, m in extra_members.items()})
 
-    series, problems = fetch_all_prices(members, a.max_workers)
+    series, problems = fetch_all_prices(members, a.max_workers,
+                                        cache_path=os.path.join(a.cache, "prices_cache.json"))
 
     _to = datetime.date.today()
     _frm = _to - datetime.timedelta(days=int(YEARS * 365.25) + 5)

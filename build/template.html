@@ -1929,6 +1929,9 @@ const HELP = {
     '진행 상태는 종목명 옆에 <b>· 과거 채우는 중…</b> 으로 표시됩니다.\n\n' +
     '한 달을 다 채우면 멈춥니다. 그보다 더 과거는 일·주·월·년 봉으로 보세요 — ' +
     '그쪽은 연동 없이도 5년치가 이미 들어 있습니다.\n\n' +
+    '<b>받아 온 분봉은 이 브라우저에 저장됩니다.</b> 같은 종목을 다음에 다시 열면 ' +
+    '저장된 것을 그 자리에서 바로 그리고, 그 뒤로 지난 시간만 살짝 새로 받습니다 — ' +
+    '탭을 새로고침하거나 나중에 다시 와도 한 달치를 처음부터 다시 받지 않습니다.\n\n' +
     '일·주·월·년의 보이는 구간은 <b>상단의 전체 기간</b>을 따릅니다. ' +
     '분·시간봉은 자기 규칙(최근 120봉)을 씁니다.\n\n' +
     '봉 단위는 <b>패널마다 따로</b> 기억합니다. 왼쪽은 주봉으로 큰 흐름을, 오른쪽은 15분봉으로 ' +
@@ -5382,6 +5385,91 @@ function aggregateDaily(tk, grp){
 }
 
 const MIN = new Map();   // tk -> { ts:[ms], rows:[[o,h,l,c,v]], cursor, done, ver }
+
+/* =====================================================================
+   분봉 로컬 저장 — IndexedDB
+   실시간으로 받은 분봉을 가져오고 나면 저장해 둔다. 같은 종목을 다시 열면
+   그 자리에서 바로 그리고, 브리지에는 그 뒤로 지난 최신 한 장만 물어본다
+   — 브리지 요청도, 기다리는 시간도 없앤다.
+
+   localStorage 대신 IndexedDB 를 쓴다: 문자열로만 저장되고 보통
+   5~10MB 로 제한되는 localStorage 는 종목 하나의 한 달치 분봉(1분당
+   1행, 하루 390행)만으로도 금방 찬다. IndexedDB 는 숫자 배열을 그대로
+   (구조화 복제) 저장하고 할당량도 훨씬 크다.
+
+   개인 데이터가 아니라 시세(공개 정보)의 캐시일 뿐이므로 계정 지우기·
+   내보내기 대상에는 넣지 않는다 — 브라우저의 HTTP 캐시와 같은 성격이다. */
+const MINDB_NAME = 'money-connection', MINDB_STORE = 'minbars', MINDB_VER = 1;
+let _minDbP = null;
+function minDb(){
+  if(_minDbP) return _minDbP;
+  _minDbP = new Promise((resolve, reject) => {
+    if(!window.indexedDB){ reject(new Error('IndexedDB 를 쓸 수 없습니다.')); return; }
+    const req = indexedDB.open(MINDB_NAME, MINDB_VER);
+    req.onupgradeneeded = () => {
+      if(!req.result.objectStoreNames.contains(MINDB_STORE))
+        req.result.createObjectStore(MINDB_STORE);      // key = 티커
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  _minDbP.catch(() => { _minDbP = null; });               // 실패하면 다음 시도 때 다시 연다
+  return _minDbP;
+}
+async function idbGetMin(tk){
+  try {
+    const db = await minDb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(MINDB_STORE, 'readonly');
+      const rq = tx.objectStore(MINDB_STORE).get(tk);
+      rq.onsuccess = () => resolve(rq.result || null);
+      rq.onerror = () => reject(rq.error);
+    });
+  } catch(e){ return null; }                              // 사생활 보호 모드 등으로 막혀 있어도 조용히 넘어간다
+}
+async function idbPutMin(tk, st){
+  try {
+    const db = await minDb();
+    // 한 달 + 여유만 남기고 잘라서 저장한다 — 무한히 자라지 않게
+    const cutoff = Date.now() - (INTRADAY_DAYS + 5) * 86400000;
+    let i0 = 0; while(i0 < st.ts.length && st.ts[i0] < cutoff) i0++;
+    const rec = { ts: st.ts.slice(i0), rows: st.rows.slice(i0), cursor: st.cursor,
+                  done: st.done, ver: st.ver, savedAt: Date.now() };
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(MINDB_STORE, 'readwrite');
+      tx.objectStore(MINDB_STORE).put(rec, tk);
+      tx.oncomplete = resolve; tx.onerror = () => reject(tx.error);
+    });
+  } catch(e){ /* 저장에 실패해도 성능 최적화일 뿐이니 조용히 넘어간다 */ }
+}
+/* 백필이 한 장씩 여러 번 부르므로, 저장은 마지막 호출로부터 잠깐 조용해진
+   뒤에 한 번만 한다 — 매 장마다 저장하면 쓰기가 수십 번 겹친다. */
+const _minSaveTimer = new Map();
+function scheduleMinSave(tk){
+  clearTimeout(_minSaveTimer.get(tk));
+  _minSaveTimer.set(tk, setTimeout(() => {
+    _minSaveTimer.delete(tk);
+    const st = MIN.get(tk);
+    if(st && st.ts.length) idbPutMin(tk, st);
+  }, 800));
+}
+/* 저장해 둔 분봉을 불러온다. 있으면 브리지를 다시 부르지 않고 그 자리에서
+   그린다 — 다만 저장된 뒤로 시간이 지났을 수 있으니, 연결되어 있으면
+   최신 한 장(200개 ≈ 3시간 남짓)을 받아 그 사이를 메운다. 그보다 더 큰
+   공백은 못 메우지만, 그 뒤로는 실시간 폴링(pollQuotes)이 이어받는다. */
+async function hydrateIntraday(tk){
+  const cached = await idbGetMin(tk);
+  if(!cached || !cached.rows || !cached.rows.length) return false;
+  MIN.set(tk, { ts: cached.ts.slice(), rows: cached.rows.map(r => r.slice()),
+                cursor: cached.cursor ?? null, done: !!cached.done, ver: cached.ver || 0 });
+  if(bridgeOk || extReady){
+    try {
+      const page = await fetchMinutePage(tk, null);
+      mergeMinuteBars(tk, page.arr);
+    } catch(e){ /* 캐시라도 있으니 조용히 넘어간다 */ }
+  }
+  return true;
+}
 const AGG = new Map();   // `${tk}|${iv}` -> { ver, rows, labels }
 const paneIv = () => (PANES[activeP]?.iv) || '1d';
 
@@ -5505,6 +5593,7 @@ async function loadMinutes(tk, pages, onProgress){
     st.ver++;
   }
   if(!st.rows.length) throw new Error('분봉 데이터가 비어 있습니다.');
+  scheduleMinSave(tk);
   return st;
 }
 
@@ -5585,6 +5674,7 @@ function intradaySpan(tk){
    나머지 한 달치는 backfillIntraday 가 뒤에서 채운다. */
 async function primeIntraday(tk, iv){
   if(!canMinute(tk)) throw new Error('이 자산은 분봉을 제공하지 않습니다 (주식·ETF만 가능).');
+  if(!MIN.has(tk)) await hydrateIntraday(tk);   // 저장해 둔 게 있으면 브리지를 다시 부르지 않는다
   const want = (FIRST_PAGES[iv] || 4) * 200;
   const st = MIN.get(tk);
   const have = st ? st.ts.length : 0;
@@ -5639,14 +5729,6 @@ function shiftPanesFor(tk, before){
   });
 }
 
-/* 이 종목의 분봉이 아직 없으면 받아 온다 —
-   분봉 상태에서 다른 종목을 고르면 빈 차트가 되던 원인이다. */
-async function ensureIntraday(tk){
-  if(!isIntraday(paneIv()) || !tk) return false;
-  if(MIN.has(tk) && MIN.get(tk).rows.length){ backfillIntraday(tk); return false; }
-  await primeIntraday(tk, paneIv());
-  return true;
-}
 
 // newest close across the OHLC set — the correlation dataset ends a day earlier,
 // so the panels would otherwise disagree on "최근 종가"
@@ -5746,7 +5828,7 @@ async function setInterval1(iv){
       syncIvButtons(); return;
     }
     const prev = p.iv;
-    p.iv = iv;                            // ensureIntraday 가 현재 간격을 보고 판단한다
+    p.iv = iv;                            // primeIntraday 가 현재 간격을 보고 판단한다
     ivBusy = true; if(sel) sel.disabled = true;
     try { await primeIntraday(cTk, iv); }
     catch(e){
@@ -8367,7 +8449,7 @@ function mergeMinuteBars(tk, arr){
       if(prev[3] !== row[3] || prev[4] !== row[4]){ st.rows[st.rows.length - 1] = row; changed = true; }
     }
   });
-  if(changed) st.ver++;                      // 묶음 봉 캐시가 이 번호를 보고 다시 만든다
+  if(changed){ st.ver++; scheduleMinSave(tk); }  // 묶음 봉 캐시가 이 번호를 보고 다시 만든다
   return changed;
 }
 
