@@ -1977,7 +1977,15 @@ const HELP = {
   folioHoldings: { t: '보유 종목', dir: null, d:
     '평균단가와 현재가는 그 종목이 거래되는 통화 그대로 보여 주고, 평가금액·손익·비중은 원화로 환산해 한 줄로 비교할 수 있게 했습니다. ' +
     `환율은 설정에서 바꿀 수 있고 기본값은 시가총액 환산에 쓰는 것과 같은 값입니다.\n\n` +
-    '현재가는 마지막 종가입니다 — 장중 실시간 가격이 아닙니다.' },
+    '현재가는 마지막 종가입니다 — 장중 실시간 가격이 아닙니다.\n\n' +
+    '<span class="step">계좌가 여러 개라면</span>' +
+    '<b>보유 종목 가져오기</b>는 토스 계좌 전부(일반 위탁·ISA·연금저축 등)를 자동으로 찾아 합칩니다. ' +
+    '가져온 뒤 뜨는 메시지에 계좌 개수가 함께 표시됩니다. ' +
+    'toss.json 에 <code>account_seq</code> 를 직접 지정해 두셨다면 그 한 계좌만 가져옵니다.\n\n' +
+    '<span class="step">가져왔는데 일부가 안 보인다면</span>' +
+    '이 대시보드는 나스닥100·코스피100·주요 ETF·비트코인/이더리움/금(223종목)만 다룹니다. ' +
+    '그 밖의 종목(예: 나스닥100에 없는 미국 주식, 코스피100 밖의 국내 종목)은 토스에서는 갖고 계셔도 ' +
+    '이 대시보드에 표시할 자리가 없어 건너뜁니다 — 가져오기 메시지에 어떤 종목이 빠졌는지 그대로 적힙니다.' },
   folioAlloc: { t: '배분', dir: null, d:
     '평가금액 기준 비중입니다. 테마·시장·성격 세 가지로 나눠 볼 수 있어, 한 테마에 쏠려 있는지 또는 고변동성 종목에 몰려 있는지 확인할 수 있습니다.\n\n' +
     '조각이나 오른쪽 항목에 마우스를 올리면 가운데에 그 항목의 비중과 금액이 나옵니다. ' +
@@ -6732,14 +6740,23 @@ document.getElementById('bridge-sync').addEventListener('click', async () => {
   try {
     const r = await bridge('/holdings');
     const items = r.items || [];
-    if(!items.length){ st.textContent = '토스증권 계좌에 보유 종목이 없습니다.'; return; }
-    const unknown = [];
+    const accounts = r.accounts || [];
+    if(!items.length){
+      st.innerHTML = '토스증권 계좌에 보유 종목이 없습니다.' +
+        (accounts.length > 1 ? ` (계좌 ${accounts.length}개 모두 확인)` : '');
+      return;
+    }
+    const unknown = [];    // 이 대시보드가 다루는 223종목 밖 — 애초에 표시할 자리가 없다
+    const invalid = [];    // 종목은 맞는데 수량·평균단가 값이 이상해 못 넣음
     let applied = 0;
     folio.live.positions = {};          // the broker is the authority, not our copy
     items.forEach(it => {
       if(!nodeIndex.has(it.symbol)){ unknown.push(it.symbol); return; }
       const qty = parseFloat(it.quantity), avg = parseFloat(it.averagePurchasePrice);
-      if(!(qty > 0) || !isFinite(avg)) return;
+      if(!(qty > 0) || !isFinite(avg)){
+        invalid.push(`${it.symbol} (수량 ${it.quantity ?? '?'} · 평균단가 ${it.averagePurchasePrice ?? '?'})`);
+        return;
+      }
       folio.live.positions[it.symbol] = { qty, cost: qty * avg };
       applied++;
     });
@@ -6747,8 +6764,14 @@ document.getElementById('bridge-sync').addEventListener('click', async () => {
     fetchLiveCash();                      // 보유와 현금은 같이 봐야 총 자산이 맞는다
     folioMode = 'live';
     document.querySelectorAll('[data-m]').forEach(x => x.classList.toggle('on', x.dataset.m === 'live'));
-    st.textContent = `실거래 장부에 보유 ${applied}종목을 반영했습니다.` +
-      (unknown.length ? ` 이 대시보드에 없는 종목은 건너뛰었습니다: ${unknown.join(', ')}` : '');
+    let html = `실거래 장부에 보유 <b>${applied}</b>종목을 반영했습니다.` +
+      (accounts.length > 1 ? ` (계좌 ${accounts.length}개를 모두 합쳤습니다: ${accounts.join(', ')})` : '');
+    if(unknown.length) html += `<br><span style="color:var(--fav)">이 대시보드가 다루지 않는 종목이라 건너뛰었습니다</span> ` +
+      `— 나스닥100·코스피100·주요 ETF·비트코인/이더리움·금만 다룹니다:<br>` +
+      `<span class="mono" style="font-size:11px">${unknown.map(esc).join(', ')}</span>`;
+    if(invalid.length) html += `<br><span style="color:var(--down)">토스가 준 값이 이상해 건너뛰었습니다</span> — 토스 앱에서 직접 확인해 주세요:<br>` +
+      `<span class="mono" style="font-size:11px">${invalid.map(esc).join('<br>')}</span>`;
+    st.innerHTML = html;
   } catch(e){
     if(e.code === 'NO_KEYS'){
       bridgeOk = false; setBrokerChip(); updateTicket();

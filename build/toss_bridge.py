@@ -13,7 +13,8 @@ localhost 의 이 프로세스에만 요청한다.
     {
       "client_id":        "발급받은 클라이언트 ID",
       "client_secret":    "발급받은 시크릿",
-      "account_seq":      0,        // 생략하면 첫 BROKERAGE 계좌를 자동 사용
+      "account_seq":      0,        // 생략하면 보유 종목은 계좌 전부를 합쳐서, 그 외 요청은
+                                    // 첫 계좌를 기본으로 씁니다 (계좌가 하나뿐이면 상관없습니다)
       "google_client_id": "대시보드가 쓰는 OAuth 웹 클라이언트 ID",
       "allowed_email":    "이 브리지를 쓸 내 구글 계정",
 
@@ -313,12 +314,15 @@ def read_body(resp):
     return raw.decode("utf-8", errors="replace")
 
 
-def call(method, path, cfg, body=None, account=True, timeout=20):
-    """토스 API 호출. 401 이면 토큰을 한 번 새로 받아 재시도한다."""
+def call(method, path, cfg, body=None, account=True, timeout=20, account_seq_override=None):
+    """토스 API 호출. 401 이면 토큰을 한 번 새로 받아 재시도한다.
+    account_seq_override 를 주면 그 계좌로 부른다 — 여러 계좌를 순회하며
+    부를 때 쓴다(예: 보유 종목은 계좌마다 따로 있다)."""
     for attempt in (1, 2):
         headers = {"Authorization": f"Bearer {token(cfg)}", "Accept": "application/json"}
         if account:
-            headers["X-Tossinvest-Account"] = str(account_seq(cfg))
+            seq = account_seq_override if account_seq_override is not None else account_seq(cfg)
+            headers["X-Tossinvest-Account"] = str(seq)
         data = None
         if body is not None:
             data = json.dumps(body).encode()
@@ -386,6 +390,32 @@ def account_seq(cfg):
     return _account["seq"]
 
 
+_all_seqs = None          # 계좌 목록도 토큰처럼 프로세스 동안 한 번만 물어보면 된다
+
+
+def all_account_seqs(cfg):
+    """토스 계좌 전부의 번호를 돌려준다. 계좌가 여러 개면(일반 위탁 + ISA·
+    연금저축 등) 보유 종목이 계좌별로 나뉘어 있어서, 첫 계좌 하나만 보면
+    실제로 갖고 있는 종목 일부가 이유 없이 빠진 것처럼 보인다."""
+    global _all_seqs
+    if _all_seqs is not None:
+        return _all_seqs
+    if cfg.get("account_seq"):                 # 사용자가 직접 지정했으면 그 계좌만 쓴다
+        _all_seqs = [int(cfg["account_seq"])]
+        return _all_seqs
+    res = call("GET", "/api/v1/accounts", cfg, account=False)
+    items = (res.get("result") or {}).get("accounts") or res.get("result") or []
+    if isinstance(items, dict):
+        items = items.get("items") or []
+    seqs = [int(a["accountSeq"]) for a in items if a.get("accountSeq") is not None]
+    if not seqs:
+        raise RuntimeError("계좌를 찾을 수 없습니다. toss.json 에 account_seq 를 직접 지정하세요.")
+    _all_seqs = seqs
+    if len(seqs) > 1:
+        log(f"계좌 {len(seqs)}개를 찾았습니다 (seq {seqs}) — 보유 종목은 전부 합쳐서 가져옵니다.")
+    return seqs
+
+
 class Handler(BaseHTTPRequestHandler):
     cfg = None
     origins = DEFAULT_ORIGINS
@@ -444,9 +474,18 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/accounts":
                 return self._send(200, call("GET", "/api/v1/accounts", self.cfg, account=False))
             if path == "/holdings":
-                res = call("GET", "/api/v1/holdings", self.cfg)
-                r = res.get("result") or {}
-                return self._send(200, {"items": r.get("items") or [], "overview": r})
+                # 계좌가 여러 개면(일반 + ISA·연금 등) 보유가 계좌별로 나뉘어
+                # 있다. 전부 돌며 합친다 — 그러지 않으면 실제로 있는 종목이
+                # 이유 없이 빠진 것처럼 보인다.
+                seqs = all_account_seqs(self.cfg)
+                items = []
+                for seq in seqs:
+                    res = call("GET", "/api/v1/holdings", self.cfg, account_seq_override=seq)
+                    r = res.get("result") or {}
+                    for it in (r.get("items") or []):
+                        it["accountSeq"] = seq        # 어느 계좌 건지 남겨 둔다(문의 대응용)
+                        items.append(it)
+                return self._send(200, {"items": items, "accounts": seqs})
             if path == "/orders":
                 q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
                 qs = urllib.parse.urlencode({k: v[0] for k, v in q.items()}) or "status=OPEN"
