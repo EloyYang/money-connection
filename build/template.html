@@ -1306,7 +1306,7 @@
     </span>
     <div class="ctl-label">펀더멘털</div>
     <span class="seg-mini seg-wrap" id="lead-fund">
-      <button data-mode="rev_yoy">매출성장</button><button data-mode="ni_yoy">순이익성장</button><button data-mode="op_margin">영업이익률</button><button data-mode="per">PER</button><button data-mode="de">부채/자본</button>
+      <button data-mode="value" style="font-weight:700">저평가 우량</button><button data-mode="rev_yoy">매출성장</button><button data-mode="ni_yoy">순이익성장</button><button data-mode="op_margin">영업이익률</button><button data-mode="per">PER</button><button data-mode="de">부채/자본</button>
     </span>
     <div id="lead-list"></div>
     <div class="lead-breadth" id="lead-breadth"></div>
@@ -1911,7 +1911,7 @@ const HELP = {
     '<b>실시간</b>을 켜 두면 이 봉의 종가·고가·저가가 체결마다 움직입니다. ' +
     '거래량은 받아 온 시점의 값에서 멈춰 있습니다 — 실시간 프레임에 누적 거래량이 없기 때문입니다.\n\n' +
     '덧붙이는 것은 <b>차트뿐</b>입니다. 계절성·상관관계·주도주는 심어 둔 일봉만 씁니다. ' +
-    '날짜 축을 223종목이 공유하고 있어, 한 종목 때문에 축을 늘리면 나머지가 전부 어긋나기 때문입니다.\n\n' +
+    '날짜 축을 전체 종목이 공유하고 있어, 한 종목 때문에 축을 늘리면 나머지가 전부 어긋나기 때문입니다.\n\n' +
     '화면에 열어 둔 종목만, 1분에 한 번까지만 받아 옵니다.' },
   barInterval: { t: '봉 단위', dir: null, d:
     '<b>일 · 주 · 월 · 년</b>은 이 사이트가 매일 아침 받아 둔 일봉으로 만듭니다. ' +
@@ -1983,8 +1983,8 @@ const HELP = {
     '가져온 뒤 뜨는 메시지에 계좌 개수가 함께 표시됩니다. ' +
     'toss.json 에 <code>account_seq</code> 를 직접 지정해 두셨다면 그 한 계좌만 가져옵니다.\n\n' +
     '<span class="step">가져왔는데 일부가 안 보인다면</span>' +
-    '이 대시보드는 나스닥100·코스피100·주요 ETF·비트코인/이더리움/금(223종목)만 다룹니다. ' +
-    '그 밖의 종목(예: 나스닥100에 없는 미국 주식, 코스피100 밖의 국내 종목)은 토스에서는 갖고 계셔도 ' +
+    '이 대시보드는 나스닥100·S&P500·코스피100·주요 ETF·비트코인/이더리움/금만 다룹니다. ' +
+    '그 밖의 종목(예: 두 지수 밖의 미국 주식, 코스피100 밖의 국내 종목)은 토스에서는 갖고 계셔도 ' +
     '이 대시보드에 표시할 자리가 없어 건너뜁니다 — 가져오기 메시지에 어떤 종목이 빠졌는지 그대로 적힙니다.' },
   folioAlloc: { t: '배분', dir: null, d:
     '평가금액 기준 비중입니다. 테마·시장·성격 세 가지로 나눠 볼 수 있어, 한 테마에 쏠려 있는지 또는 고변동성 종목에 몰려 있는지 확인할 수 있습니다.\n\n' +
@@ -2193,6 +2193,17 @@ const HELP = {
   de: { t: '부채/자본', dir: 'low', d:
     '총부채 ÷ 자기자본. 자기 돈 1에 대해 남의 돈을 얼마나 썼는지입니다. 낮을수록 불황을 버티기 쉽습니다.\n\n' +
     '다만 낮다고 늘 좋은 것은 아닙니다 — 레버리지는 좋을 때 수익을 키웁니다. 유틸리티·통신·금융은 구조적으로 높아 업종 비교가 필요합니다.' },
+  valueQuality: { t: '저평가 우량', dir: 'high', d:
+    '"싸지만 괜찮은 회사" 를 한 숫자(0~100)로 줄인 점수입니다. 다섯 가지를 전체 미국 주식 대비 백분위로 바꿔 평균합니다 — ' +
+    '<b>PER</b>과 <b>부채/자본</b>은 낮을수록(백분위를 뒤집어서), <b>매출성장</b>·<b>순이익성장</b>·<b>영업이익률</b>은 높을수록 점수에 유리합니다. ' +
+    '단위가 다른 값(PER 15와 성장률 15%)은 그냥 더할 수 없어 순위(백분위)로 바꿔서 평균합니다.\n\n' +
+    '<span class="step">읽는 법</span>' +
+    '점수 90이면 이 다섯 항목에서 대체로 상위 10% 안에 든다는 뜻이고, 10이면 하위권이라는 뜻입니다. ' +
+    '가장 위(▲)가 "싸면서 실적도 좋은" 후보군이고, 가장 아래(▼)가 "비싸거나 실적이 나쁜" 쪽입니다.\n\n' +
+    '<span class="warn">순위일 뿐 매수 추천이 아닙니다.</span> 싸 보이는 데는 이유가 있을 수 있고(성장 둔화, 규제 리스크, 회계 이슈 등), ' +
+    '이 점수는 그런 맥락을 모릅니다. 다섯 항목 중 셋 미만이면(자료가 부족하면) 아예 순위에서 뺍니다.\n\n' +
+    '<span class="step">범위</span>' +
+    '펀더멘털 데이터가 있는 <b>미국 주식(나스닥100 · S&P500)에만</b> 값이 있습니다. 코스피·ETF·암호화폐·금은 애초에 이 데이터를 못 받아 와 나오지 않습니다.' },
   cash: { t: '현금성자산', dir: 'high', d:
     '즉시 쓸 수 있는 현금과 단기 금융상품입니다. 많을수록 버틸 힘과 투자 여력이 큽니다. ' +
     '다만 쓰지 않고 쌓아 두기만 하면 자본을 놀리는 것이기도 합니다.' },
@@ -4650,6 +4661,54 @@ const perOf = tk => {
   const f = fundOf(tk), px = (latestClose(tk) || {}).px;
   return (f && f.eps_ttm > 0 && px) ? px / f.eps_ttm : null;
 };
+const deOf = tk => {
+  const f = fundOf(tk);
+  return (f && f.liabilities && f.equity && f.equity[0]) ? f.liabilities[0] / f.equity[0] : null;
+};
+const opMarginOf = tk => {
+  const f = fundOf(tk);
+  return (f && f.op_income && f.revenue && f.revenue[0]) ? f.op_income[0] / f.revenue[0] * 100 : null;
+};
+
+/* =====================================================================
+   저평가 우량주 점수 — "싸지만 괜찮은 회사" 를 한 숫자로.
+   PER·부채비율은 낮을수록, 매출·순이익 성장과 영업이익률은 높을수록
+   좋게 본다. 단위가 다른 값을 그냥 더할 수 없으니(PER 15와 성장률
+   15%는 비교가 안 된다) 전체 종목 대비 백분위로 바꿔서 평균한다 —
+   "낮을수록 좋은" 두 항목은 백분위를 뒤집는다(1 - p). 펀더멘털이 있는
+   미국 주식(나스닥100 + S&P500)에만 값이 있다 — 코스피·ETF·암호화폐·
+   금은 애초에 이 데이터를 못 받아 온다.
+   ===================================================================== */
+let _valueScoreCache = null;
+function valueQualityScores(){
+  if(_valueScoreCache) return _valueScoreCache;
+  const raw = { per: new Map(), de: new Map(), revG: new Map(), niG: new Map(), opM: new Map() };
+  nodes.forEach(n => {
+    const tk = n.id;
+    if(!fundOf(tk)) return;                 // 펀더멘털이 없는 자산(코스피·ETF 등)은 애초에 건너뛴다
+    const per = perOf(tk); if(per != null && per > 0) raw.per.set(tk, per);
+    const de = deOf(tk); if(de != null && de >= 0) raw.de.set(tk, de);
+    const revG = yoy((FUND[tk] || {}).revenue); if(revG != null) raw.revG.set(tk, revG);
+    const niG = yoy((FUND[tk] || {}).net_income); if(niG != null) raw.niG.set(tk, niG);
+    const opM = opMarginOf(tk); if(opM != null) raw.opM.set(tk, opM);
+  });
+  const pct = { per: percentiles(raw.per), de: percentiles(raw.de),
+                revG: percentiles(raw.revG), niG: percentiles(raw.niG), opM: percentiles(raw.opM) };
+  const all = new Set([...raw.per.keys(), ...raw.de.keys(), ...raw.revG.keys(), ...raw.niG.keys(), ...raw.opM.keys()]);
+  const out = new Map();
+  all.forEach(tk => {
+    const parts = [];
+    if(pct.per.has(tk)) parts.push(1 - pct.per.get(tk));   // 낮을수록 좋다 — 뒤집는다
+    if(pct.de.has(tk))  parts.push(1 - pct.de.get(tk));    // 낮을수록 좋다 — 뒤집는다
+    if(pct.revG.has(tk)) parts.push(pct.revG.get(tk));
+    if(pct.niG.has(tk))  parts.push(pct.niG.get(tk));
+    if(pct.opM.has(tk))  parts.push(pct.opM.get(tk));
+    if(parts.length < 3) return;    // 정보가 너무 적은 종목은 순위에 억지로 안 넣는다
+    out.set(tk, parts.reduce((a, b) => a + b, 0) / parts.length * 100);
+  });
+  _valueScoreCache = out;
+  return out;
+}
 
 const LEAD_METRICS = {
   chg: { label: '등락률', h: 'chg', period: true, signed: true,
@@ -4695,6 +4754,12 @@ const LEAD_METRICS = {
     up: '▲ 부채 부담 큼', dn: '▼ 부채 부담 작음',
     get: tk => { const f = fundOf(tk);
       return (f && f.liabilities && f.equity && f.equity[0]) ? f.liabilities[0] / f.equity[0] : null; } },
+  value: { label: '저평가 우량', h: 'valueQuality', period: false, signed: false,
+    fmt: v => v.toFixed(0),
+    up: '▲ 저평가·우량 상위', dn: '▼ 비싸거나 부실 상위',
+    get: tk => valueQualityScores().get(tk) ?? null,
+    note: 'PER·부채비율은 낮을수록, 매출·순이익 성장과 영업이익률은 높을수록 좋게 봅니다. ' +
+          '전체 미국 주식 대비 백분위를 평균한 점수(0~100)입니다. 다섯 항목 중 셋 미만이면 순위에서 뺍니다.' },
 };
 const LEAD_TOP = 6;
 let leadModes = ['chg'];          // 중복 선택 가능 — 둘 이상이면 종합 순위로 바뀐다
@@ -5336,7 +5401,7 @@ function ohlcOf(tk){ return OH.data[tk] || []; }
    토스가 주는 원본은 1분봉뿐이다(interval 은 1m / 1d 두 가지). 5분·15분·
    30분·1시간·4시간은 그 1분봉을 묶어서 만든다. 그래서 한 번 받아 둔
    1분봉으로 모든 시간대를 그릴 수 있다.
-   화면에 열어 둔 종목만 받는다 — 223종목을 다 받을 이유가 없다. */
+   화면에 열어 둔 종목만 받는다 — 전체를 다 받을 이유가 없다. */
 const IVS = [
   { k: '1m',  min: 1,   label: '1분' },
   { k: '15m', min: 15,  label: '15분' },
@@ -5517,7 +5582,7 @@ function aggregate(tk, iv){
 /* ---- 오늘 일봉 ----
    심어 둔 일봉은 빌드 시점(평일 07:00 KST)에서 멈춰 있어 오늘 봉이 없다.
    토스에서 최신 일봉을 받아 차트에만 하루를 덧붙인다.
-   OH 자체는 건드리지 않는다 — 날짜 축을 223종목이 공유하므로 여기에
+   OH 자체는 건드리지 않는다 — 날짜 축을 전체 종목이 공유하므로 여기에
    손대면 계절성·상관·주도주가 전부 어긋난다. */
 const TODAY = new Map();     // tk -> { date, row, rows }
 
@@ -6746,7 +6811,7 @@ document.getElementById('bridge-sync').addEventListener('click', async () => {
         (accounts.length > 1 ? ` (계좌 ${accounts.length}개 모두 확인)` : '');
       return;
     }
-    const unknown = [];    // 이 대시보드가 다루는 223종목 밖 — 애초에 표시할 자리가 없다
+    const unknown = [];    // 이 대시보드가 다루는 종목 밖 — 애초에 표시할 자리가 없다
     const invalid = [];    // 종목은 맞는데 수량·평균단가 값이 이상해 못 넣음
     let applied = 0;
     folio.live.positions = {};          // the broker is the authority, not our copy

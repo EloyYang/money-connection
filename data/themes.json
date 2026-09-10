@@ -152,7 +152,9 @@
   "ROP": 8,
   "LIN": 8,
   "CSX": 8,
-  "FER": 8
+  "FER": 8,
+  "BRK.B": 5,
+  "BF.B": 6
  },
  "industry_rules": [
   [

@@ -22,7 +22,8 @@ original Nasdaq-100 set: Nasdaq's financials/EPS endpoints are US-equity only.
 Usage:  python3 build/pipeline.py [--out dist] [--cache cache] [--max-workers 4]
 """
 from __future__ import annotations
-import argparse, datetime, json, math, os, re, sys, time, urllib.error, urllib.request
+import argparse, datetime, io, json, math, os, re, sys, time, urllib.error, urllib.request, zipfile
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -97,6 +98,185 @@ def fetch_constituents():
                    "asset_class": "us_stock", "currency": "USD", "source": "nasdaq_stock"}
     log(f"Nasdaq-100 members: {len(out)} (as of {d['data'].get('date')})")
     return out, d["data"].get("date")
+
+
+SP500_MIN_MEMBERS = 480    # 진짜 목록이면 500 안팎 — 이보다 한참 적게 나오면
+                           # 소스가 바뀌었거나 잘못 읽은 것으로 본다
+
+# 정상 티커 형태만 받는다: 1~5글자 알파벳, 필요하면 점 하나 + 클래스 한 글자
+# (BRK.B, BF.B 같은 복수 클래스). SPY 보유 목록에는 인수합병 등으로 생기는
+# "CONTRA ..." 같은 잔여 포지션이 가짜 티커로 섞여 나올 때가 있어 걸러낸다.
+_TICKER_RE = re.compile(r"^[A-Z]{1,5}(\.[A-Z])?$")
+
+
+def _clean_spy_name(raw):
+    """SPY 자료의 회사명은 전부 대문자다. "CL A"/"CLASS B" 같은 클래스
+    표기만 떼고 제목 표기로 바꾼다 — 그 이상 손대면(JPMorgan, McDonald's
+    같은 흔한 예외를 다 맞추려다) 오히려 틀린 이름을 자신 있게 보여주는
+    위험이 더 크다. Jpmorgan·At&T 처럼 어색한 대문자 몇 개는 남지만
+    회사를 착각하게 만들지는 않는다."""
+    return re.sub(r"\s+(CL|CLASS)\s+[A-Z]$", "", raw.strip()).title()
+
+
+def _fetch_sp500_from_spy():
+    """State Street 가 SPY(S&P500 을 그대로 추종하는, 운용자산 8천억 달러
+    안팎의 실제 ETF) 보유 종목을 매일 공개하는 xlsx 를 받는다. 실제로 그
+    지수를 복제하려고 매일 리밸런싱하는 펀드의 자료라, 위키백과보다 뒤처질
+    이유가 구조적으로 없다 — 지수가 바뀌면 펀드도 그날 안에 따라 바뀐다.
+    xlsx 는 zip 안에 xml 이 든 것뿐이라 표준 라이브러리(zipfile + xml)만
+    으로 읽는다 — openpyxl 같은 별도 패키지가 필요 없다."""
+    url = ("https://www.ssga.com/us/en/intermediary/library-content/"
+           "products/fund-data/etfs/us/holdings-daily-us-en-spy.xlsx")
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        raw = r.read()
+    z = zipfile.ZipFile(io.BytesIO(raw))
+    ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+
+    shared = []
+    for si in ET.fromstring(z.read("xl/sharedStrings.xml")).findall("m:si", ns):
+        t = si.find("m:t", ns)
+        if t is not None:
+            shared.append(t.text or "")
+        else:
+            shared.append("".join((r_.find("m:t", ns).text or "")
+                                  for r_ in si.findall("m:r", ns) if r_.find("m:t", ns) is not None))
+
+    def cellval(c):
+        v = c.find("m:v", ns)
+        val = v.text if v is not None else None
+        if c.get("t") == "s" and val is not None:
+            val = shared[int(val)]
+        return val
+
+    rows = ET.fromstring(z.read("xl/worksheets/sheet1.xml")).findall(".//m:row", ns)
+    out = {}
+    past_header = False
+    for row in rows:
+        cells = [cellval(c) for c in row.findall("m:c", ns)]
+        if len(cells) < 2:
+            continue
+        name, tk = cells[0], cells[1]
+        if not past_header:
+            # 종목이 나오기 전에 "Fund Name:"/"Ticker Symbol:" 같은 안내 행이
+            # 몇 줄 있다 — 진짜 열 제목("Name"/"Ticker") 행을 볼 때까지 건너뛴다.
+            # 고정된 행 수(예: 4번째부터)로 자르면 안내 행이 한 줄만 늘어도 깨진다.
+            if name == "Name" and tk == "Ticker":
+                past_header = True
+            continue
+        if not tk or not _TICKER_RE.match(tk):
+            continue                                  # 잔여 포지션 등 정상 티커가 아닌 행은 건너뛴다
+        out[tk] = {"name": _clean_spy_name(name) if name else tk, "market_cap": 0.0, "quote_px": None,
+                   "asset_class": "us_stock", "currency": "USD", "source": "nasdaq_stock"}
+    if not past_header:
+        raise RuntimeError("표 머리글(Name/Ticker)을 못 찾음 — 파일 구조가 바뀐 것으로 보임")
+    return out
+
+
+def _fetch_sp500_from_wikipedia():
+    """SPY 자료가 막히는 드문 경우를 위한 두 번째 소스. 코스피100을
+    네이버에서 긁는 것과 같은 방식(HTML 표 파싱)이라 SPY 쪽보다 페이지
+    구조 변경에 더 취약하다 — 그래서 1순위가 아니라 예비다."""
+    html = get_text("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+                    headers={"User-Agent": UA})
+    i = html.index('id="constituents"')
+    j = html.index("</table>", i)
+    table = html[i:j]
+    out = {}
+    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", table, re.S)[1:]:
+        tds = re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)
+        if len(tds) < 2:
+            continue
+        m = re.search(r">([^<]+)</a>", tds[0])
+        tk = (m.group(1) if m else re.sub(r"<[^>]+>", "", tds[0])).strip().upper()
+        name = re.sub(r"<[^>]+>", "", tds[1]).strip()
+        if not tk or not _TICKER_RE.match(tk):
+            continue
+        out[tk] = {"name": name or tk, "market_cap": 0.0, "quote_px": None,
+                   "asset_class": "us_stock", "currency": "USD", "source": "nasdaq_stock"}
+    return out
+
+
+def fetch_sp500(cache_path=None):
+    """S&P500 종목 명단. 나스닥엔 이 지수용 엔드포인트가 없어 다른 데서
+    받아야 한다 — 편입·편출이 수시로 있어서 캐시해 두면 바뀐 걸 놓치므로
+    매번 새로 받는다.
+
+    1순위는 SPY(지수를 실제로 추종하는 ETF)가 매일 공개하는 보유 종목
+    자료다. 위키백과 문서보다 신뢰도가 높다 — 사람이 편집해 두길 기다리는
+    게 아니라, 펀드가 그날 실제로 사고판 결과이기 때문이다. 그게 막히면
+    위키백과를 2순위로 시도하고, 그마저 안 되면(또는 파싱된 종목 수가
+    말이 안 되게 적으면 — 소스가 바뀌었다는 신호로 본다) 마지막으로 성공한
+    명단을 그대로 쓴다. 그것도 없으면 이번 빌드에서는 S&P500 만 건너뛴다
+    — 그날 하루 전체 사이트가 죽는 것보다는 낫다."""
+    out, source = {}, None
+    for name, fn in (("SPY 보유 종목", _fetch_sp500_from_spy),
+                     ("위키백과", _fetch_sp500_from_wikipedia)):
+        try:
+            out = fn()
+            if len(out) < SP500_MIN_MEMBERS:
+                raise RuntimeError(f"파싱된 종목이 {len(out)}개뿐 — 소스가 바뀐 것으로 보임")
+            source = name
+            break
+        except Exception as e:                        # noqa: BLE001
+            log(f"  ! S&P500 명단을 {name}에서 못 받아 왔습니다 ({e})")
+
+    if source is None:
+        if cache_path and os.path.exists(cache_path):
+            out = json.load(open(cache_path))
+            log(f"  마지막으로 받아 둔 명단({len(out)}개)을 대신 씁니다 — 오늘 새 편입은 "
+                f"반영되지 않았을 수 있습니다.")
+        else:
+            log("  이전에 받아 둔 명단도 없어 이번 빌드에서는 S&P500 을 건너뜁니다.")
+            out = {}
+    elif source == "SPY 보유 종목":
+        # SPY 자료의 이름은 종종 지저분하다(예: "&"가 "+"로 깨져 나온다).
+        # 위키백과에서 더 정갈한 이름을 한 번 더 받아 덮어쓴다 — 명단(핵심)은
+        # 이미 SPY 로 확보했으니, 이 시도가 실패해도 무해하게 넘어간다.
+        try:
+            wiki = _fetch_sp500_from_wikipedia()
+            fixed = 0
+            for tk, m in out.items():
+                if tk in wiki and wiki[tk]["name"] != m["name"]:
+                    m["name"] = wiki[tk]["name"]
+                    fixed += 1
+            if fixed:
+                log(f"  위키백과 이름으로 {fixed}개 종목명을 보정했습니다.")
+        except Exception as e:                        # noqa: BLE001
+            log(f"  이름 보정용 위키백과 조회 실패(무해함, SPY 쪽 이름 그대로 씀): {e}")
+    if source is not None:
+        log(f"  S&P500 명단 출처: {source}")
+        if cache_path:
+            tmp = cache_path + ".tmp"
+            json.dump(out, open(tmp, "w"), ensure_ascii=False, sort_keys=True)
+            os.replace(tmp, cache_path)
+    log(f"S&P500 members: {len(out)}")
+    return out
+
+
+def fetch_sp500_quotes(tickers, workers):
+    """나스닥100과 안 겹치는 S&P500 종목의 시가총액·현재가를 채운다.
+    market_cap 을 못 구한 종목은 나중에 ETF 처럼 거래대금으로 대충
+    가늠하는 대신, 실제 값을 여기서 바로 받아 둔다 — 유명 대형주들이라
+    거래대금 근사가 눈에 띄게 틀려 보일 수 있어서다. 매일 새로 받는다
+    (sectors.json 처럼 한 번 받고 영영 안 받으면 값이 굳어 버린다)."""
+    if not tickers:
+        return {}
+    def one(tk):
+        try:
+            d = (get_json(f"https://api.nasdaq.com/api/quote/{tk}/summary?assetclass=stocks",
+                          retries=2).get("data") or {}).get("summaryData") or {}
+            cap = money((d.get("MarketCap") or {}).get("value"))
+            px = money((d.get("PreviousClose") or {}).get("value"))
+            return tk, cap, px
+        except Exception as e:                        # noqa: BLE001
+            log(f"  ! S&P500 quote lookup failed for {tk}: {e}")
+            return tk, None, None
+    out = {}
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for tk, cap, px in ex.map(one, tickers):
+            out[tk] = (cap, px)
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -1303,25 +1483,36 @@ def main():
 
     cfg = load_theme_config()
 
-    # ---- membership: Nasdaq-100 + KOSPI100 + ETF/crypto/gold ----
+    # ---- membership: Nasdaq-100 + S&P500 + KOSPI100 + ETF/crypto/gold ----
     nasdaq_members, index_date = fetch_constituents()
     nasdaq_tickers = set(nasdaq_members)
+    sp500_members = fetch_sp500(os.path.join(a.cache, "sp500_roster.json"))
+    # 나스닥100과 겹치는 종목은 이미 더 풍부한 데이터(시가총액·현재가)를
+    # 받아 둔 nasdaq_members 쪽을 그대로 쓴다 — 위키백과 쪽은 이름뿐이다.
+    new_sp500 = {t: m for t, m in sp500_members.items() if t not in nasdaq_members}
+    quotes = fetch_sp500_quotes(list(new_sp500), a.max_workers)
+    for t, m in new_sp500.items():
+        cap, px = quotes.get(t, (None, None))
+        if cap: m["market_cap"] = cap
+        if px: m["quote_px"] = px
     usdkrw = fetch_usdkrw_rate()
     kospi_members = fetch_kospi100(usdkrw)
     extra_members = fetch_extra_assets()
 
     members = {}
     members.update(nasdaq_members)
+    members.update(new_sp500)
     members.update(kospi_members)
     members.update(extra_members)
     log(f"total universe: {len(members)} "
-        f"({len(nasdaq_members)} Nasdaq-100 + {len(kospi_members)} KOSPI100 + {len(extra_members)} ETF/crypto/gold)")
+        f"({len(nasdaq_members)} Nasdaq-100 + {len(new_sp500)} S&P500 only + "
+        f"{len(kospi_members)} KOSPI100 + {len(extra_members)} ETF/crypto/gold)")
 
-    # theme: Nasdaq-100 and KOSPI100 both classify into the same 8 sector
-    # themes (KOSPI via its own WICS industry label -> theme mapping); ETF/
-    # crypto/gold get one fixed theme each (11/12/13) since "industry" is
-    # not a meaningful concept for those instrument types.
-    themes, _ = resolve_themes(list(nasdaq_members), cfg, os.path.join(a.cache, "sectors.json"))
+    # theme: Nasdaq-100·S&P500·KOSPI100 모두 같은 8개 섹터 테마로 분류된다
+    # (KOSPI는 자체 WICS 업종 라벨 -> 테마 매핑을 거친다); ETF/crypto/gold는
+    # 고정된 테마 하나씩(11/12/13) — "업종"이라는 개념이 안 맞는 자산이라서다.
+    us_stocks = list(nasdaq_members) + list(new_sp500)
+    themes, _ = resolve_themes(us_stocks, cfg, os.path.join(a.cache, "sectors.json"))
     themes.update(resolve_kospi_themes(kospi_members, cfg, os.path.join(a.cache, "kospi_industries.json")))
     themes.update({t: (12 if m["asset_class"] == "crypto" else 13 if m["asset_class"] == "commodity" else 11)
                    for t, m in extra_members.items()})
@@ -1344,9 +1535,10 @@ def main():
     log(f"latest session {leaders.get('date')}: 나스닥100 지수 {leaders.get('index_chg')}% "
         f"({leaders.get('advancers')} up / {leaders.get('decliners')} down)")
 
-    # fundamentals (PER/EPS/재무제표) only exist for the original Nasdaq-100
-    # equities — Nasdaq's financials endpoints do not cover KOSPI/ETF/crypto/gold
-    fund_scope = [t for t in corr["tickers"] if t in nasdaq_tickers]
+    # fundamentals (PER/EPS/재무제표) only exist for US equities (Nasdaq100 +
+    # S&P500) — Nasdaq's financials endpoints do not cover KOSPI/ETF/crypto/gold
+    us_fund_scope = set(us_stocks)
+    fund_scope = [t for t in corr["tickers"] if t in us_fund_scope]
     fund = fetch_fundamentals(fund_scope, os.path.join(a.cache, "fundamentals.json"),
                               a.fundamentals_refresh, a.max_workers)
     render(corr, px, oh, leaders, fund, macro, members, themes, index_date, problems, a.out, usdkrw)
