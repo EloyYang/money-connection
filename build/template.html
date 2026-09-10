@@ -6313,26 +6313,27 @@ async function refreshGoogleId(){
 /* "/candles?symbol=X&interval=1m" 처럼 붙은 질의를 객체로 — 확장은 객체를 받는다 */
 const qsObj = path => Object.fromEntries(new URLSearchParams(path.split('?')[1] || ''));
 
-/* 확장 프로그램이 있으면 그쪽으로, 없으면 로컬 브리지로. 호출부는 차이를 모른다. */
-async function bridge(path, opts){
-  if(typeof extReady !== 'undefined' && extReady){
-    const body = opts?.body ? JSON.parse(opts.body) : null;
-    if(path === '/health') return extCall('health');
-    if(path === '/order') return extCall('order', null, body);
-    if(path.startsWith('/candles')) return extCall('candles', null, qsObj(path));
-    if(path.startsWith('/orders')) return extCall('orderList', null, qsObj(path));
-    if(path === '/commissions') return extCall('commissions');
-    if(path.startsWith('/buying-power')) return extCall('buyingPower', null, qsObj(path));
-    if(path.startsWith('/orderbook')) return extCall('orderbook', null, qsObj(path));
-    if(path.startsWith('/flow/')){
-      const [, , sym, rest] = path.split('/');
-      const kind = (rest || '').split('?')[0];
-      return extCall('flow', null, { symbol: sym, kind, ...qsObj(path) });
-    }
-    if(path.startsWith('/order/') && path.endsWith('/cancel'))
-      return extCall('cancel', null, { orderId: path.slice(7, -7) });
-    return extCall('get', path);
+/* 확장으로 부르는 부분만 따로 뗐다 — bridge() 가 실패 시 로컬 브리지로
+   넘어갈 수 있어야 하기 때문이다. */
+function bridgeExt(path, opts){
+  const body = opts?.body ? JSON.parse(opts.body) : null;
+  if(path === '/health') return extCall('health');
+  if(path === '/order') return extCall('order', null, body);
+  if(path.startsWith('/candles')) return extCall('candles', null, qsObj(path));
+  if(path.startsWith('/orders')) return extCall('orderList', null, qsObj(path));
+  if(path === '/commissions') return extCall('commissions');
+  if(path.startsWith('/buying-power')) return extCall('buyingPower', null, qsObj(path));
+  if(path.startsWith('/orderbook')) return extCall('orderbook', null, qsObj(path));
+  if(path.startsWith('/flow/')){
+    const [, , sym, rest] = path.split('/');
+    const kind = (rest || '').split('?')[0];
+    return extCall('flow', null, { symbol: sym, kind, ...qsObj(path) });
   }
+  if(path.startsWith('/order/') && path.endsWith('/cancel'))
+    return extCall('cancel', null, { orderId: path.slice(7, -7) });
+  return extCall('get', path);
+}
+async function bridgeLocal(path, opts){
   const base = bridgeUrl();
   if(!base) throw new Error('브리지 주소가 비어 있습니다. 확장 프로그램을 설치했거나 브리지를 실행했는지 확인하세요.');
   const r = await fetch(base + path, {
@@ -6349,6 +6350,25 @@ async function bridge(path, opts){
   }
   return body;
 }
+/* 확장 프로그램이 있고 키가 있으면 그쪽으로, 아니면 로컬 브리지로.
+   호출부는 차이를 모른다. 확장이 "키 없음" 을 돌려주면(예전에 깔아 뒀다가
+   지금은 쓰지 않는 확장이 남아 있는 경우) 그 자리에서 로컬 브리지로 바로
+   다시 시도한다 — 멀쩡히 돌고 있는 브리지를 확장이 가로막지 않도록. */
+let extKeyed = null;         // null=아직 모름, true/false=확인됨
+async function bridge(path, opts){
+  if(typeof extReady !== 'undefined' && extReady && extKeyed !== false){
+    try { return await bridgeExt(path, opts); }
+    catch(e){
+      if(e.code === 'NO_KEYS' && bridgeUrl()){
+        extKeyed = false;                 // 이번 세션 동안은 확장을 건너뛴다
+        setBrokerChip();
+        return bridgeLocal(path, opts);
+      }
+      throw e;
+    }
+  }
+  return bridgeLocal(path, opts);
+}
 function setBrokerChip(){
   const chip = document.getElementById('broker-chip');
   const top = document.getElementById('wiz-open-top');
@@ -6356,6 +6376,7 @@ function setBrokerChip(){
   chip.classList.toggle('on', bridgeOk);
   chip.textContent = bridgeOk
     ? `토스증권 연결됨${bridgeAccount ? ' · ' + bridgeAccount : ''}`
+    : extReady && extKeyed === false ? '확장에 키 없음 · 브리지로 전환 중'
     : extReady ? '확장 설치됨 · 키 없음' : '토스증권 미연결';
 }
 async function checkBridge(quiet, retried){
@@ -6369,7 +6390,7 @@ async function checkBridge(quiet, retried){
     if(bridgeOk && !folio.linked){ folio.linked = true; saveFolio(); }
     if(st) st.innerHTML = bridgeOk
       ? `<span style="color:var(--up)">연결됨</span> · 계좌 ${esc(String(r.accountNo || '?'))} (seq ${r.accountSeq ?? '?'})
-         · 경로 ${extReady ? '확장 프로그램' : '로컬 브리지'}${
+         · 경로 ${extReady && extKeyed !== false ? '확장 프로그램' : '로컬 브리지'}${
            r.allowedEmail ? ` · 계정 ${esc(String(r.allowedEmail))}` : ''}
          — 이제 상단에서 <b>실거래</b>로 바꾸면 실제 주문이 나갑니다.`
       : '응답은 왔지만 계좌 인증에 실패했습니다.';
@@ -6393,7 +6414,7 @@ async function checkBridge(quiet, retried){
       setBrokerChip(); updateTicket();
       return false;
     }
-    const why = extReady
+    const why = extReady && extKeyed !== false
       ? '확장 프로그램은 설치되어 있지만 토스 호출이 실패했습니다. 확장 설정 창에서 키를 확인하세요.'
       : /Failed to fetch|NetworkError|load failed/i.test(m)
       ? '브리지에 닿지 못했습니다. 확장 프로그램을 설치하지 않았다면 내 PC에서 '
@@ -6651,7 +6672,7 @@ function openFolioSettings(force){
 document.getElementById('folio-settings-btn')
   .addEventListener('click', () => openFolioSettings(false));
 ['wiz-open', 'wiz-open-top'].forEach(id =>
-  document.getElementById(id)?.addEventListener('click', openWizard));
+  document.getElementById(id)?.addEventListener('click', () => openWizard()));
 document.getElementById('set-save').addEventListener('click', () => {
   const num = (id, dflt) => { const v = parseFloat(document.getElementById(id).value); return isFinite(v) ? v : dflt; };
   folio.feePct = num('set-fee', folio.feePct);
@@ -6705,13 +6726,9 @@ document.getElementById('bridge-test').addEventListener('click', () => checkBrid
 document.getElementById('bridge-sync').addEventListener('click', async () => {
   if(!requireLogin()) return;
   const st = document.getElementById('bridge-status');
-  // "연결됨" 표시는 낡을 수 있다 — 확장을 다시 올리면 저장된 키가 지워진다.
-  // 그래서 가져오기 직전에 키가 아직 있는지 실제로 물어본다.
-  if(extReady && (await extHasKeys()) === false){
-    bridgeOk = false; setBrokerChip(); updateTicket();
-    st.innerHTML = NO_KEYS_HTML;
-    return;
-  }
+  // 확장에 키가 없어도 여기서 바로 끝내지 않는다 — bridge() 가 알아서
+  // 로컬 브리지로 넘어가 본다. 예전엔 여기서 먼저 걸러 버려서, 확장은
+  // 키가 없지만 브리지는 멀쩡히 돌고 있는 경우에도 시도조차 못 했다.
   try {
     const r = await bridge('/holdings');
     const items = r.items || [];
@@ -7890,6 +7907,13 @@ function onExtFound(){
   setBrokerChip();
   if(typeof autoLive === 'function') autoLive();
   if(document.getElementById('wiz') && !document.getElementById('wiz').hidden) renderWizard();
+  // 예전에 깔아 두고 지금은 안 쓰는 확장이 남아 있을 수 있다 — 키가 있는지
+  // 바로 확인해서, 없으면 첫 호출이 실패하기 전에 로컬 브리지로 넘어간다.
+  extHasKeys().then(k => {
+    extKeyed = k;
+    if(k === false && bridgeUrl()) checkBridge(true);
+    setBrokerChip();
+  });
 }
 
 /* 연결 수단: 확장이 있으면 확장, 없으면 로컬 브리지 */
@@ -8998,13 +9022,15 @@ function openWizard(step){
   wizRoute = 'first';
   wizStep = 'ask';
   document.getElementById('wiz').hidden = false;
-  if(step) gotoWiz(step); else renderWizard();
+  if(typeof step === 'string' && step) gotoWiz(step); else renderWizard();
 }
 function closeWizard(){
   document.getElementById('wiz').hidden = true;
   wizKeys = { id: '', secret: '' };         // 창을 닫으면 시크릿은 사라진다
-  const b = document.getElementById('wiz-body');
-  if(b) b.innerHTML = '';
+  ['wiz-body', 'wiz-acts', 'wiz-sub', 'wiz-dots'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.innerHTML = '';
+  });
 }
 function gotoWiz(step){
   // 어느 갈래에 있는지는 걸음이 정한다 — 진행 표시가 그 길의 길이를 따라간다
