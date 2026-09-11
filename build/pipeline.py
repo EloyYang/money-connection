@@ -425,18 +425,38 @@ def _resolve_cusips(cusips, cusip_to_ticker):
     return out
 
 
-def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=3):
+def _13f_deadline_crossed(since, today):
+    """13F-HR 은 분기 종료 뒤 45일 안에 내야 한다 — 분기 종료일(3/31, 6/30,
+    9/30, 12/31)에 45일을 더한 달력 날짜로 근사하면 2/14, 5/15, 8/14, 11/14
+    무렵이다. since 와 today 사이에 이 마감일 중 하나라도 지났으면, 새
+    분기 공시가 나왔을 만하니 캐시가 며칠 안 됐어도 다시 받아야 한다."""
+    deadlines = set()
+    for year in range(since.year, today.year + 2):
+        for md in ((2, 14), (5, 15), (8, 14), (11, 14)):
+            try:
+                deadlines.add(datetime.date(year, *md))
+            except ValueError:                            # noqa: BLE001
+                pass
+    return any(since < d <= today for d in deadlines)
+
+
+def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=20):
     """유명 '슈퍼인베스터' 펀드 10곳의 최근 13F-HR 보유내역 + 직전 분기
     대비 변화. 분기에 한 번(45일 지연)만 바뀌는 자료라 매일 새로 받을
-    필요가 없다 — 캐시가 며칠 안 됐으면 그대로 쓴다."""
+    필요는 없지만, 그렇다고 날짜 수만 세면 분기 마감일 직후에 새 공시가
+    나왔는데도 며칠을 더 묵은 캐시를 쓰게 될 수 있다 — 그래서 캐시가
+    max_age_days 안이어도, 마지막으로 받은 뒤로 분기 마감일(대략 2/14,
+    5/15, 8/14, 11/14)을 하나라도 지났으면 무조건 다시 받는다."""
     if cache_path and os.path.exists(cache_path):
         try:
             cached = json.load(open(cache_path))
             checked = datetime.date.fromisoformat(cached.get("checked_at", "2000-01-01"))
+            today = datetime.date.today()
             # 전부 실패한 결과(펀드 0개)는 신선해도 안 쓴다 — 그걸 캐시로 믿으면
             # 진짜 장애(예: User-Agent 차단)가 계속 숨겨진다.
-            if cached.get("funds") and (datetime.date.today() - checked).days < max_age_days:
-                log(f"13F: 캐시가 최근({cached['checked_at']})이라 그대로 씁니다")
+            if (cached.get("funds") and (today - checked).days < max_age_days
+                    and not _13f_deadline_crossed(checked, today)):
+                log(f"13F: 캐시가 최근({cached['checked_at']})이고 그 뒤로 분기 마감일도 없어 그대로 씁니다")
                 return cached
         except Exception:                                # noqa: BLE001
             pass
