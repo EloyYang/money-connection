@@ -48,7 +48,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/sectors.json data/fundamentals.json data/kospi_industries.json data/prices_cache.json data/sp500_roster.json data/last_build.json
+          git add data/sectors.json data/fundamentals.json data/kospi_industries.json data/prices_cache.json data/sp500_roster.json data/thirteenf_cache.json data/last_build.json
           git diff --staged --quiet || git commit -m "chore: refresh index membership + build stamp [skip ci]"
           git push
 

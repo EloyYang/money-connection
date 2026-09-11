@@ -166,8 +166,9 @@ def _fetch_sp500_from_spy():
             continue
         if not tk or not _TICKER_RE.match(tk):
             continue                                  # 잔여 포지션 등 정상 티커가 아닌 행은 건너뛴다
+        cusip = cells[2] if len(cells) > 2 else None  # 13F 보유내역(CUSIP 기준)을 티커로 바꿀 때 쓴다
         out[tk] = {"name": _clean_spy_name(name) if name else tk, "market_cap": 0.0, "quote_px": None,
-                   "asset_class": "us_stock", "currency": "USD", "source": "nasdaq_stock"}
+                   "asset_class": "us_stock", "currency": "USD", "source": "nasdaq_stock", "cusip": cusip}
     if not past_header:
         raise RuntimeError("표 머리글(Name/Ticker)을 못 찾음 — 파일 구조가 바뀐 것으로 보임")
     return out
@@ -276,6 +277,254 @@ def fetch_sp500_quotes(tickers, workers):
     with ThreadPoolExecutor(max_workers=workers) as ex:
         for tk, cap, px in ex.map(one, tickers):
             out[tk] = (cap, px)
+    return out
+
+
+# --------------------------------------------------------------------------
+# 1c. 13F institutional filings — 유명 "슈퍼인베스터" 펀드들의 분기 보유내역
+#     (SEC EDGAR 는 무료·공개이지만 CIK 기준이라 어떤 펀드를 볼지 미리
+#     정해 둬야 한다 — 사용자가 고른 10개.)
+# --------------------------------------------------------------------------
+# SEC EDGAR 는 User-Agent 에 "이메일처럼 생긴 문자열"이 없으면 403으로 막는다
+# (data.sec.gov 를 자동 요청으로부터 지키려는 필터로 보인다 — 실제로 검증되거나
+# 메일이 발송되는 주소는 아니다). 실제 받는 사람이 없는 가짜 도메인을 쓴다.
+SEC_UA = "money-connection-dashboard admin@money-connection.dev"
+
+THIRTEENF_FUNDS = [
+    ("Berkshire Hathaway", "0001067983"),
+    ("Bridgewater Associates", "0001350694"),
+    ("Renaissance Technologies", "0001037389"),
+    ("Scion Asset Management", "0001649339"),
+    ("Pershing Square", "0001336528"),
+    ("Duquesne Family Office", "0001536411"),
+    ("Third Point", "0001040273"),
+    ("Baupost Group", "0001061768"),
+    ("Appaloosa Management", "0001656456"),
+    ("Tiger Global Management", "0001167483"),
+]
+
+_13F_NS = {"t": "http://www.sec.gov/edgar/document/thirteenf/informationtable"}
+
+# 르네상스 테크놀로지스 같은 펀드는 보유 종목이 3천 개를 넘는다 — 평가액 기준
+# 상위 몇 개만 보여준다(퀀트 펀드의 꼬리는 개별 종목 의미가 거의 없다).
+HOLDINGS_CAP = 150
+
+
+def _13f_filings(cik):
+    """이 펀드의 최근 13F-HR 두 건(이번 분기 + 직전 분기)의 accession 번호."""
+    d = json.loads(get_text(f"https://data.sec.gov/submissions/CIK{cik}.json",
+                            headers={"User-Agent": SEC_UA}))
+    recent = d["filings"]["recent"]
+    out = []
+    for i, form in enumerate(recent["form"]):
+        if form == "13F-HR":
+            out.append({"accession": recent["accessionNumber"][i], "filed": recent["filingDate"][i]})
+            if len(out) >= 2:
+                break
+    return out
+
+
+def _13f_holdings_url(cik, accession):
+    """이 filing 안에서 보유내역표(정보표) xml 을 찾는다 — primary_doc.xml 은
+    표지일 뿐이고, 실제 보유 종목은 다른(대개 훨씬 큰) xml 파일에 있다.
+    파일 이름이 제출자마다 달라서(예: "56757.xml", "xyz_holding.xml") 이름이
+    아니라 "primary_doc.xml 이 아닌 xml 중 가장 큰 것"으로 찾는다."""
+    acc_nodash = accession.replace("-", "")
+    idx = json.loads(get_text(
+        f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_nodash}/index.json",
+        headers={"User-Agent": SEC_UA}))
+    items = (idx.get("directory") or {}).get("item") or []
+    xmls = [it for it in items if it["name"].endswith(".xml") and it["name"] != "primary_doc.xml"]
+    if not xmls:
+        return None
+    best = max(xmls, key=lambda it: int(it.get("size") or 0))
+    return f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_nodash}/{best['name']}"
+
+
+def _13f_period(cik, accession):
+    acc_nodash = accession.replace("-", "")
+    xml = get_text(f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_nodash}/primary_doc.xml",
+                   headers={"User-Agent": SEC_UA})
+    m = re.search(r"<periodOfReport>([^<]+)</periodOfReport>", xml)
+    return m.group(1) if m else None
+
+
+def _13f_parse(url):
+    """CUSIP별로 합산한 보유내역: {cusip: {name, value(달러), shares}}.
+    같은 종목이 (같은 CUSIP으로) 여러 매니저 명의로 나뉘어 여러 줄 나올 수
+    있어 더한다. value 는 2023년 규정 개정 이후 천달러 단위가 아니라
+    달러 그대로 나온다(버크셔 최근 filing 의 tableValueTotal 이 실제
+    포트폴리오 규모(~3천억 달러)와 맞아떨어지는 것으로 확인함)."""
+    raw = get_text(url, headers={"User-Agent": SEC_UA})
+    root = ET.fromstring(raw)
+    entries = root.findall(".//t:infoTable", _13F_NS)
+    if not entries:                                   # 네임스페이스 없는 옛 파일 대비
+        entries = root.findall(".//infoTable")
+    out = {}
+    for e in entries:
+        def txt(tag):
+            el = e.find(f"t:{tag}", _13F_NS)
+            if el is None:
+                el = e.find(tag)
+            return el.text if el is not None else None
+        cusip = txt("cusip")
+        if not cusip:
+            continue
+        name = txt("nameOfIssuer") or cusip
+        try:
+            value = float(txt("value") or 0)
+        except ValueError:
+            value = 0.0
+        shares = 0.0
+        shrs_el = e.find("t:shrsOrPrnAmt", _13F_NS)
+        if shrs_el is None:
+            shrs_el = e.find("shrsOrPrnAmt")
+        if shrs_el is not None:
+            sh = shrs_el.find("t:sshPrnamt", _13F_NS)
+            if sh is None:
+                sh = shrs_el.find("sshPrnamt")
+            if sh is not None and sh.text:
+                try:
+                    shares = float(sh.text)
+                except ValueError:
+                    pass
+        rec = out.setdefault(cusip, {"name": name, "value": 0.0, "shares": 0.0})
+        rec["value"] += value
+        rec["shares"] += shares
+    return out
+
+
+def _resolve_cusips(cusips, cusip_to_ticker):
+    """CUSIP -> 티커. 이미 아는 것(S&P500 보유 목록에서 얻은 CUSIP)은 그대로
+    쓰고, 모르는 것만(펀드가 우리 638종목 유니버스 밖의 뭔가를 들고 있을 때)
+    OpenFIGI(무료, 키 없이도 됨)에 배치로 물어본다."""
+    out = {c: cusip_to_ticker[c] for c in cusips if cusip_to_ticker.get(c)}
+    unknown = [c for c in cusips if c not in out]
+    for i in range(0, len(unknown), 10):               # 인증 없이는 요청당 최대 10개
+        batch = unknown[i:i + 10]
+        body = json.dumps([{"idType": "ID_CUSIP", "idValue": c} for c in batch]).encode()
+        req = urllib.request.Request("https://api.openfigi.com/v3/mapping", data=body,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                results = json.loads(r.read())
+        except Exception as e:                          # noqa: BLE001
+            log(f"  ! OpenFIGI CUSIP 조회 실패: {e}")
+            time.sleep(2)
+            continue
+        for cusip, res in zip(batch, results):
+            data = res.get("data") or []
+            us = next((x for x in data if x.get("exchCode") == "US"), None) or (data[0] if data else None)
+            if us and us.get("ticker"):
+                out[cusip] = us["ticker"]
+        time.sleep(1.5)                                 # 무료 한도(분당 25회) 안에서 여유 있게
+    return out
+
+
+def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=3):
+    """유명 '슈퍼인베스터' 펀드 10곳의 최근 13F-HR 보유내역 + 직전 분기
+    대비 변화. 분기에 한 번(45일 지연)만 바뀌는 자료라 매일 새로 받을
+    필요가 없다 — 캐시가 며칠 안 됐으면 그대로 쓴다."""
+    if cache_path and os.path.exists(cache_path):
+        try:
+            cached = json.load(open(cache_path))
+            checked = datetime.date.fromisoformat(cached.get("checked_at", "2000-01-01"))
+            # 전부 실패한 결과(펀드 0개)는 신선해도 안 쓴다 — 그걸 캐시로 믿으면
+            # 진짜 장애(예: User-Agent 차단)가 계속 숨겨진다.
+            if cached.get("funds") and (datetime.date.today() - checked).days < max_age_days:
+                log(f"13F: 캐시가 최근({cached['checked_at']})이라 그대로 씁니다")
+                return cached
+        except Exception:                                # noqa: BLE001
+            pass
+
+    funds_out = []
+    for name, cik in THIRTEENF_FUNDS:
+        try:
+            filings = _13f_filings(cik)
+            if not filings:
+                log(f"  ! {name}: 13F-HR 파일링을 찾지 못함")
+                continue
+            cur, prev = filings[0], (filings[1] if len(filings) > 1 else None)
+            cur_url = _13f_holdings_url(cik, cur["accession"])
+            cur_period = _13f_period(cik, cur["accession"])
+            cur_holdings = _13f_parse(cur_url) if cur_url else {}
+            prev_holdings = {}
+            prev_period = None
+            if prev:
+                prev_url = _13f_holdings_url(cik, prev["accession"])
+                prev_period = _13f_period(cik, prev["accession"])
+                if prev_url:
+                    prev_holdings = _13f_parse(prev_url)
+
+            # 르네상스처럼 보유 종목이 3천 개가 넘는 펀드도 있다 — 전부 CUSIP을
+            # 풀면(OpenFIGI 배치 호출) 한 펀드에만 십수 분이 걸려 빌드가 안 끝난다.
+            # 어차피 표로 보여줄 것도 아니니, 평가액 기준 상위 HOLDINGS_CAP개만
+            # (실제 비중·총액은 전체 보유내역 기준으로 정확히 계산한 뒤) 추려서
+            # 그것만 티커로 바꾼다 — 꼬리의 자잘한 포지션은 "공통 보유" 비교에도
+            # 의미가 거의 없다.
+            total = sum(h["value"] for h in cur_holdings.values()) or 1
+            dropped_all = set(prev_holdings) - set(cur_holdings)
+            top_cusips = sorted(cur_holdings, key=lambda c: -cur_holdings[c]["value"])[:HOLDINGS_CAP]
+            top_dropped_cusips = sorted(dropped_all, key=lambda c: -prev_holdings[c]["value"])[:HOLDINGS_CAP]
+            tk_map = _resolve_cusips(set(top_cusips) | set(top_dropped_cusips), cusip_to_ticker)
+
+            rows = [{
+                "cusip": c, "ticker": tk_map.get(c), "name": cur_holdings[c]["name"],
+                "value": cur_holdings[c]["value"], "shares": cur_holdings[c]["shares"],
+                "pct": round(cur_holdings[c]["value"] / total * 100, 3),
+            } for c in top_cusips]
+
+            dropped = [{"cusip": c, "ticker": tk_map.get(c), "name": prev_holdings[c]["name"]}
+                      for c in top_dropped_cusips]
+
+            funds_out.append({
+                "name": name, "cik": cik, "period": cur_period, "filed": cur["filed"],
+                "prev_period": prev_period, "total_value": total,
+                "holdings_count": len(cur_holdings), "dropped_count": len(dropped_all),
+                "holdings": rows, "dropped": dropped,
+            })
+            log(f"  13F {name}: 보유 {len(cur_holdings)}개(상위 {len(rows)}개 표시), "
+                f"이탈 {len(dropped_all)}개(상위 {len(dropped)}개 표시) ({cur_period})")
+        except Exception as e:                           # noqa: BLE001
+            log(f"  ! 13F {name} 조회 실패: {e}")
+
+    # 공통 보유 / 최근 공통 이탈: 티커를 알아낸 것만 센다(CUSIP 만 있고 티커를
+    # 못 찾은 자산은 우리 유니버스와 비교할 수 없어 제외).
+    def _common(field):
+        holder = {}
+        name_of = {}
+        for f in funds_out:
+            for row in f[field]:
+                tk = row.get("ticker")
+                if not tk:
+                    continue
+                holder.setdefault(tk, []).append(f["name"])
+                name_of.setdefault(tk, row["name"])
+        return sorted(
+            ({"ticker": tk, "name": name_of[tk], "funds": funds}
+             for tk, funds in holder.items() if len(funds) >= 2),
+            key=lambda r: -len(r["funds"]))
+
+    common_holdings = _common("holdings")
+    common_dropped = _common("dropped")
+
+    out = {
+        "checked_at": datetime.date.today().isoformat(),
+        "funds": funds_out,
+        "common_holdings": common_holdings,
+        "common_dropped": common_dropped,
+    }
+    log(f"13F: {len(funds_out)}/{len(THIRTEENF_FUNDS)}개 펀드 · "
+        f"공통 보유 {len(common_holdings)}개 · 최근 공통 이탈 {len(common_dropped)}개")
+    if cache_path and funds_out:
+        tmp = cache_path + ".tmp"
+        json.dump(out, open(tmp, "w"), ensure_ascii=False)
+        os.replace(tmp, cache_path)
+    elif not funds_out and cache_path and os.path.exists(cache_path):
+        # 이번엔 전부 실패했지만, 예전에 성공해 둔 캐시가 있으면 그걸 그대로 쓴다
+        # (오늘 하루 13F 탭이 텅 비는 것보다 조금 오래된 데이터가 낫다).
+        log("13F: 이번 조회가 전부 실패해 예전 캐시를 그대로 씁니다")
+        return json.load(open(cache_path))
     return out
 
 
@@ -1332,7 +1581,8 @@ def latest_session_leaders(dates, ohlc, tickers, members, top=6):
     }
 
 
-def render(corr, px, oh, leaders, fund, macro, members, themes, index_date, problems, out_dir, usdkrw=None):
+def render(corr, px, oh, leaders, fund, macro, members, themes, index_date, problems, out_dir, usdkrw=None,
+           thirteenf=None):
     tpl = open(os.path.join(ROOT, "build", "template.html")).read()
     engine = open(os.path.join(ROOT, "build", "candle_engine.js")).read()
     # 브리지 스크립트를 페이지에 함께 싣는다. 사용자가 저장소를 clone 하지
@@ -1416,6 +1666,7 @@ def render(corr, px, oh, leaders, fund, macro, members, themes, index_date, prob
                .replace("/*__OH__*/", blob(oh))
                .replace("/*__NODES__*/", blob(nodes))
                .replace("/*__FUND__*/", blob(fund))
+               .replace("/*__THIRTEENF__*/", blob(thirteenf or {}))
                .replace("/*__MACRO__*/", blob(macro))
                .replace("/*__META__*/", blob(meta))
                .replace("/*__AUTH__*/", blob(auth))
@@ -1487,6 +1738,9 @@ def main():
     nasdaq_members, index_date = fetch_constituents()
     nasdaq_tickers = set(nasdaq_members)
     sp500_members = fetch_sp500(os.path.join(a.cache, "sp500_roster.json"))
+    # SPY 보유 목록에서 얻은 CUSIP -> 티커 매핑 — 13F 보유내역(CUSIP 기준)을
+    # 우리 유니버스의 티커로 바꿀 때 1차로 쓴다(모르는 CUSIP만 OpenFIGI로 보충).
+    cusip_to_ticker = {m["cusip"]: t for t, m in sp500_members.items() if m.get("cusip")}
     # 나스닥100과 겹치는 종목은 이미 더 풍부한 데이터(시가총액·현재가)를
     # 받아 둔 nasdaq_members 쪽을 그대로 쓴다 — 위키백과 쪽은 이름뿐이다.
     new_sp500 = {t: m for t, m in sp500_members.items() if t not in nasdaq_members}
@@ -1541,7 +1795,9 @@ def main():
     fund_scope = [t for t in corr["tickers"] if t in us_fund_scope]
     fund = fetch_fundamentals(fund_scope, os.path.join(a.cache, "fundamentals.json"),
                               a.fundamentals_refresh, a.max_workers)
-    render(corr, px, oh, leaders, fund, macro, members, themes, index_date, problems, a.out, usdkrw)
+    thirteenf = fetch_13f(cusip_to_ticker, os.path.join(a.cache, "thirteenf_cache.json"))
+    render(corr, px, oh, leaders, fund, macro, members, themes, index_date, problems, a.out, usdkrw,
+           thirteenf=thirteenf)
 
 
 if __name__ == "__main__":
