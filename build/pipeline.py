@@ -309,9 +309,13 @@ _13F_NS = {"t": "http://www.sec.gov/edgar/document/thirteenf/informationtable"}
 # 상위 몇 개만 보여준다(퀀트 펀드의 꼬리는 개별 종목 의미가 거의 없다).
 HOLDINGS_CAP = 150
 
+# 포트폴리오 성향(테마/시장/성격 배분)이 분기마다 어떻게 바뀌는지 보여주려고
+# 이번 분기 포함 최근 몇 개 분기를 더 받는다 — 4개면 대략 1년치 추이.
+HIST_QUARTERS = 4
 
-def _13f_filings(cik):
-    """이 펀드의 최근 13F-HR 두 건(이번 분기 + 직전 분기)의 accession 번호."""
+
+def _13f_filings(cik, n=2):
+    """이 펀드의 최근 13F-HR n건(최신순)의 accession 번호."""
     d = json.loads(get_text(f"https://data.sec.gov/submissions/CIK{cik}.json",
                             headers={"User-Agent": SEC_UA}))
     recent = d["filings"]["recent"]
@@ -319,7 +323,7 @@ def _13f_filings(cik):
     for i, form in enumerate(recent["form"]):
         if form == "13F-HR":
             out.append({"accession": recent["accessionNumber"][i], "filed": recent["filingDate"][i]})
-            if len(out) >= 2:
+            if len(out) >= n:
                 break
     return out
 
@@ -440,7 +444,7 @@ def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=3):
     funds_out = []
     for name, cik in THIRTEENF_FUNDS:
         try:
-            filings = _13f_filings(cik)
+            filings = _13f_filings(cik, n=HIST_QUARTERS)
             if not filings:
                 log(f"  ! {name}: 13F-HR 파일링을 찾지 못함")
                 continue
@@ -455,6 +459,29 @@ def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=3):
                 prev_period = _13f_period(cik, prev["accession"])
                 if prev_url:
                     prev_holdings = _13f_parse(prev_url)
+
+            # 포트폴리오 성향 추이(테마·시장·성격 배분)용 분기별 보유내역.
+            # cur/prev 는 이미 받았으니 재사용하고, 그보다 더 예전 분기만 새로
+            # 받는다. 여긴 표로 보여주는 게 아니라 대략적인 배분 비중만
+            # 필요해서 — 르네상스처럼 보유 종목이 아무리 많아도 — OpenFIGI
+            # 호출 없이 우리가 이미 아는(S&P500 명단에서 얻은) CUSIP만으로
+            # 티커를 붙인다. 못 알아낸 자산은 배분 계산에서 "기타"로 빠진다.
+            history = []
+            for i, filing in enumerate(filings):
+                if i == 0:
+                    h, per = cur_holdings, cur_period
+                elif i == 1:
+                    h, per = prev_holdings, prev_period
+                else:
+                    hurl = _13f_holdings_url(cik, filing["accession"])
+                    h = _13f_parse(hurl) if hurl else {}
+                    per = _13f_period(cik, filing["accession"])
+                tot = sum(x["value"] for x in h.values()) or 1
+                hist_rows = [{"ticker": cusip_to_ticker[c], "value": x["value"],
+                             "pct": round(x["value"] / tot * 100, 3)}
+                            for c, x in h.items() if cusip_to_ticker.get(c)]
+                history.append({"period": per, "total_value": tot, "holdings": hist_rows})
+            history.reverse()   # 오래된 분기 -> 최신 분기 순으로, 추이 차트가 왼쪽부터 시간순이 되게
 
             # 르네상스처럼 보유 종목이 3천 개가 넘는 펀드도 있다 — 전부 CUSIP을
             # 풀면(OpenFIGI 배치 호출) 한 펀드에만 십수 분이 걸려 빌드가 안 끝난다.
@@ -495,10 +522,12 @@ def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=3):
                 "holdings_count": len(cur_holdings), "dropped_count": len(dropped_all),
                 "added_count": len(added_all),
                 "holdings": rows, "dropped": dropped, "added": added,
+                "history": history,
             })
             log(f"  13F {name}: 보유 {len(cur_holdings)}개(상위 {len(rows)}개 표시), "
                 f"신규 {len(added_all)}개(상위 {len(added)}개 표시), "
-                f"이탈 {len(dropped_all)}개(상위 {len(dropped)}개 표시) ({cur_period})")
+                f"이탈 {len(dropped_all)}개(상위 {len(dropped)}개 표시), "
+                f"추이 {len(history)}개 분기 ({cur_period})")
         except Exception as e:                           # noqa: BLE001
             log(f"  ! 13F {name} 조회 실패: {e}")
 

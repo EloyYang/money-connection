@@ -1280,6 +1280,12 @@
       <button class="mini-btn" id="legend-invert">반전</button>
     </div>
     <div id="legend-rows"></div>
+    <div class="legend-head" style="margin-top:12px">
+      <h3 style="font-size:10.5px">13F 펀드<span class="cnt mono" id="fund13f-count" style="margin-left:6px">0</span></h3>
+      <button class="help" data-h="thirteenF">?</button>
+    </div>
+    <div class="ctl-note">펀드를 고르면 보유 종목이 그래프에 강조됩니다</div>
+    <div id="fund13f-list"></div>
   </div>
 
   <div class="panel legend relation-panel" data-panel="relation">
@@ -1315,14 +1321,6 @@
     </span>
     <div id="lead-list"></div>
     <div class="lead-breadth" id="lead-breadth"></div>
-  </div>
-
-  <div class="panel fav-panel" id="fund13f-panel" data-panel="fund13f">
-    <div class="fav-head">
-      <h3>13F 펀드</h3><button class="help" data-h="thirteenF">?</button><span class="cnt" id="fund13f-count">0</span>
-    </div>
-    <div class="ctl-note" id="fund13f-note">펀드를 고르면 그 펀드의 보유 종목이 그래프에 강조됩니다</div>
-    <div id="fund13f-list"></div>
   </div>
 
 
@@ -1365,30 +1363,58 @@
     <div class="tk" id="fd-name">—</div>
     <div class="nm" id="fd-asof">—</div>
     <div id="fund-drawer-body">
-      <div id="fd-holdings-block">
-        <div class="sec-title"><span>보유 종목<button class="help" data-h="thirteenFHoldings">?</button></span>
-          <span class="mono" id="fd-holdings-count"></span></div>
-        <div class="cmp-scroll"><table class="cmp-table" id="fd-holdings-table"></table></div>
+
+      <div id="fd-alloc-block">
+        <div class="sec-title"><span>포트폴리오 배분<button class="help" data-h="thirteenFAlloc">?</button></span>
+          <span class="seg-mini seg-wrap" id="fd-alloc-mode" style="margin:0">
+            <button data-g="theme" class="on">테마</button><button data-g="market">시장</button><button data-g="profile">성격</button>
+          </span></div>
+        <div id="fd-alloc"></div>
       </div>
-      <div id="fd-dropped-block">
-        <div class="sec-title"><span>이번 분기 이탈 종목<button class="help" data-h="thirteenFDropped">?</button></span>
-          <span class="mono" id="fd-dropped-count"></span></div>
-        <div class="cmp-scroll"><table class="cmp-table" id="fd-dropped-table"></table></div>
+
+      <div id="fd-trend-block">
+        <div class="sec-title"><span>분기별 배분 추이<button class="help" data-h="thirteenFTrend">?</button></span></div>
+        <div id="fd-trend"></div>
       </div>
-      <div id="fd-common-block">
-        <div class="sec-title"><span>공통 보유 종목(2개 이상 펀드)<button class="help" data-h="thirteenFCommon">?</button></span>
-          <span class="mono" id="fd-common-holdings-count"></span></div>
-        <div class="cmp-scroll"><table class="cmp-table" id="fd-common-holdings-table"></table></div>
+
+      <div class="folio-cols">
+        <div id="fd-holdings-block">
+          <div class="sec-title"><span>보유 종목<button class="help" data-h="thirteenFHoldings">?</button></span>
+            <span class="mono" id="fd-holdings-count"></span></div>
+          <div class="cmp-scroll"><table class="cmp-table" id="fd-holdings-table"></table></div>
+        </div>
+        <div>
+          <div id="fd-added-block">
+            <div class="sec-title"><span>이번 분기 신규 편입<button class="help" data-h="thirteenFAdded">?</button></span>
+              <span class="mono" id="fd-added-count"></span></div>
+            <div class="cmp-scroll"><table class="cmp-table" id="fd-added-table"></table></div>
+          </div>
+          <div id="fd-dropped-block" style="margin-top:14px">
+            <div class="sec-title"><span>이번 분기 이탈 종목<button class="help" data-h="thirteenFDropped">?</button></span>
+              <span class="mono" id="fd-dropped-count"></span></div>
+            <div class="cmp-scroll"><table class="cmp-table" id="fd-dropped-table"></table></div>
+          </div>
+        </div>
       </div>
-      <div id="fd-common-added-block">
-        <div class="sec-title"><span>이번 분기 공통 신규 편입<button class="help" data-h="thirteenFCommonAdded">?</button></span>
-          <span class="mono" id="fd-common-added-count"></span></div>
-        <div class="cmp-scroll"><table class="cmp-table" id="fd-common-added-table"></table></div>
-      </div>
-      <div id="fd-common-dropped-block">
-        <div class="sec-title"><span>이번 분기 공통 이탈<button class="help" data-h="thirteenFCommonDropped">?</button></span>
-          <span class="mono" id="fd-common-dropped-count"></span></div>
-        <div class="cmp-scroll"><table class="cmp-table" id="fd-common-dropped-table"></table></div>
+
+      <div class="folio-cols">
+        <div id="fd-common-block">
+          <div class="sec-title"><span>공통 보유 종목(2개 이상 펀드)<button class="help" data-h="thirteenFCommon">?</button></span>
+            <span class="mono" id="fd-common-holdings-count"></span></div>
+          <div class="cmp-scroll"><table class="cmp-table" id="fd-common-holdings-table"></table></div>
+        </div>
+        <div>
+          <div id="fd-common-added-block">
+            <div class="sec-title"><span>이번 분기 공통 신규 편입<button class="help" data-h="thirteenFCommonAdded">?</button></span>
+              <span class="mono" id="fd-common-added-count"></span></div>
+            <div class="cmp-scroll"><table class="cmp-table" id="fd-common-added-table"></table></div>
+          </div>
+          <div id="fd-common-dropped-block" style="margin-top:14px">
+            <div class="sec-title"><span>이번 분기 공통 이탈<button class="help" data-h="thirteenFCommonDropped">?</button></span>
+              <span class="mono" id="fd-common-dropped-count"></span></div>
+            <div class="cmp-scroll"><table class="cmp-table" id="fd-common-dropped-table"></table></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -6361,6 +6387,46 @@ function tk13FCell(tk, name, added){
   return `<td>${known ? `<a href="#" class="f13f-tk" data-tk="${tk}">${label}</a>` : label}${badge}`
        + ` <span class="cap">${name || ''}</span></td>`;
 }
+function fmtQuarter13F(p){                 // "06-30-2026" -> "'26 Q2"
+  if(!p) return '—';
+  const parts = p.split('-');
+  if(parts.length !== 3) return p;
+  const [mm, , yyyy] = parts;
+  return `'${yyyy.slice(2)} Q${Math.ceil(+mm / 3)}`;
+}
+
+/* ---- 표가 길면(특히 르네상스 같은 펀드) 상위 10개만 보이고 나머지는
+   펼쳐서 본다 — 종목이 쭉 나열돼 가독성이 떨어지던 문제를 고친다. ---- */
+const F13F_LIMIT = 10;
+const _f13fTables = new Map();     // tableId -> { theadHtml, rows, rowFn }
+function renderExpandable13F(tableId, theadHtml, rows, rowFn, emptyMsg){
+  _f13fTables.set(tableId, { theadHtml, rows, rowFn, emptyMsg });
+  paintExpandable13F(tableId);
+}
+function paintExpandable13F(tableId){
+  const st = _f13fTables.get(tableId);
+  const tbl = document.getElementById(tableId);
+  if(!st || !tbl) return;
+  const { theadHtml, rows, rowFn, emptyMsg } = st;
+  if(!rows.length){
+    tbl.innerHTML = `<tbody><tr><td class="cap" style="text-align:left">${emptyMsg}</td></tr></tbody>`;
+    return;
+  }
+  const expanded = tbl.dataset.expanded === '1';
+  const shown = expanded ? rows : rows.slice(0, F13F_LIMIT);
+  const extra = rows.length - F13F_LIMIT;
+  const tail = extra <= 0 ? '' : expanded
+    ? `<tr class="f13f-more"><td colspan="8" style="text-align:center"><button class="linkbtn" data-collapse13f="${tableId}">접기</button></td></tr>`
+    : `<tr class="f13f-more"><td colspan="8" style="text-align:center"><button class="linkbtn" data-expand13f="${tableId}">+ ${extra}개 더 보기</button></td></tr>`;
+  tbl.innerHTML = theadHtml + `<tbody>${shown.map(rowFn).join('')}${tail}</tbody>`;
+  wire13FLinks(tbl);
+}
+document.addEventListener('click', ev => {
+  const exp = ev.target.closest('[data-expand13f]');
+  const col = ev.target.closest('[data-collapse13f]');
+  if(exp){ document.getElementById(exp.dataset.expand13f).dataset.expanded = '1'; paintExpandable13F(exp.dataset.expand13f); }
+  else if(col){ document.getElementById(col.dataset.collapse13f).dataset.expanded = '0'; paintExpandable13F(col.dataset.collapse13f); }
+});
 function on13FTickerClick(ev){
   ev.preventDefault();
   const tk = ev.currentTarget.dataset.tk;
@@ -6415,26 +6481,147 @@ function selectFund13F(name){
   renderFund13FList();
 }
 
+/* ---- 포트폴리오 배분: 테마/시장/성격 파이 차트 (포트폴리오 탭의 배분
+   차트와 같은 방식 — 보유 종목을 우리가 이미 아는 분류로 묶어 비중을 그린다).
+   ---- */
+let fd13fAllocMode = 'theme';
+function fund13FGroupBreakdown(holdings, mode){
+  const key = mode === 'theme' ? 'themeId' : mode === 'market' ? 'marketId' : 'profileId';
+  const defs = mode === 'theme' ? GROUPS : mode === 'market' ? MARKETS : PROFILES;
+  const by = new Map();
+  let total = 0;
+  holdings.forEach(h => {
+    const n = h.ticker && nodeIndex.get(h.ticker);
+    const g = n ? n[key] : undefined;
+    by.set(g, (by.get(g) || 0) + h.value);
+    total += h.value;
+  });
+  const segs = [...by.entries()].sort((a, b) => b[1] - a[1]).map(([g, v]) => {
+    const d = defs.find(x => x.id === g);
+    return { label: d?.label || '기타(미분류)', color: d?.color || 'var(--g9)', v, pc: total ? v / total * 100 : 0 };
+  });
+  return { segs, total };
+}
+function renderFundAlloc(){
+  const f = (THIRTEENF.funds || []).find(x => x.name === selectedFund13F);
+  const host = document.getElementById('fd-alloc');
+  if(!f || !f.holdings.length){
+    host.innerHTML = '<div class="folio-empty">배분을 계산할 보유 종목 정보가 없습니다.</div>';
+    return;
+  }
+  const { segs, total } = fund13FGroupBreakdown(f.holdings, fd13fAllocMode);
+  host.innerHTML = `<div class="alloc-wrap">
+      <div class="alloc-pie"><svg viewBox="-86 -86 172 172" role="img" aria-label="펀드 배분 파이 차트"></svg>
+        <div class="alloc-hole"><span class="v">${fmt13FUsd(total)}</span><span class="l">보유 종목 합계</span></div></div>
+      <div class="alloc-legend">${segs.map((x, i) => `<div class="alloc-row" data-i="${i}">
+        <span class="dot" style="background:${x.color}"></span>
+        <span class="nm" style="color:${x.color}">${esc(x.label)}</span>
+        <span class="amt">${fmt13FUsd(x.v)}</span>
+        <span class="pc">${x.pc.toFixed(1)}%</span></div>`).join('')}</div>
+    </div>`;
+  const wrap = host.querySelector('.alloc-wrap');
+  const hole = host.querySelector('.alloc-hole');
+  const svg = d3.select(host.querySelector('.alloc-pie svg'));
+  const arcs = segs.length === 1
+    ? [{ data: segs[0], startAngle: 0, endAngle: Math.PI * 2, index: 0 }]
+    : d3.pie().sort(null).padAngle(0.012).value(d => d.v)(segs);
+  const arc = d3.arc().innerRadius(50).outerRadius(80).cornerRadius(2);
+  const paint = i => {
+    svg.selectAll('path').attr('opacity', p => i == null || p.index === i ? 1 : 0.32);
+    wrap.classList.toggle('hovering', i != null);
+    wrap.querySelectorAll('.alloc-row').forEach(el => el.classList.toggle('hot', +el.dataset.i === i));
+    const x = i == null ? null : segs[i];
+    hole.innerHTML = x
+      ? `<span class="v" style="color:${x.color}">${x.pc.toFixed(1)}%</span>
+         <span class="l">${esc(x.label)}</span><span class="l">${fmt13FUsd(x.v)}</span>`
+      : `<span class="v">${fmt13FUsd(total)}</span><span class="l">보유 종목 합계</span>`;
+  };
+  svg.selectAll('path').data(arcs).join('path')
+    .attr('d', arc).attr('fill', p => p.data.color)
+    .attr('stroke', 'var(--panel-solid)').attr('stroke-width', 1)
+    .on('mouseenter', (ev, p) => paint(p.index))
+    .on('mouseleave', () => paint(null))
+    .append('title').text(p => `${p.data.label} · ${p.data.pc.toFixed(1)}% · ${fmt13FUsd(p.data.v)}`);
+  wrap.querySelectorAll('.alloc-row').forEach(el => {
+    el.addEventListener('mouseenter', () => paint(+el.dataset.i));
+    el.addEventListener('mouseleave', () => paint(null));
+  });
+}
+document.querySelectorAll('#fd-alloc-mode button').forEach(b => {
+  b.addEventListener('click', () => {
+    fd13fAllocMode = b.dataset.g;
+    document.querySelectorAll('#fd-alloc-mode button').forEach(x => x.classList.toggle('on', x === b));
+    renderFundAlloc();
+    renderFundTrend();
+  });
+});
+
+/* ---- 분기별 배분 추이: 분기마다 막대 하나, 그 안을 테마/시장/성격 비중으로
+   쌓아 그린다 — 시간이 지나며 포트폴리오 성향이 어느 쪽으로 기울었는지
+   한눈에 보려는 목적이라, 개별 종목 티커 자리까지는 정밀할 필요가 없다
+   (그래서 이 추이는 OpenFIGI 없이 우리가 이미 아는 CUSIP만으로 붙인 티커
+   기준 — pipeline.py 의 fetch_13f 주석 참고). ---- */
+function renderFundTrend(){
+  const f = (THIRTEENF.funds || []).find(x => x.name === selectedFund13F);
+  const host = document.getElementById('fd-trend');
+  const hist = (f && f.history) || [];
+  if(hist.length < 2){
+    host.innerHTML = '<div class="folio-empty">비교할 과거 분기 자료가 부족합니다.</div>';
+    return;
+  }
+  const perQ = hist.map(h => fund13FGroupBreakdown(h.holdings, fd13fAllocMode));
+  const barW = 64, gap = 22, padL = 8, chartH = 128;
+  const W = padL * 2 + hist.length * barW + (hist.length - 1) * gap;
+  const bars = hist.map((h, qi) => {
+    const { segs, total } = perQ[qi];
+    let y = 0;
+    const rects = segs.map(s => {
+      const hgt = total ? (s.v / total) * chartH : 0;
+      const rect = `<rect x="0" y="${chartH - y - hgt}" width="${barW}" height="${Math.max(0, hgt)}" fill="${s.color}">`
+        + `<title>${esc(s.label)} · ${s.pc.toFixed(1)}%</title></rect>`;
+      y += hgt;
+      return rect;
+    }).join('');
+    const x = padL + qi * (barW + gap);
+    return `<g transform="translate(${x},4)">${rects}
+      <text x="${barW / 2}" y="${chartH + 16}" text-anchor="middle" class="mono" font-size="10" fill="var(--text-muted)">${fmtQuarter13F(h.period)}</text>
+    </g>`;
+  }).join('');
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${chartH + 26}" style="width:100%;height:auto;max-width:${W}px">${bars}</svg>`;
+}
+
 function openFundDrawer(f){
   document.getElementById('fd-name').textContent = f.name;
   document.getElementById('fd-asof').textContent = `${f.period || '—'} 기준 · ${f.filed || '—'} 공시`;
+
   const hTotal = f.holdings_count ?? f.holdings.length;
   document.getElementById('fd-holdings-count').textContent =
     (hTotal > f.holdings.length ? `상위 ${f.holdings.length}개 / 전체 ${hTotal}개` : `${hTotal}개`) + ` · 총 ${fmt13FUsd(f.total_value)}`;
-  const htbl = document.getElementById('fd-holdings-table');
-  htbl.innerHTML = `<thead><tr><th style="text-align:left">종목</th><th>비중</th><th>평가액</th><th>주식수</th></tr></thead><tbody>`
-    + f.holdings.map(h => `<tr>${tk13FCell(h.ticker, h.name, h.added)}<td>${h.pct.toFixed(2)}%</td>`
-      + `<td>${fmt13FUsd(h.value)}</td><td>${Math.round(h.shares).toLocaleString('en-US')}</td></tr>`).join('')
-    + `</tbody>`;
+  renderExpandable13F('fd-holdings-table',
+    `<thead><tr><th style="text-align:left">종목</th><th>비중</th><th>평가액</th><th>주식수</th></tr></thead>`,
+    f.holdings,
+    h => `<tr>${tk13FCell(h.ticker, h.name, h.added)}<td>${h.pct.toFixed(2)}%</td>`
+       + `<td>${fmt13FUsd(h.value)}</td><td>${Math.round(h.shares).toLocaleString('en-US')}</td></tr>`,
+    '보유 종목이 없습니다');
+
+  document.getElementById('fd-added-count').textContent = `${f.added.length}개`;
+  renderExpandable13F('fd-added-table',
+    `<thead><tr><th style="text-align:left">종목</th><th>비중</th><th>평가액</th></tr></thead>`,
+    f.added,
+    a => `<tr>${tk13FCell(a.ticker, a.name)}<td>${a.pct.toFixed(2)}%</td><td>${fmt13FUsd(a.value)}</td></tr>`,
+    '이번 분기 새로 편입한 종목이 없습니다');
+
   const dTotal = f.dropped_count ?? f.dropped.length;
   document.getElementById('fd-dropped-count').textContent =
     dTotal > f.dropped.length ? `상위 ${f.dropped.length}개 / 전체 ${dTotal}개` : `${dTotal}개`;
-  const dtbl = document.getElementById('fd-dropped-table');
-  dtbl.innerHTML = f.dropped.length
-    ? `<thead><tr><th style="text-align:left">종목</th></tr></thead><tbody>`
-      + f.dropped.map(d => `<tr>${tk13FCell(d.ticker, d.name)}</tr>`).join('') + `</tbody>`
-    : '<tbody><tr><td class="cap" style="text-align:left">이번 분기 이탈한 종목이 없습니다</td></tr></tbody>';
-  wire13FLinks(htbl); wire13FLinks(dtbl);
+  renderExpandable13F('fd-dropped-table',
+    `<thead><tr><th style="text-align:left">종목</th></tr></thead>`,
+    f.dropped,
+    d => `<tr>${tk13FCell(d.ticker, d.name)}</tr>`,
+    '이번 분기 이탈한 종목이 없습니다');
+
+  renderFundAlloc();
+  renderFundTrend();
   renderCommon13F();
   document.getElementById('fund-drawer').classList.add('show');
 }
@@ -6451,21 +6638,16 @@ document.getElementById('fund-drawer-close').addEventListener('click', () => {
 /* 어느 펀드를 보고 있든 항상 같은 내용 — 여러 펀드에 걸친 공통점이라
    특정 펀드에 속하지 않는다. 드로어를 열 때마다 다시 그린다(가벼우니 무방). */
 function renderCommon13F(){
-  const rowsHtml = (list, emptyMsg) => list.length
-    ? `<thead><tr><th style="text-align:left">종목</th><th>펀드 수</th><th style="text-align:left">펀드</th></tr></thead><tbody>`
-      + list.map(r => `<tr>${tk13FCell(r.ticker, r.name)}<td>${r.funds.length}</td>`
-        + `<td style="text-align:left;white-space:normal;font-family:inherit">${r.funds.join(', ')}</td></tr>`).join('')
-      + `</tbody>`
-    : `<tbody><tr><td class="cap" style="text-align:left">${emptyMsg}</td></tr></tbody>`;
+  const commonRow = r => `<tr>${tk13FCell(r.ticker, r.name)}<td>${r.funds.length}</td>`
+    + `<td style="text-align:left;white-space:normal;font-family:inherit">${r.funds.join(', ')}</td></tr>`;
+  const commonHead = `<thead><tr><th style="text-align:left">종목</th><th>펀드 수</th><th style="text-align:left">펀드</th></tr></thead>`;
   const ch = THIRTEENF.common_holdings || [], ca = THIRTEENF.common_added || [], cd = THIRTEENF.common_dropped || [];
   document.getElementById('fd-common-holdings-count').textContent = `${ch.length}개`;
-  document.getElementById('fd-common-holdings-table').innerHTML = rowsHtml(ch, '2개 이상 펀드가 함께 보유한 종목이 없습니다');
+  renderExpandable13F('fd-common-holdings-table', commonHead, ch, commonRow, '2개 이상 펀드가 함께 보유한 종목이 없습니다');
   document.getElementById('fd-common-added-count').textContent = `${ca.length}개`;
-  document.getElementById('fd-common-added-table').innerHTML = rowsHtml(ca, '이번 분기 2개 이상 펀드가 함께 새로 편입한 종목이 없습니다');
+  renderExpandable13F('fd-common-added-table', commonHead, ca, commonRow, '이번 분기 2개 이상 펀드가 함께 새로 편입한 종목이 없습니다');
   document.getElementById('fd-common-dropped-count').textContent = `${cd.length}개`;
-  document.getElementById('fd-common-dropped-table').innerHTML = rowsHtml(cd, '이번 분기 2개 이상 펀드가 함께 뺀 종목이 없습니다');
-  ['fd-common-holdings-table', 'fd-common-added-table', 'fd-common-dropped-table']
-    .forEach(id => wire13FLinks(document.getElementById(id)));
+  renderExpandable13F('fd-common-dropped-table', commonHead, cd, commonRow, '이번 분기 2개 이상 펀드가 함께 뺀 종목이 없습니다');
 }
 
 function renderFund13FList(){
@@ -6504,6 +6686,21 @@ HELP.thirteenFCommonAdded = { t: '이번 분기 공통 신규 편입', dir: null
 HELP.thirteenFCommonDropped = { t: '이번 분기 공통 이탈', dir: null, d:
   '이번 분기에 2곳 이상의 펀드가 함께 포트폴리오에서 뺀 종목입니다. ' +
   '업종 전반에 대한 시각이 바뀌었을 수도, 우연히 겹친 것일 수도 있습니다 — 개별 펀드의 이탈 이유는 공시에 나오지 않습니다.' };
+HELP.thirteenFAdded = { t: '이번 분기 신규 편입', dir: null, d:
+  '직전 분기 신고에는 없었지만 이번 신고에 새로 나타난 종목입니다. 보유 종목 표에도 ' +
+  '<span class="tag yes">신규</span> 배지로 같이 표시되는데, 새로 편입한 종목은 대개 비중이 작아 ' +
+  '상위 10개 밖에 있을 때가 많아서 — 잘 안 보일 수 있어 이렇게 따로도 모아 둔다.' };
+HELP.thirteenFAlloc = { t: '포트폴리오 배분', dir: null, d:
+  '이 펀드가 신고한 보유 종목을 이 대시보드의 분류(테마·시장·성격)로 묶어 비중을 보여줍니다. ' +
+  '티커를 알아내지 못한 종목(우리 638종목 유니버스 밖)은 "기타(미분류)"로 묶입니다.\n\n' +
+  '펀드가 실제로 신고한 자산 전부가 아니라 이 화면에 표시된 상위 보유 종목 기준이라, ' +
+  '보유 종목이 아주 많은 펀드(예: 퀀트 펀드)는 실제 배분과 다소 차이가 날 수 있습니다.' };
+HELP.thirteenFTrend = { t: '분기별 배분 추이', dir: null, d:
+  '최근 4개 분기(약 1년)에 걸쳐 이 펀드의 테마·시장·성격 배분이 어떻게 바뀌었는지 보여줍니다. ' +
+  '막대 하나가 한 분기, 막대 안의 색 비중이 그 분기 배분입니다.\n\n' +
+  '여기서 쓰는 비중은 OpenFIGI 조회 없이 이미 확보한 CUSIP만으로 붙인 티커 기준이라 ' +
+  '(보유 종목이 아주 많은 펀드도 빠르게 계산하려고), 위 "보유 종목" 표보다 커버리지가 약간 낮을 수 있습니다 — ' +
+  '전반적인 성향 변화를 보는 용도로 참고하세요.' };
 
 function renderFolio(){
   const b = book(), live = folioMode === 'live';
