@@ -500,15 +500,29 @@ def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=3):
             tk_map = _resolve_cusips(set(top_cusips) | set(top_dropped_cusips) | set(top_added_cusips),
                                      cusip_to_ticker)
 
+            # 직전 분기 대비 비중·평가액·주식수가 어떻게 바뀌었는지 — 그냥
+            # "덜 갖고 있다"가 아니라 "주가가 올라 비중만 줄었나, 실제로
+            # 주식을 팔았나"를 프론트에서 가늠해 보려면 필요한 기준값들이다.
+            prev_total = sum(h["value"] for h in prev_holdings.values()) or 1
             added_set = set(top_added_cusips)
-            rows = [{
-                "cusip": c, "ticker": tk_map.get(c), "name": cur_holdings[c]["name"],
-                "value": cur_holdings[c]["value"], "shares": cur_holdings[c]["shares"],
-                "pct": round(cur_holdings[c]["value"] / total * 100, 3),
-                "added": c in added_set,          # 이번 분기 신규 편입이면 true (표에서 배지로 표시)
-            } for c in top_cusips]
+            rows = []
+            for c in top_cusips:
+                row = {
+                    "cusip": c, "ticker": tk_map.get(c), "name": cur_holdings[c]["name"],
+                    "value": cur_holdings[c]["value"], "shares": cur_holdings[c]["shares"],
+                    "pct": round(cur_holdings[c]["value"] / total * 100, 3),
+                    "added": c in added_set,      # 이번 분기 신규 편입이면 true (표에서 배지로 표시)
+                }
+                if c in prev_holdings:             # 직전 분기에도 있던 종목이면 비교값을 같이 싣는다
+                    ph = prev_holdings[c]
+                    row["prev_value"] = ph["value"]
+                    row["prev_shares"] = ph["shares"]
+                    row["prev_pct"] = round(ph["value"] / prev_total * 100, 3)
+                rows.append(row)
 
-            dropped = [{"cusip": c, "ticker": tk_map.get(c), "name": prev_holdings[c]["name"]}
+            dropped = [{"cusip": c, "ticker": tk_map.get(c), "name": prev_holdings[c]["name"],
+                       "prev_value": prev_holdings[c]["value"],
+                       "prev_pct": round(prev_holdings[c]["value"] / prev_total * 100, 3)}
                       for c in top_dropped_cusips]
 
             added = [{"cusip": c, "ticker": tk_map.get(c), "name": cur_holdings[c]["name"],

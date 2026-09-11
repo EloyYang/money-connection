@@ -1377,24 +1377,20 @@
         <div id="fd-trend"></div>
       </div>
 
-      <div class="folio-cols">
-        <div id="fd-holdings-block">
-          <div class="sec-title"><span>보유 종목<button class="help" data-h="thirteenFHoldings">?</button></span>
-            <span class="mono" id="fd-holdings-count"></span></div>
-          <div class="cmp-scroll"><table class="cmp-table" id="fd-holdings-table"></table></div>
-        </div>
-        <div>
-          <div id="fd-added-block">
-            <div class="sec-title"><span>이번 분기 신규 편입<button class="help" data-h="thirteenFAdded">?</button></span>
-              <span class="mono" id="fd-added-count"></span></div>
-            <div class="cmp-scroll"><table class="cmp-table" id="fd-added-table"></table></div>
-          </div>
-          <div id="fd-dropped-block" style="margin-top:14px">
-            <div class="sec-title"><span>이번 분기 이탈 종목<button class="help" data-h="thirteenFDropped">?</button></span>
-              <span class="mono" id="fd-dropped-count"></span></div>
-            <div class="cmp-scroll"><table class="cmp-table" id="fd-dropped-table"></table></div>
-          </div>
-        </div>
+      <div id="fd-holdings-block">
+        <div class="sec-title"><span>보유 종목<button class="help" data-h="thirteenFHoldings">?</button></span>
+          <span class="mono" id="fd-holdings-count"></span></div>
+        <div class="cmp-scroll"><table class="cmp-table" id="fd-holdings-table"></table></div>
+      </div>
+      <div id="fd-added-block" style="margin-top:14px">
+        <div class="sec-title"><span>이번 분기 신규 편입<button class="help" data-h="thirteenFAdded">?</button></span>
+          <span class="mono" id="fd-added-count"></span></div>
+        <div class="cmp-scroll"><table class="cmp-table" id="fd-added-table"></table></div>
+      </div>
+      <div id="fd-dropped-block" style="margin-top:14px">
+        <div class="sec-title"><span>이번 분기 이탈 종목<button class="help" data-h="thirteenFDropped">?</button></span>
+          <span class="mono" id="fd-dropped-count"></span></div>
+        <div class="cmp-scroll"><table class="cmp-table" id="fd-dropped-table"></table></div>
       </div>
 
       <div class="folio-cols">
@@ -2737,6 +2733,10 @@ function applyGroupMode(mode){
 }
 renderLegend();
 updateScopeNote();
+// top100 기본 표시를 실제로 적용한다 — 안 그러면 첫 로딩 때는 노드 opacity
+// 속성이 아예 없어(기본값 1) 638개가 전부 보이다가, 나중에 뭔가(테마 토글 등)를
+// 건드려 resetOpacities()/applyScope() 가 처음 불릴 때야 top100으로 줄어들었다.
+resetOpacities();
 document.querySelectorAll('#group-mode button').forEach(b => {
   b.addEventListener('click', ()=> applyGroupMode(b.dataset.mode));
 });
@@ -6394,6 +6394,51 @@ function fmtQuarter13F(p){                 // "06-30-2026" -> "'26 Q2"
   const [mm, , yyyy] = parts;
   return `'${yyyy.slice(2)} Q${Math.ceil(+mm / 3)}`;
 }
+function fmtShares13F(v){
+  if(v == null) return '—';
+  if(v >= 1e9) return (v / 1e9).toFixed(2) + 'B';
+  if(v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+  if(v >= 1e3) return (v / 1e3).toFixed(0) + 'K';
+  return Math.round(v).toLocaleString('en-US');
+}
+// 비중은 "퍼센트 포인트"(%p) — 22%에서 25%가 됐으면 +3%p 이지, +13.6% 가 아니다.
+function fmtDeltaPP(v){
+  if(v == null || !isFinite(v)) return '<span style="color:var(--text-muted)">—</span>';
+  const c = v > 0.005 ? 'var(--up)' : v < -0.005 ? 'var(--down)' : 'var(--text-muted)';
+  return `<span style="color:${c}">${v >= 0 ? '+' : ''}${v.toFixed(2)}%p</span>`;
+}
+function fmtDeltaPct13F(v, digits){
+  if(v == null || !isFinite(v)) return '<span style="color:var(--text-muted)">—</span>';
+  const c = v > 0.05 ? 'var(--up)' : v < -0.05 ? 'var(--down)' : 'var(--text-muted)';
+  return `<span style="color:${c}">${v >= 0 ? '+' : ''}${v.toFixed(digits ?? 1)}%</span>`;
+}
+
+/* ---- 비중·평가액이 줄어도 주식은 그대로일 수 있다(다른 종목이 더 올라서
+   비중만 희석) — 주식수 변화(진짜 사고판 신호)와 같은 기간 주가 변화(맥락)를
+   나란히 보여줘서, "주가가 올라 비중만 줄인 건지, 실제로 팔아서 줄인 건지"
+   가늠할 수 있게 한다. 13F 자체엔 매도 이유가 안 나오니 값만 보여주고
+   판단은 보는 사람 몫이다. ---- */
+function closeNear13F(tk, periodMMDDYYYY){
+  if(!tk || !periodMMDDYYYY) return null;
+  const parts = periodMMDDYYYY.split('-');
+  if(parts.length !== 3) return null;
+  const [mm, dd, yyyy] = parts;
+  const iso = `${yyyy}-${mm}-${dd}`;
+  const arr = (OH.data || {})[tk];
+  if(!arr || !OH.dates) return null;
+  let px = null;
+  for(let i = 0; i < OH.dates.length; i++){
+    if(OH.dates[i] > iso) break;
+    if(arr[i]) px = arr[i][3];
+  }
+  return px;
+}
+function priceChgPct13F(tk, fromPeriod, toPeriod){
+  if(!tk || !nodeIndex.has(tk)) return null;      // 우리 유니버스 밖 종목은 가격이 없다
+  const p0 = closeNear13F(tk, fromPeriod), p1 = closeNear13F(tk, toPeriod);
+  if(p0 == null || p1 == null || !p0) return null;
+  return (p1 - p0) / p0 * 100;
+}
 
 /* ---- 표가 길면(특히 르네상스 같은 펀드) 상위 10개만 보이고 나머지는
    펼쳐서 본다 — 종목이 쭉 나열돼 가독성이 떨어지던 문제를 고친다. ---- */
@@ -6436,7 +6481,33 @@ function on13FTickerClick(ev){
   focusNode(n);
 }
 function wire13FLinks(root){
-  root.querySelectorAll('.f13f-tk').forEach(a => a.addEventListener('click', on13FTickerClick));
+  root.querySelectorAll('.f13f-tk').forEach(a => {
+    a.addEventListener('click', on13FTickerClick);
+    // 우리 유니버스 안 종목이면 그래프에서 노드에 올렸을 때와 같은 정보 툴팁을 보여준다
+    a.addEventListener('mouseenter', ev => {
+      const n = nodeIndex.get(a.dataset.tk);
+      if(n) showTooltip(ev, tooltipHTML(n));
+    });
+    a.addEventListener('mousemove', moveTooltip);
+    a.addEventListener('mouseleave', hideTooltip);
+  });
+}
+/* ---- 작은 추세 차트(스파크라인) — 최근 90거래일 종가를 선 하나로 그린다.
+   전체 차트는 클릭해서 그래프로 이동해야 보이는데, 13F 표를 훑어보면서
+   바로바로 흐름을 보고 싶다는 요청에 따라 표 안에 곧장 넣는다. 우리
+   638종목 유니버스 밖(티커를 못 찾은) 종목은 가격이 없어 빈 칸이다. ---- */
+function sparkline13F(tk){
+  if(!tk || !nodeIndex.has(tk)) return '<span style="color:var(--text-muted)">—</span>';
+  const arr = (OH.data || {})[tk];
+  if(!arr) return '<span style="color:var(--text-muted)">—</span>';
+  const closes = [];
+  for(let i = Math.max(0, arr.length - 90); i < arr.length; i++) if(arr[i]) closes.push(arr[i][3]);
+  if(closes.length < 2) return '<span style="color:var(--text-muted)">—</span>';
+  const w = 64, h = 22, min = Math.min(...closes), max = Math.max(...closes), range = (max - min) || 1;
+  const pts = closes.map((c, i) => `${(i / (closes.length - 1) * w).toFixed(1)},${(h - (c - min) / range * h).toFixed(1)}`).join(' ');
+  const color = closes[closes.length - 1] >= closes[0] ? 'var(--up)' : 'var(--down)';
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block" aria-hidden="true">`
+       + `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.4"/></svg>`;
 }
 
 function fundHoldingTickers(f){ return new Set(f.holdings.map(h => h.ticker).filter(Boolean)); }
@@ -6598,26 +6669,43 @@ function openFundDrawer(f){
   document.getElementById('fd-holdings-count').textContent =
     (hTotal > f.holdings.length ? `상위 ${f.holdings.length}개 / 전체 ${hTotal}개` : `${hTotal}개`) + ` · 총 ${fmt13FUsd(f.total_value)}`;
   renderExpandable13F('fd-holdings-table',
-    `<thead><tr><th style="text-align:left">종목</th><th>비중</th><th>평가액</th><th>주식수</th></tr></thead>`,
+    `<thead><tr><th style="text-align:left">종목</th><th>비중</th><th>평가액</th><th>주식수</th><th>주가(같은 분기)</th><th>최근 추세</th></tr></thead>`,
     f.holdings,
-    h => `<tr>${tk13FCell(h.ticker, h.name, h.added)}<td>${h.pct.toFixed(2)}%</td>`
-       + `<td>${fmt13FUsd(h.value)}</td><td>${Math.round(h.shares).toLocaleString('en-US')}</td></tr>`,
+    h => {
+      const pctDelta = h.prev_pct != null ? h.pct - h.prev_pct : null;
+      const valueDelta = h.prev_value ? (h.value - h.prev_value) / h.prev_value * 100 : null;
+      const sharesDelta = (h.prev_shares != null && h.prev_shares !== 0)
+        ? (h.shares - h.prev_shares) / h.prev_shares * 100 : null;
+      const priceDelta = priceChgPct13F(h.ticker, f.prev_period, f.period);
+      return `<tr>${tk13FCell(h.ticker, h.name, h.added)}
+        <td>${h.pct.toFixed(2)}%<br>${fmtDeltaPP(pctDelta)}</td>
+        <td>${fmt13FUsd(h.value)}<br>${fmtDeltaPct13F(valueDelta)}</td>
+        <td>${fmtShares13F(h.shares)}<br>${fmtDeltaPct13F(sharesDelta)}</td>
+        <td>${fmtDeltaPct13F(priceDelta)}</td>
+        <td>${sparkline13F(h.ticker)}</td></tr>`;
+    },
     '보유 종목이 없습니다');
 
   document.getElementById('fd-added-count').textContent = `${f.added.length}개`;
   renderExpandable13F('fd-added-table',
-    `<thead><tr><th style="text-align:left">종목</th><th>비중</th><th>평가액</th></tr></thead>`,
+    `<thead><tr><th style="text-align:left">종목</th><th>비중</th><th>평가액</th><th>주가(같은 분기)</th><th>최근 추세</th></tr></thead>`,
     f.added,
-    a => `<tr>${tk13FCell(a.ticker, a.name)}<td>${a.pct.toFixed(2)}%</td><td>${fmt13FUsd(a.value)}</td></tr>`,
+    a => `<tr>${tk13FCell(a.ticker, a.name)}<td>${a.pct.toFixed(2)}%</td><td>${fmt13FUsd(a.value)}</td>`
+       + `<td>${fmtDeltaPct13F(priceChgPct13F(a.ticker, f.prev_period, f.period))}</td>`
+       + `<td>${sparkline13F(a.ticker)}</td></tr>`,
     '이번 분기 새로 편입한 종목이 없습니다');
 
   const dTotal = f.dropped_count ?? f.dropped.length;
   document.getElementById('fd-dropped-count').textContent =
     dTotal > f.dropped.length ? `상위 ${f.dropped.length}개 / 전체 ${dTotal}개` : `${dTotal}개`;
   renderExpandable13F('fd-dropped-table',
-    `<thead><tr><th style="text-align:left">종목</th></tr></thead>`,
+    `<thead><tr><th style="text-align:left">종목</th><th>이탈 전 비중</th><th>이탈 전 평가액</th><th>주가(같은 분기)</th><th>최근 추세</th></tr></thead>`,
     f.dropped,
-    d => `<tr>${tk13FCell(d.ticker, d.name)}</tr>`,
+    d => `<tr>${tk13FCell(d.ticker, d.name)}`
+       + `<td>${d.prev_pct != null ? d.prev_pct.toFixed(2) + '%' : '—'}</td>`
+       + `<td>${d.prev_value != null ? fmt13FUsd(d.prev_value) : '—'}</td>`
+       + `<td>${fmtDeltaPct13F(priceChgPct13F(d.ticker, f.prev_period, f.period))}</td>`
+       + `<td>${sparkline13F(d.ticker)}</td></tr>`,
     '이번 분기 이탈한 종목이 없습니다');
 
   renderFundAlloc();
@@ -6672,11 +6760,21 @@ HELP.thirteenF = { t: '13F 공시란', dir: null, d:
 HELP.thirteenFHoldings = { t: '보유 종목', dir: null, d:
   '선택한 펀드가 가장 최근 13F에 신고한 보유 종목입니다. 비중은 신고된 평가액 기준이고, ' +
   '같은 종목을 여러 계열사 명의로 나눠 신고한 경우 합쳐서 보여줍니다. <span class="tag yes">신규</span> 배지는 이번 분기에 새로 편입된 종목입니다.\n\n' +
+  '각 칸의 아랫줄은 직전 분기 대비 변화입니다. <b>비중·평가액이 줄었다고 꼭 매도했다는 뜻은 아닙니다</b> — ' +
+  '다른 종목이 더 크게 올라 상대적 비중만 희석됐을 수 있습니다. 그래서 <b>주식수 변화</b>를 따로 둡니다: 이게 0%에 가까우면 ' +
+  '사고팔지 않고 그대로 들고 있었다는 뜻이고, 줄었다면 실제로 매도한 겁니다.\n\n' +
+  '<b>주가(같은 분기)</b>는 그 종목이 우리 유니버스 안에 있을 때, 이 대시보드가 가진 시세로 같은 기간 주가가 얼마나 움직였는지입니다. ' +
+  '예를 들어 주식수는 그대로인데 평가액·비중만 늘었다면 순전히 주가 상승 때문이고, 주식수가 줄었는데 주가도 많이 올랐다면 ' +
+  '차익실현성 비중 조절일 가능성이, 주가는 부진한데도 주식수가 크게 줄었다면 확신이 약해졌을 가능성이 더 있어 보입니다 — ' +
+  '다만 13F는 매매 이유를 알려주지 않으니 참고만 하세요.\n\n' +
   '티커가 파란 링크로 보이면 이 대시보드가 다루는 종목입니다 — 클릭하면 그 종목으로 바로 이동합니다. ' +
-  '링크가 없으면 우리 638종목 유니버스 밖의 종목(주로 소형주)입니다. 그래프에서는 초록 테두리가 신규 편입, 보라 테두리가 기존 보유입니다.' };
+  '링크가 없으면(주가 칸도 "—") 우리 638종목 유니버스 밖의 종목(주로 소형주)입니다. 그래프에서는 초록 테두리가 신규 편입, 보라 테두리가 기존 보유입니다.' };
 HELP.thirteenFDropped = { t: '이번 분기 이탈 종목', dir: null, d:
   '직전 분기 신고에는 있었지만 이번 신고에는 없는 종목입니다. 전량 매도했을 수도 있고, ' +
-  '아주 조금만 남겨서 반올림상 0으로 잡혔을 수도 있습니다 — 13F는 매도 이유를 알려주지 않습니다.' };
+  '아주 조금만 남겨서 반올림상 0으로 잡혔을 수도 있습니다.\n\n' +
+  '주가(같은 분기) 칸은 보유하던 마지막 분기 동안 그 종목의 주가가 얼마나 움직였는지입니다 — ' +
+  '많이 오른 뒤에 나갔다면 차익실현에 가깝고, 부진한 채로 나갔다면 확신이 약해졌을 가능성이 더 있어 보이지만, ' +
+  '13F는 매도 이유를 알려주지 않으니 참고만 하세요.' };
 HELP.thirteenFCommon = { t: '공통 보유 종목', dir: null, d:
   '추적 중인 10개 펀드 가운데 2곳 이상이 함께 들고 있는 종목입니다. ' +
   '여러 유명 투자자가 동시에 주목하고 있다는 뜻일 수 있지만, 그 자체로 매수·매도 신호는 아닙니다.' };
