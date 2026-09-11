@@ -1045,7 +1045,7 @@
     </div>
   </div>
   <div class="tabs">
-    <button class="tab active" data-view="graph">종목 탐색</button>
+    <button class="tab active" data-view="graph">분석</button>
     <button class="tab" data-view="trade">트레이딩</button>
     <button class="tab" data-view="folio">포트폴리오</button>
   </div>
@@ -2417,8 +2417,11 @@ svg.call(zoom);
 function fitToView(duration = 0, subset = null){
   // 명시적으로 넘긴 subset 이 없으면, 실제로 그려지는(top100 + 검색으로 드러난)
   // 종목 기준으로 화면을 잡는다 — 안 그러면 화면 밖 538개 때문에 확대가 과하게 빠진다.
+  // subset 길이가 1이어도(상관 종목이 거의/전혀 없는 종목을 선택한 경우) 그대로
+  // 쓴다 — 예전엔 >1 이어야만 인정해서, 그런 종목을 고르면 조용히 top100
+  // 기본 화면으로 되돌아가 버렸다(선택은 됐는데 카메라만 안 따라가는 버그).
   const visList = nodes.filter(visibleNode);
-  const list = (subset && subset.length > 1) ? subset : (visList.length > 1 ? visList : nodes);
+  const list = (subset && subset.length > 0) ? subset : (visList.length > 1 ? visList : nodes);
   if(!list.length) return;
   if(!(W > 0) || !(H > 0)) return;      // 다른 탭에서는 캔버스가 0px 이다
   if(document.body.classList.contains('view-trade')
