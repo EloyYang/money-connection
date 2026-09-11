@@ -464,26 +464,40 @@ def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=3):
             # 의미가 거의 없다.
             total = sum(h["value"] for h in cur_holdings.values()) or 1
             dropped_all = set(prev_holdings) - set(cur_holdings)
+            # prev 가 없으면(비교할 직전 분기 filing 자체가 없으면) "신규 편입"을
+            # 계산할 기준이 없다 — 이 경우 cur 전부를 "신규"로 보면 오해를 준다.
+            added_all = (set(cur_holdings) - set(prev_holdings)) if prev_holdings else set()
             top_cusips = sorted(cur_holdings, key=lambda c: -cur_holdings[c]["value"])[:HOLDINGS_CAP]
             top_dropped_cusips = sorted(dropped_all, key=lambda c: -prev_holdings[c]["value"])[:HOLDINGS_CAP]
-            tk_map = _resolve_cusips(set(top_cusips) | set(top_dropped_cusips), cusip_to_ticker)
+            top_added_cusips = sorted(added_all, key=lambda c: -cur_holdings[c]["value"])[:HOLDINGS_CAP]
+            tk_map = _resolve_cusips(set(top_cusips) | set(top_dropped_cusips) | set(top_added_cusips),
+                                     cusip_to_ticker)
 
+            added_set = set(top_added_cusips)
             rows = [{
                 "cusip": c, "ticker": tk_map.get(c), "name": cur_holdings[c]["name"],
                 "value": cur_holdings[c]["value"], "shares": cur_holdings[c]["shares"],
                 "pct": round(cur_holdings[c]["value"] / total * 100, 3),
+                "added": c in added_set,          # 이번 분기 신규 편입이면 true (표에서 배지로 표시)
             } for c in top_cusips]
 
             dropped = [{"cusip": c, "ticker": tk_map.get(c), "name": prev_holdings[c]["name"]}
                       for c in top_dropped_cusips]
 
+            added = [{"cusip": c, "ticker": tk_map.get(c), "name": cur_holdings[c]["name"],
+                     "value": cur_holdings[c]["value"],
+                     "pct": round(cur_holdings[c]["value"] / total * 100, 3)}
+                    for c in top_added_cusips]
+
             funds_out.append({
                 "name": name, "cik": cik, "period": cur_period, "filed": cur["filed"],
                 "prev_period": prev_period, "total_value": total,
                 "holdings_count": len(cur_holdings), "dropped_count": len(dropped_all),
-                "holdings": rows, "dropped": dropped,
+                "added_count": len(added_all),
+                "holdings": rows, "dropped": dropped, "added": added,
             })
             log(f"  13F {name}: 보유 {len(cur_holdings)}개(상위 {len(rows)}개 표시), "
+                f"신규 {len(added_all)}개(상위 {len(added)}개 표시), "
                 f"이탈 {len(dropped_all)}개(상위 {len(dropped)}개 표시) ({cur_period})")
         except Exception as e:                           # noqa: BLE001
             log(f"  ! 13F {name} 조회 실패: {e}")
@@ -507,15 +521,18 @@ def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=3):
 
     common_holdings = _common("holdings")
     common_dropped = _common("dropped")
+    common_added = _common("added")
 
     out = {
         "checked_at": datetime.date.today().isoformat(),
         "funds": funds_out,
         "common_holdings": common_holdings,
         "common_dropped": common_dropped,
+        "common_added": common_added,
     }
     log(f"13F: {len(funds_out)}/{len(THIRTEENF_FUNDS)}개 펀드 · "
-        f"공통 보유 {len(common_holdings)}개 · 최근 공통 이탈 {len(common_dropped)}개")
+        f"공통 보유 {len(common_holdings)}개 · 공통 신규 {len(common_added)}개 · "
+        f"공통 이탈 {len(common_dropped)}개")
     if cache_path and funds_out:
         tmp = cache_path + ".tmp"
         json.dump(out, open(tmp, "w"), ensure_ascii=False)
