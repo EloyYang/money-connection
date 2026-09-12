@@ -1387,6 +1387,11 @@
           <span class="mono" id="fd-added-count"></span></div>
         <div class="cmp-scroll"><table class="cmp-table" id="fd-added-table"></table></div>
       </div>
+      <div id="fd-trimmed-block" style="margin-top:14px">
+        <div class="sec-title"><span>이번 분기 비중 축소(계속 보유)<button class="help" data-h="thirteenFTrimmed">?</button></span>
+          <span class="mono" id="fd-trimmed-count"></span></div>
+        <div class="cmp-scroll"><table class="cmp-table" id="fd-trimmed-table"></table></div>
+      </div>
       <div id="fd-dropped-block" style="margin-top:14px">
         <div class="sec-title"><span>이번 분기 이탈 종목<button class="help" data-h="thirteenFDropped">?</button></span>
           <span class="mono" id="fd-dropped-count"></span></div>
@@ -1402,6 +1407,11 @@
         <div class="sec-title"><span>이번 분기 공통 신규 편입<button class="help" data-h="thirteenFCommonAdded">?</button></span>
           <span class="mono" id="fd-common-added-count"></span></div>
         <div class="cmp-scroll"><table class="cmp-table" id="fd-common-added-table"></table></div>
+      </div>
+      <div id="fd-common-trimmed-block" style="margin-top:14px">
+        <div class="sec-title"><span>이번 분기 공통 비중 축소<button class="help" data-h="thirteenFCommonTrimmed">?</button></span>
+          <span class="mono" id="fd-common-trimmed-count"></span></div>
+        <div class="cmp-scroll"><table class="cmp-table" id="fd-common-trimmed-table"></table></div>
       </div>
       <div id="fd-common-dropped-block" style="margin-top:14px">
         <div class="sec-title"><span>이번 분기 공통 이탈<button class="help" data-h="thirteenFCommonDropped">?</button></span>
@@ -6408,6 +6418,14 @@ function fmtDeltaPct13F(v, digits){
   const c = v > 0.05 ? 'var(--up)' : v < -0.05 ? 'var(--down)' : 'var(--text-muted)';
   return `<span style="color:${c}">${v >= 0 ? '+' : ''}${v.toFixed(digits ?? 1)}%</span>`;
 }
+/* 공통 표에서 "직전 분기엔 몇 개 펀드가 들고 있었는지" 대비 지금 몇 개인지 —
+   펀드 수가 늘었으면 관심이 넓어진 것, 줄었으면 좁아진 것으로 본다. */
+function fmtFundCountDelta(cur, prev){
+  if(prev == null) return `${cur}개`;
+  if(prev === cur) return `${cur}개<br><span style="color:var(--text-muted)">(직전과 동일)</span>`;
+  const diff = cur - prev, c = diff > 0 ? 'var(--up)' : 'var(--down)';
+  return `${cur}개<br><span style="color:${c}">직전 ${prev}개(${diff > 0 ? '+' : ''}${diff})</span>`;
+}
 
 /* ---- 비중·평가액이 줄어도 주식은 그대로일 수 있다(다른 종목이 더 올라서
    비중만 희석) — 주식수 변화(진짜 사고판 신호)와 같은 기간 주가 변화(맥락)를
@@ -6691,6 +6709,19 @@ function openFundDrawer(f){
        + `<td>${sparkline13F(a.ticker)}</td></tr>`,
     '이번 분기 새로 편입한 종목이 없습니다');
 
+  const tTotal = f.trimmed_count ?? (f.trimmed || []).length;
+  document.getElementById('fd-trimmed-count').textContent =
+    tTotal > (f.trimmed || []).length ? `상위 ${f.trimmed.length}개 / 전체 ${tTotal}개` : `${tTotal}개`;
+  renderExpandable13F('fd-trimmed-table',
+    `<thead><tr><th style="text-align:left">종목</th><th>비중(직전→현재)</th><th>주식수 변화</th><th>주가(같은 분기)</th><th>최근 추세</th></tr></thead>`,
+    f.trimmed || [],
+    t => `<tr>${tk13FCell(t.ticker, t.name)}`
+       + `<td>${t.prev_pct.toFixed(2)}%→${t.pct.toFixed(2)}%<br>${fmtDeltaPP(t.pct - t.prev_pct)}</td>`
+       + `<td>${fmtDeltaPct13F(t.shares_delta_pct)}</td>`
+       + `<td>${fmtDeltaPct13F(priceChgPct13F(t.ticker, f.prev_period, f.period))}</td>`
+       + `<td>${sparkline13F(t.ticker)}</td></tr>`,
+    '계속 보유하면서 비중을 크게 줄인 종목이 없습니다');
+
   const dTotal = f.dropped_count ?? f.dropped.length;
   document.getElementById('fd-dropped-count').textContent =
     dTotal > f.dropped.length ? `상위 ${f.dropped.length}개 / 전체 ${dTotal}개` : `${dTotal}개`;
@@ -6724,16 +6755,22 @@ document.getElementById('fund-drawer-close').addEventListener('click', () => {
 function renderCommon13F(){
   // 보유 종목/신규 편입/이탈 표와 똑같이, 우리 유니버스 안 종목이면 호버 정보
   // 툴팁(tk13FCell/wire13FLinks 가 이미 처리)과 최근 추세 스파크라인을 보여준다.
-  // 여러 펀드를 아우르는 종목이라 특정 펀드 기준의 비중·평가액 변화는 없다.
-  const commonRow = r => `<tr>${tk13FCell(r.ticker, r.name)}<td>${r.funds.length}</td>`
+  // 여러 펀드를 아우르는 종목이라 특정 펀드 기준의 비중·평가액 변화는 없지만,
+  // "직전 분기엔 펀드 수가 몇 개였는지"와 "펀드들의 평균 비중"은 붙여서 대략의
+  // 흐름(관심이 넓어지는지·좁아지는지, 다들 얼마나 비중 있게 들고 있는지)을 보여준다.
+  const commonRow = r => `<tr>${tk13FCell(r.ticker, r.name)}<td>${fmtFundCountDelta(r.funds.length, r.prev_fund_count)}</td>`
+    + `<td>${r.avg_pct != null ? r.avg_pct.toFixed(2) + '%' : '—'}</td>`
     + `<td style="text-align:left;white-space:normal;font-family:inherit">${r.funds.join(', ')}</td>`
     + `<td>${sparkline13F(r.ticker)}</td></tr>`;
-  const commonHead = `<thead><tr><th style="text-align:left">종목</th><th>펀드 수</th><th style="text-align:left">펀드</th><th>최근 추세</th></tr></thead>`;
-  const ch = THIRTEENF.common_holdings || [], ca = THIRTEENF.common_added || [], cd = THIRTEENF.common_dropped || [];
+  const commonHead = `<thead><tr><th style="text-align:left">종목</th><th>펀드 수(직전 대비)</th><th>평균 비중</th><th style="text-align:left">펀드</th><th>최근 추세</th></tr></thead>`;
+  const ch = THIRTEENF.common_holdings || [], ca = THIRTEENF.common_added || [],
+        cd = THIRTEENF.common_dropped || [], ct = THIRTEENF.common_trimmed || [];
   document.getElementById('fd-common-holdings-count').textContent = `${ch.length}개`;
   renderExpandable13F('fd-common-holdings-table', commonHead, ch, commonRow, '2개 이상 펀드가 함께 보유한 종목이 없습니다');
   document.getElementById('fd-common-added-count').textContent = `${ca.length}개`;
   renderExpandable13F('fd-common-added-table', commonHead, ca, commonRow, '이번 분기 2개 이상 펀드가 함께 새로 편입한 종목이 없습니다');
+  document.getElementById('fd-common-trimmed-count').textContent = `${ct.length}개`;
+  renderExpandable13F('fd-common-trimmed-table', commonHead, ct, commonRow, '이번 분기 2개 이상 펀드가 함께 비중을 크게 줄인 종목이 없습니다');
   document.getElementById('fd-common-dropped-count').textContent = `${cd.length}개`;
   renderExpandable13F('fd-common-dropped-table', commonHead, cd, commonRow, '이번 분기 2개 이상 펀드가 함께 뺀 종목이 없습니다');
 }
@@ -6774,18 +6811,37 @@ HELP.thirteenFDropped = { t: '이번 분기 이탈 종목', dir: null, d:
   '아주 조금만 남겨서 반올림상 0으로 잡혔을 수도 있습니다.\n\n' +
   '주가(같은 분기) 칸은 보유하던 마지막 분기 동안 그 종목의 주가가 얼마나 움직였는지입니다 — ' +
   '많이 오른 뒤에 나갔다면 차익실현에 가깝고, 부진한 채로 나갔다면 확신이 약해졌을 가능성이 더 있어 보이지만, ' +
-  '13F는 매도 이유를 알려주지 않으니 참고만 하세요.' };
+  '13F는 매도 이유를 알려주지 않으니 참고만 하세요.\n\n' +
+  '완전히 나간 종목만 여기 나옵니다 — 아직 들고는 있지만 비중을 크게 줄인 종목은 바로 위 ' +
+  '"이번 분기 비중 축소" 표에서 볼 수 있습니다.' };
+HELP.thirteenFTrimmed = { t: '이번 분기 비중 축소(계속 보유)', dir: null, d:
+  '완전히 나가진 않았지만(그랬다면 "이탈 종목"에 잡힙니다), 직전 분기 대비 비중이 30% 이상 ' +
+  '줄어든 종목입니다. 아주 조금씩 자연스레 줄어드는 건 노이즈로 보고 뺐습니다.\n\n' +
+  '"비중(직전→현재)" 옆의 %p는 그 축소 폭입니다. 보유 종목 표와 같은 논리로, ' +
+  '<b>주식수 변화</b>가 0%에 가까우면 다른 종목이 더 올라 비중만 희석된 것이고, 주식수 자체가 줄었다면 실제로 ' +
+  '일부를 매도한 겁니다. 주가(같은 분기)와 같이 보면 차익실현성 비중 조절인지, 확신이 약해져 줄인 건지 가늠하는 데 ' +
+  '도움이 되지만, 13F는 이유를 알려주지 않으니 참고만 하세요.' };
 HELP.thirteenFCommon = { t: '공통 보유 종목', dir: null, d:
   '추적 중인 10개 펀드 가운데 2곳 이상이 함께 들고 있는 종목입니다. ' +
   '여러 유명 투자자가 동시에 주목하고 있다는 뜻일 수 있지만, 그 자체로 매수·매도 신호는 아닙니다.\n\n' +
   '위 "보유 종목" 표와 마찬가지로, 종목명에 마우스를 올리면 정보 툴팁이, "최근 추세" 열에는 스파크라인이 뜹니다 — ' +
-  '다만 여러 펀드를 아우르는 종목이라 특정 펀드 기준의 비중·평가액 변화까지는 없습니다.' };
+  '다만 여러 펀드를 아우르는 종목이라 특정 펀드 기준의 비중·평가액 변화까지는 없습니다.\n\n' +
+  '"펀드 수(직전 대비)"는 직전 분기엔 우리가 추적하는 펀드 중 몇 곳이 이 종목을 들고 있었는지와 비교한 값입니다 — ' +
+  '늘었으면 관심이 넓어진 것, 줄었으면 좁아진 것으로 볼 수 있습니다. "평균 비중"은 지금 이 종목을 들고 있는 ' +
+  '펀드들의 포트폴리오 내 비중을 평균 낸 값이라, 펀드마다 실제 비중은 다를 수 있습니다.' };
 HELP.thirteenFCommonAdded = { t: '이번 분기 공통 신규 편입', dir: null, d:
   '이번 분기에 2곳 이상의 펀드가 함께 새로 편입한 종목입니다. ' +
-  '여러 유명 투자자가 동시에 사들이기 시작했다는 뜻일 수 있지만, 매수 시점·가격·목적은 펀드마다 다를 수 있습니다.' };
+  '여러 유명 투자자가 동시에 사들이기 시작했다는 뜻일 수 있지만, 매수 시점·가격·목적은 펀드마다 다를 수 있습니다.\n\n' +
+  '"펀드 수(직전 대비)"·"평균 비중"의 의미는 위 "공통 보유 종목" 설명과 같습니다.' };
+HELP.thirteenFCommonTrimmed = { t: '이번 분기 공통 비중 축소', dir: null, d:
+  '이번 분기에 2곳 이상의 펀드가 함께 비중을 크게(직전 대비 30% 이상) 줄였지만 완전히 팔지는 않은 ' +
+  '종목입니다. 업종 전반에 대한 시각이 조심스러워졌을 수도, 우연히 겹친 것일 수도 있습니다.\n\n' +
+  '"펀드 수(직전 대비)"·"평균 비중"의 의미는 위 "공통 보유 종목" 설명과 같습니다.' };
 HELP.thirteenFCommonDropped = { t: '이번 분기 공통 이탈', dir: null, d:
   '이번 분기에 2곳 이상의 펀드가 함께 포트폴리오에서 뺀 종목입니다. ' +
-  '업종 전반에 대한 시각이 바뀌었을 수도, 우연히 겹친 것일 수도 있습니다 — 개별 펀드의 이탈 이유는 공시에 나오지 않습니다.' };
+  '업종 전반에 대한 시각이 바뀌었을 수도, 우연히 겹친 것일 수도 있습니다 — 개별 펀드의 이탈 이유는 공시에 나오지 않습니다.\n\n' +
+  '"펀드 수(직전 대비)"는 완전히 이탈하기 전, 직전 분기엔 몇 곳이 들고 있었는지입니다. "평균 비중"은 ' +
+  '나가기 직전 분기 기준 평균 비중입니다.' };
 HELP.thirteenFAdded = { t: '이번 분기 신규 편입', dir: null, d:
   '직전 분기 신고에는 없었지만 이번 신고에 새로 나타난 종목입니다. 보유 종목 표에도 ' +
   '<span class="tag yes">신규</span> 배지로 같이 표시되는데, 새로 편입한 종목은 대개 비중이 작아 ' +

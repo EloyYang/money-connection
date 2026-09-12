@@ -313,6 +313,11 @@ HOLDINGS_CAP = 150
 # 이번 분기 포함 최근 몇 개 분기를 더 받는다 — 4개면 대략 1년치 추이.
 HIST_QUARTERS = 4
 
+# 완전히 나가진 않았지만 비중을 꽤 줄인 포지션을 "비중 축소"로 잡을 기준선.
+# 직전 분기 대비 비중이 이 비율 이상 줄어야("30% 감소"면 0.30) 노이즈성
+# 등락이 아니라 의미 있는 축소로 본다.
+TRIM_THRESHOLD = 0.30
+
 
 def _13f_filings(cik, n=2):
     """이 펀드의 최근 13F-HR n건(최신순)의 accession 번호."""
@@ -462,6 +467,11 @@ def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=20):
             pass
 
     funds_out = []
+    # 공통 표에서 "직전 분기엔 몇 개 펀드가 들고 있었는지"를 보여주려고, 펀드
+    # 루프를 도는 동안 각 펀드의 직전 분기 보유 종목(티커화된 것만)을 여기
+    # 모아 둔다. OpenFIGI 호출 없이 이미 확보한 CUSIP 맵만 쓴다 — history와
+    # 같은 이유로, 펀드마다 매번 느린 조회를 반복하지 않기 위해서다.
+    prev_fund_membership = {}   # ticker -> {직전 분기에 이 종목을 들고 있던 펀드명}
     for name, cik in THIRTEENF_FUNDS:
         try:
             filings = _13f_filings(cik, n=HIST_QUARTERS)
@@ -479,6 +489,10 @@ def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=20):
                 prev_period = _13f_period(cik, prev["accession"])
                 if prev_url:
                     prev_holdings = _13f_parse(prev_url)
+            for c in prev_holdings:
+                tk = cusip_to_ticker.get(c)
+                if tk:
+                    prev_fund_membership.setdefault(tk, set()).add(name)
 
             # 포트폴리오 성향 추이(테마·시장·성격 배분)용 분기별 보유내역.
             # cur/prev 는 이미 받았으니 재사용하고, 그보다 더 예전 분기만 새로
@@ -517,13 +531,32 @@ def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=20):
             top_cusips = sorted(cur_holdings, key=lambda c: -cur_holdings[c]["value"])[:HOLDINGS_CAP]
             top_dropped_cusips = sorted(dropped_all, key=lambda c: -prev_holdings[c]["value"])[:HOLDINGS_CAP]
             top_added_cusips = sorted(added_all, key=lambda c: -cur_holdings[c]["value"])[:HOLDINGS_CAP]
-            tk_map = _resolve_cusips(set(top_cusips) | set(top_dropped_cusips) | set(top_added_cusips),
-                                     cusip_to_ticker)
+
+            # 완전히 나가진 않았지만("이탈"엔 안 잡힘) 비중을 크게 줄인 포지션 —
+            # 실제로 팔아치운 건지, 그냥 다른 종목이 더 올라 상대적으로만
+            # 줄어든 건지는 프론트에서 주식수·주가와 같이 보여줘 판단하게 하고,
+            # 여기선 "비중이 TRIM_THRESHOLD 이상 줄었다"만 기준으로 추린다.
+            prev_total = sum(h["value"] for h in prev_holdings.values()) or 1
+            held_both = set(cur_holdings) & set(prev_holdings)
+            trimmed_all = set()
+            for c in held_both:
+                prev_pct_c = prev_holdings[c]["value"] / prev_total * 100
+                cur_pct_c = cur_holdings[c]["value"] / total * 100
+                if prev_pct_c > 0 and cur_pct_c <= prev_pct_c * (1 - TRIM_THRESHOLD):
+                    trimmed_all.add(c)
+            top_trimmed_cusips = sorted(
+                trimmed_all,
+                key=lambda c: (cur_holdings[c]["value"] / total * 100)
+                             - (prev_holdings[c]["value"] / prev_total * 100)
+            )[:HOLDINGS_CAP]
+
+            tk_map = _resolve_cusips(
+                set(top_cusips) | set(top_dropped_cusips) | set(top_added_cusips) | set(top_trimmed_cusips),
+                cusip_to_ticker)
 
             # 직전 분기 대비 비중·평가액·주식수가 어떻게 바뀌었는지 — 그냥
             # "덜 갖고 있다"가 아니라 "주가가 올라 비중만 줄었나, 실제로
             # 주식을 팔았나"를 프론트에서 가늠해 보려면 필요한 기준값들이다.
-            prev_total = sum(h["value"] for h in prev_holdings.values()) or 1
             added_set = set(top_added_cusips)
             rows = []
             for c in top_cusips:
@@ -550,26 +583,42 @@ def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=20):
                      "pct": round(cur_holdings[c]["value"] / total * 100, 3)}
                     for c in top_added_cusips]
 
+            trimmed = []
+            for c in top_trimmed_cusips:
+                ph, ch = prev_holdings[c], cur_holdings[c]
+                shares_delta_pct = (round((ch["shares"] - ph["shares"]) / ph["shares"] * 100, 2)
+                                    if ph["shares"] else None)
+                trimmed.append({
+                    "cusip": c, "ticker": tk_map.get(c), "name": ch["name"],
+                    "value": ch["value"], "prev_value": ph["value"],
+                    "pct": round(ch["value"] / total * 100, 3),
+                    "prev_pct": round(ph["value"] / prev_total * 100, 3),
+                    "shares": ch["shares"], "prev_shares": ph["shares"],
+                    "shares_delta_pct": shares_delta_pct,
+                })
+
             funds_out.append({
                 "name": name, "cik": cik, "period": cur_period, "filed": cur["filed"],
                 "prev_period": prev_period, "total_value": total,
                 "holdings_count": len(cur_holdings), "dropped_count": len(dropped_all),
-                "added_count": len(added_all),
-                "holdings": rows, "dropped": dropped, "added": added,
+                "added_count": len(added_all), "trimmed_count": len(trimmed_all),
+                "holdings": rows, "dropped": dropped, "added": added, "trimmed": trimmed,
                 "history": history,
             })
             log(f"  13F {name}: 보유 {len(cur_holdings)}개(상위 {len(rows)}개 표시), "
                 f"신규 {len(added_all)}개(상위 {len(added)}개 표시), "
                 f"이탈 {len(dropped_all)}개(상위 {len(dropped)}개 표시), "
+                f"비중축소 {len(trimmed_all)}개(상위 {len(trimmed)}개 표시), "
                 f"추이 {len(history)}개 분기 ({cur_period})")
         except Exception as e:                           # noqa: BLE001
             log(f"  ! 13F {name} 조회 실패: {e}")
 
     # 공통 보유 / 최근 공통 이탈: 티커를 알아낸 것만 센다(CUSIP 만 있고 티커를
     # 못 찾은 자산은 우리 유니버스와 비교할 수 없어 제외).
-    def _common(field):
+    def _common(field, weight_field="pct"):
         holder = {}
         name_of = {}
+        weights = {}
         for f in funds_out:
             for row in f[field]:
                 tk = row.get("ticker")
@@ -577,14 +626,24 @@ def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=20):
                     continue
                 holder.setdefault(tk, []).append(f["name"])
                 name_of.setdefault(tk, row["name"])
+                w = row.get(weight_field)
+                if w is not None:
+                    weights.setdefault(tk, []).append(w)
         return sorted(
-            ({"ticker": tk, "name": name_of[tk], "funds": funds}
+            ({"ticker": tk, "name": name_of[tk], "funds": funds,
+              # 직전 분기엔 우리 펀드 유니버스 중 몇 곳이 이 종목을 들고 있었는지
+              # — "지난 분기 3개 -> 이번 분기 6개" 식으로 늘었는지 줄었는지 비교용.
+              "prev_fund_count": len(prev_fund_membership.get(tk, ())),
+              # 이 종목을 들고 있는(있었던) 펀드들의 평균 비중 — 개별 펀드
+              # 기준 비중·평가액 변화는 안 보이니, 대략의 감을 잡는 용도.
+              "avg_pct": round(sum(weights[tk]) / len(weights[tk]), 3) if weights.get(tk) else None}
              for tk, funds in holder.items() if len(funds) >= 2),
             key=lambda r: -len(r["funds"]))
 
-    common_holdings = _common("holdings")
-    common_dropped = _common("dropped")
-    common_added = _common("added")
+    common_holdings = _common("holdings", "pct")
+    common_dropped = _common("dropped", "prev_pct")
+    common_added = _common("added", "pct")
+    common_trimmed = _common("trimmed", "pct")
 
     out = {
         "checked_at": datetime.date.today().isoformat(),
@@ -592,10 +651,11 @@ def fetch_13f(cusip_to_ticker, cache_path=None, max_age_days=20):
         "common_holdings": common_holdings,
         "common_dropped": common_dropped,
         "common_added": common_added,
+        "common_trimmed": common_trimmed,
     }
     log(f"13F: {len(funds_out)}/{len(THIRTEENF_FUNDS)}개 펀드 · "
         f"공통 보유 {len(common_holdings)}개 · 공통 신규 {len(common_added)}개 · "
-        f"공통 이탈 {len(common_dropped)}개")
+        f"공통 이탈 {len(common_dropped)}개 · 공통 비중축소 {len(common_trimmed)}개")
     if cache_path and funds_out:
         tmp = cache_path + ".tmp"
         json.dump(out, open(tmp, "w"), ensure_ascii=False)
