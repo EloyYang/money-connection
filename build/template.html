@@ -6738,7 +6738,7 @@ function openFundDrawer(f){
 
   renderFundAlloc();
   renderFundTrend();
-  renderCommon13F();
+  renderCommon13F(f);
   document.getElementById('fund-drawer').classList.add('show');
 }
 function closeFundDrawer(){
@@ -6751,29 +6751,50 @@ document.getElementById('fund-drawer-close').addEventListener('click', () => {
   renderFund13FList();
 });
 
-/* 어느 펀드를 보고 있든 항상 같은 내용 — 여러 펀드에 걸친 공통점이라
-   특정 펀드에 속하지 않는다. 드로어를 열 때마다 다시 그린다(가벼우니 무방). */
-function renderCommon13F(){
+/* 표 자체(어느 종목이 몇 개 펀드에 공통인지, 평균 비중)는 어느 펀드를 보고
+   있든 항상 같은 내용이지만, "내 비중(평균 대비)" 열만은 지금 열어 본
+   펀드(f) 기준이라 매번 새로 계산해야 한다. */
+function renderCommon13F(f){
   // 보유 종목/신규 편입/이탈 표와 똑같이, 우리 유니버스 안 종목이면 호버 정보
   // 툴팁(tk13FCell/wire13FLinks 가 이미 처리)과 최근 추세 스파크라인을 보여준다.
   // 여러 펀드를 아우르는 종목이라 특정 펀드 기준의 비중·평가액 변화는 없지만,
   // "직전 분기엔 펀드 수가 몇 개였는지"와 "펀드들의 평균 비중"은 붙여서 대략의
   // 흐름(관심이 넓어지는지·좁아지는지, 다들 얼마나 비중 있게 들고 있는지)을 보여준다.
-  const commonRow = r => `<tr>${tk13FCell(r.ticker, r.name)}<td>${fmtFundCountDelta(r.funds.length, r.prev_fund_count)}</td>`
-    + `<td>${r.avg_pct != null ? r.avg_pct.toFixed(2) + '%' : '—'}</td>`
-    + `<td style="text-align:left;white-space:normal;font-family:inherit">${r.funds.join(', ')}</td>`
-    + `<td>${sparkline13F(r.ticker)}</td></tr>`;
-  const commonHead = `<thead><tr><th style="text-align:left">종목</th><th>펀드 수(직전 대비)</th><th>평균 비중</th><th style="text-align:left">펀드</th><th>최근 추세</th></tr></thead>`;
+  const toPctMap = (rows, field) => {
+    const m = new Map();
+    (rows || []).forEach(row => { if(row.ticker && row[field] != null) m.set(row.ticker, row[field]); });
+    return m;
+  };
+  // 지금 열어 본 펀드가 이 종목을 각 표(보유/신규/비중축소/이탈)에서 얼마나
+  // 들고 있(었)는지 — 표마다 비중을 나타내는 필드가 다르다(이탈은 나가기
+  // 직전 비중인 prev_pct).
+  const ownHoldings = toPctMap(f.holdings, 'pct');
+  const ownAdded = toPctMap(f.added, 'pct');
+  const ownTrimmed = toPctMap(f.trimmed, 'pct');
+  const ownDropped = toPctMap(f.dropped, 'prev_pct');
+  // 이 펀드가 그 표에서 이 종목을 갖고 있지 않으면(=funds 목록에 이 펀드가
+  // 없으면) 비교 자체가 성립하지 않으니 "—"로 비워 둔다.
+  const commonRow = (r, ownMap) => {
+    const own = ownMap.get(r.ticker);
+    const ownCell = own == null ? '<span style="color:var(--text-muted)">—</span>'
+      : `${own.toFixed(2)}%<br>${fmtDeltaPP(own - (r.avg_pct ?? own))}`;
+    return `<tr>${tk13FCell(r.ticker, r.name)}<td>${fmtFundCountDelta(r.funds.length, r.prev_fund_count)}</td>`
+      + `<td>${r.avg_pct != null ? r.avg_pct.toFixed(2) + '%' : '—'}</td>`
+      + `<td>${ownCell}</td>`
+      + `<td style="text-align:left;white-space:normal;font-family:inherit">${r.funds.join(', ')}</td>`
+      + `<td>${sparkline13F(r.ticker)}</td></tr>`;
+  };
+  const commonHead = `<thead><tr><th style="text-align:left">종목</th><th>펀드 수(직전 대비)</th><th>평균 비중</th><th>내 비중(평균 대비)</th><th style="text-align:left">펀드</th><th>최근 추세</th></tr></thead>`;
   const ch = THIRTEENF.common_holdings || [], ca = THIRTEENF.common_added || [],
         cd = THIRTEENF.common_dropped || [], ct = THIRTEENF.common_trimmed || [];
   document.getElementById('fd-common-holdings-count').textContent = `${ch.length}개`;
-  renderExpandable13F('fd-common-holdings-table', commonHead, ch, commonRow, '2개 이상 펀드가 함께 보유한 종목이 없습니다');
+  renderExpandable13F('fd-common-holdings-table', commonHead, ch, r => commonRow(r, ownHoldings), '2개 이상 펀드가 함께 보유한 종목이 없습니다');
   document.getElementById('fd-common-added-count').textContent = `${ca.length}개`;
-  renderExpandable13F('fd-common-added-table', commonHead, ca, commonRow, '이번 분기 2개 이상 펀드가 함께 새로 편입한 종목이 없습니다');
+  renderExpandable13F('fd-common-added-table', commonHead, ca, r => commonRow(r, ownAdded), '이번 분기 2개 이상 펀드가 함께 새로 편입한 종목이 없습니다');
   document.getElementById('fd-common-trimmed-count').textContent = `${ct.length}개`;
-  renderExpandable13F('fd-common-trimmed-table', commonHead, ct, commonRow, '이번 분기 2개 이상 펀드가 함께 비중을 크게 줄인 종목이 없습니다');
+  renderExpandable13F('fd-common-trimmed-table', commonHead, ct, r => commonRow(r, ownTrimmed), '이번 분기 2개 이상 펀드가 함께 비중을 크게 줄인 종목이 없습니다');
   document.getElementById('fd-common-dropped-count').textContent = `${cd.length}개`;
-  renderExpandable13F('fd-common-dropped-table', commonHead, cd, commonRow, '이번 분기 2개 이상 펀드가 함께 뺀 종목이 없습니다');
+  renderExpandable13F('fd-common-dropped-table', commonHead, cd, r => commonRow(r, ownDropped), '이번 분기 2개 이상 펀드가 함께 뺀 종목이 없습니다');
 }
 
 function renderFund13FList(){
@@ -6829,20 +6850,23 @@ HELP.thirteenFCommon = { t: '공통 보유 종목', dir: null, d:
   '다만 여러 펀드를 아우르는 종목이라 특정 펀드 기준의 비중·평가액 변화까지는 없습니다.\n\n' +
   '"펀드 수(직전 대비)"는 직전 분기엔 우리가 추적하는 펀드 중 몇 곳이 이 종목을 들고 있었는지와 비교한 값입니다 — ' +
   '늘었으면 관심이 넓어진 것, 줄었으면 좁아진 것으로 볼 수 있습니다. "평균 비중"은 지금 이 종목을 들고 있는 ' +
-  '펀드들의 포트폴리오 내 비중을 평균 낸 값이라, 펀드마다 실제 비중은 다를 수 있습니다.' };
+  '펀드들의 포트폴리오 내 비중을 평균 낸 값이라, 펀드마다 실제 비중은 다를 수 있습니다.\n\n' +
+  '"내 비중(평균 대비)"은 지금 보고 있는 이 펀드가 그 종목을 실제로 얼마나 들고 있는지와, 그게 평균보다 ' +
+  '많은지 적은지(%p)를 보여줍니다 — 남들보다 더 확신을 갖고 크게 들고 있는지 가늠하는 데 씁니다. ' +
+  '이 펀드가 그 종목을 들고 있지 않으면 "—"로 비웁니다.' };
 HELP.thirteenFCommonAdded = { t: '이번 분기 공통 신규 편입', dir: null, d:
   '이번 분기에 2곳 이상의 펀드가 함께 새로 편입한 종목입니다. ' +
   '여러 유명 투자자가 동시에 사들이기 시작했다는 뜻일 수 있지만, 매수 시점·가격·목적은 펀드마다 다를 수 있습니다.\n\n' +
-  '"펀드 수(직전 대비)"·"평균 비중"의 의미는 위 "공통 보유 종목" 설명과 같습니다.' };
+  '"펀드 수(직전 대비)"·"평균 비중"·"내 비중(평균 대비)"의 의미는 위 "공통 보유 종목" 설명과 같습니다.' };
 HELP.thirteenFCommonTrimmed = { t: '이번 분기 공통 비중 축소', dir: null, d:
   '이번 분기에 2곳 이상의 펀드가 함께 비중을 크게(직전 대비 30% 이상) 줄였지만 완전히 팔지는 않은 ' +
   '종목입니다. 업종 전반에 대한 시각이 조심스러워졌을 수도, 우연히 겹친 것일 수도 있습니다.\n\n' +
-  '"펀드 수(직전 대비)"·"평균 비중"의 의미는 위 "공통 보유 종목" 설명과 같습니다.' };
+  '"펀드 수(직전 대비)"·"평균 비중"·"내 비중(평균 대비)"의 의미는 위 "공통 보유 종목" 설명과 같습니다.' };
 HELP.thirteenFCommonDropped = { t: '이번 분기 공통 이탈', dir: null, d:
   '이번 분기에 2곳 이상의 펀드가 함께 포트폴리오에서 뺀 종목입니다. ' +
   '업종 전반에 대한 시각이 바뀌었을 수도, 우연히 겹친 것일 수도 있습니다 — 개별 펀드의 이탈 이유는 공시에 나오지 않습니다.\n\n' +
   '"펀드 수(직전 대비)"는 완전히 이탈하기 전, 직전 분기엔 몇 곳이 들고 있었는지입니다. "평균 비중"은 ' +
-  '나가기 직전 분기 기준 평균 비중입니다.' };
+  '나가기 직전 분기 기준 평균 비중입니다. "내 비중(평균 대비)"도 마찬가지로 이 펀드가 나가기 직전 들고 있던 비중 기준입니다.' };
 HELP.thirteenFAdded = { t: '이번 분기 신규 편입', dir: null, d:
   '직전 분기 신고에는 없었지만 이번 신고에 새로 나타난 종목입니다. 보유 종목 표에도 ' +
   '<span class="tag yes">신규</span> 배지로 같이 표시되는데, 새로 편입한 종목은 대개 비중이 작아 ' +
