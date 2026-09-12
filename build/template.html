@@ -6422,9 +6422,10 @@ function fmtDeltaPct13F(v, digits){
    펀드 수가 늘었으면 관심이 넓어진 것, 줄었으면 좁아진 것으로 본다. */
 function fmtFundCountDelta(cur, prev){
   if(prev == null) return `${cur}개`;
-  if(prev === cur) return `${cur}개<br><span style="color:var(--text-muted)">(직전과 동일)</span>`;
-  const diff = cur - prev, c = diff > 0 ? 'var(--up)' : 'var(--down)';
-  return `${cur}개<br><span style="color:${c}">직전 ${prev}개(${diff > 0 ? '+' : ''}${diff})</span>`;
+  const diff = cur - prev;
+  if(diff === 0) return `${cur}개<br><span style="color:var(--text-muted)">(직전과 동일)</span>`;
+  const c = diff > 0 ? 'var(--up)' : 'var(--down)';
+  return `${cur}개<br><span style="color:${c}">${diff > 0 ? '+' : ''}${diff}개</span>`;
 }
 
 /* ---- 비중·평가액이 줄어도 주식은 그대로일 수 있다(다른 종목이 더 올라서
@@ -6713,10 +6714,10 @@ function openFundDrawer(f){
   document.getElementById('fd-trimmed-count').textContent =
     tTotal > (f.trimmed || []).length ? `상위 ${f.trimmed.length}개 / 전체 ${tTotal}개` : `${tTotal}개`;
   renderExpandable13F('fd-trimmed-table',
-    `<thead><tr><th style="text-align:left">종목</th><th>비중(직전→현재)</th><th>주식수 변화</th><th>주가(같은 분기)</th><th>최근 추세</th></tr></thead>`,
+    `<thead><tr><th style="text-align:left">종목</th><th>비중</th><th>주식수 변화</th><th>주가(같은 분기)</th><th>최근 추세</th></tr></thead>`,
     f.trimmed || [],
     t => `<tr>${tk13FCell(t.ticker, t.name)}`
-       + `<td>${t.prev_pct.toFixed(2)}%→${t.pct.toFixed(2)}%<br>${fmtDeltaPP(t.pct - t.prev_pct)}</td>`
+       + `<td>${t.pct.toFixed(2)}%<br>${fmtDeltaPP(t.pct - t.prev_pct)}</td>`
        + `<td>${fmtDeltaPct13F(t.shares_delta_pct)}</td>`
        + `<td>${fmtDeltaPct13F(priceChgPct13F(t.ticker, f.prev_period, f.period))}</td>`
        + `<td>${sparkline13F(t.ticker)}</td></tr>`,
@@ -6817,7 +6818,7 @@ HELP.thirteenFDropped = { t: '이번 분기 이탈 종목', dir: null, d:
 HELP.thirteenFTrimmed = { t: '이번 분기 비중 축소(계속 보유)', dir: null, d:
   '완전히 나가진 않았지만(그랬다면 "이탈 종목"에 잡힙니다), 직전 분기 대비 비중이 30% 이상 ' +
   '줄어든 종목입니다. 아주 조금씩 자연스레 줄어드는 건 노이즈로 보고 뺐습니다.\n\n' +
-  '"비중(직전→현재)" 옆의 %p는 그 축소 폭입니다. 보유 종목 표와 같은 논리로, ' +
+  '비중 칸의 %는 현재 비중, 아랫줄 %p는 직전 분기 대비 축소 폭입니다. 보유 종목 표와 같은 논리로, ' +
   '<b>주식수 변화</b>가 0%에 가까우면 다른 종목이 더 올라 비중만 희석된 것이고, 주식수 자체가 줄었다면 실제로 ' +
   '일부를 매도한 겁니다. 주가(같은 분기)와 같이 보면 차익실현성 비중 조절인지, 확신이 약해져 줄인 건지 가늠하는 데 ' +
   '도움이 되지만, 13F는 이유를 알려주지 않으니 참고만 하세요.' };
