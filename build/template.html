@@ -2569,7 +2569,9 @@ const labelSel = labelLayer.selectAll('text').data(nodes.filter(d=>d.tier!=='C')
   .attr('dy', d=>d.r+12).style('pointer-events','none')
   .style('paint-order','stroke').style('stroke','#0a0c10').style('stroke-width','3px');
 
-svg.on('click', ()=>{ clearAll(); });
+// 빈 곳 클릭은 "선택 해제"이지 "초기화"가 아니다 — 연결 기준·기간·임계값·
+// 필터·그룹 설정은 그대로 두고 지금 열려 있는 선택만 닫는다.
+svg.on('click', ()=>{ deselectAll(); });
 
 /* ---------- forces: positive correlation attracts, negative barely does ---------- */
 function linkForce(){
@@ -5139,23 +5141,32 @@ document.getElementById('lead-only').addEventListener('click', () => {
   clearFocus(); resetOpacities();
 });
 
-/* 초기화 = back to the state a fresh visit starts in. It used to drop only the
-   selection, which is not what "초기화" says: a hidden theme, a 3-year window or
-   a PER-based leaders ranking all survived it. */
-function clearAll(){
+/* 빈 곳 클릭 = 선택 해제일 뿐이다. "초기화"(연결 기준·기간·임계값·필터·그룹까지
+   전부 처음 상태로 되돌리는 것, 아래 clearAll)와는 다르다 — 열려 있던 종목
+   상세/비교/펀드 드로어와 포커스 하이라이트만 닫고, 애써 설정해 둔 연결
+   기준·임계값 등은 그대로 둔다. */
+function deselectAll(){
   compareSet = []; cmpWarn = '';
   closeDetailOverlay();
   drawer.classList.remove('show');
   clearFocus();
   if(selectedFund13F){ selectedFund13F = null; closeFundDrawer(); renderFund13FList(); }
+  closeSearchResults();
+  syncSelectionHighlight();
+}
+
+/* 초기화 = back to the state a fresh visit starts in. It used to drop only the
+   selection, which is not what "초기화" says: a hidden theme, a 3-year window or
+   a PER-based leaders ranking all survived it. */
+function clearAll(){
+  deselectAll();
 
   // filters
   favOnly = false;
   leadOnly = false;
   document.getElementById('fav-only').classList.remove('on');
   document.getElementById('lead-only').classList.remove('on');
-  document.getElementById('search').value = '';
-  closeSearchResults();
+  document.getElementById('search').value = '';   // deselectAll() 이 이미 검색 결과창은 닫아 뒀다
 
   // grouping + scope
   Object.keys(activeByMode).forEach(m => {
