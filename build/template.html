@@ -130,6 +130,15 @@
   }
   #bang-gate:hover .orb{ box-shadow:0 0 30px 9px rgba(95,208,255,0.75), 0 0 92px 30px rgba(95,208,255,0.28); }
   #bang-gate:hover .orb-hint{ color:var(--text-primary); }
+  /* 터지기 직전 응축 — 한 점으로 쪼그라들며 밝아졌다가 폭발로 이어진다 */
+  #bang-gate.firing{ pointer-events:none; }
+  #bang-gate.firing .orb{
+    animation:none; transform:scale(0.35); filter:brightness(2.6);
+    transition:transform .13s cubic-bezier(.6,0,.9,.3), filter .13s ease-in;
+  }
+  #bang-gate.firing .orb-ring, #bang-gate.firing .orb-hint{
+    opacity:0; transition:opacity .1s linear;
+  }
   #bang-gate:focus-visible{ outline:2px solid var(--accent); outline-offset:-4px; }
   @keyframes bang-orb-pulse{
     0%,100%{ transform:scale(1); }
@@ -2834,10 +2843,15 @@ function playBangIntro(){
   labelSel.each(function(d){ labelOpacity.set(d.id, +this.getAttribute('opacity') || 1); });
 
   // 최종 좌표(이미 settle 된 값)를 기억해 두고, 전부 중심의 씨앗 하나로 모은다.
+  // _bangDelay/_bangSpeed 는 조각마다 다른 무게처럼 굴게 하는 값이다 — 늦게
+  // 튀어나오는 조각, 빨리 날아가 박히는 조각이 섞여야 폭발처럼 보인다.
   nodes.forEach(n => {
     n._bangX = n.x; n._bangY = n.y;
     n.x = cx0 + (Math.random()-0.5) * 6;
     n.y = cy0 + (Math.random()-0.5) * 6;
+    n._bangDelay = Math.random() * 0.22;
+    n._bangSpeed = 1 / (0.55 + Math.random() * 0.45);
+    n._bangT = 0;
   });
   nodeSel.attr('opacity', 0).attr('r', d => d.r * 0.3);
   labelSel.attr('opacity', 0);
@@ -2858,6 +2872,7 @@ function playBangIntro(){
     nodes.forEach(n => {
       if(n._bangX !== undefined){ n.x = n._bangX; n.y = n._bangY; }
       delete n._bangX; delete n._bangY;
+      delete n._bangDelay; delete n._bangSpeed; delete n._bangT;
     });
     nodeSel.attr('opacity', d => nodeOpacity.get(d.id) ?? 1).attr('r', d => d.r);
     labelSel.attr('opacity', d => labelOpacity.get(d.id) ?? 1);
@@ -2869,28 +2884,75 @@ function playBangIntro(){
     sim.alpha(0.06).restart();   // 끝나면 평소처럼 은은한 활동 상태로 되돌아간다
   };
 
-  gate.addEventListener('click', () => {
+  /* 사방으로 튀는 빛 파편 — 노드(종목)와 별개인 순수 장식이다. 노드만
+     퍼지면 "빛이 번지는" 느낌에 가깝고, 이렇게 중심에서 쏘아져 나가는
+     가느다란 스트릭이 섞여야 "터졌다"로 읽힌다. */
+  function spawnShards(){
+    const far = Math.max(W, H);
+    const layer = svg.append('g').style('pointer-events', 'none');
+    for(let i = 0; i < 78; i++){
+      const ang = Math.random() * Math.PI * 2;
+      const dist = far * (0.14 + Math.random() * 0.52);
+      const len = 7 + Math.random() * 30;          // 파편 하나의 길이(속도감)
+      const ex = cx0 + Math.cos(ang) * dist, ey = cy0 + Math.sin(ang) * dist;
+      layer.append('line')
+        .attr('x1', cx0).attr('y1', cy0).attr('x2', cx0).attr('y2', cy0)
+        .attr('stroke', i % 3 === 0 ? '#ffffff' : 'var(--accent)')
+        .attr('stroke-width', 0.7 + Math.random() * 1.7)
+        .attr('stroke-linecap', 'round')
+        .style('opacity', 0.35 + Math.random() * 0.6)
+        .transition().duration(420 + Math.random() * 620).ease(d3.easeCubicOut)
+        .attr('x1', ex - Math.cos(ang) * len).attr('y1', ey - Math.sin(ang) * len)
+        .attr('x2', ex).attr('y2', ey)
+        .style('opacity', 0)
+        .remove();
+    }
+    // 잔불처럼 남는 작은 불똥 몇 개
+    for(let i = 0; i < 26; i++){
+      const ang = Math.random() * Math.PI * 2;
+      const dist = far * (0.10 + Math.random() * 0.40);
+      layer.append('circle')
+        .attr('cx', cx0).attr('cy', cy0).attr('r', 0.8 + Math.random() * 1.8)
+        .attr('fill', i % 4 === 0 ? '#ffffff' : 'var(--accent)')
+        .style('opacity', 0.9)
+        .transition().duration(620 + Math.random() * 780).ease(d3.easeCubicOut)
+        .attr('cx', cx0 + Math.cos(ang) * dist).attr('cy', cy0 + Math.sin(ang) * dist)
+        .style('opacity', 0)
+        .remove();
+    }
+    layer.transition().delay(1700).remove();
+  }
+
+  function burst(){
     if(bangDone) return;
-    gate.hidden = true;         // 게이트는 한 번 쓰고 사라진다
     // 그래프 레이어를 다시 보이게 하되, 노드는 아직 투명한 채 중심에 모여 있다
     // (게이트가 떠 있는 동안 resetOpacities() 가 불렸을 수도 있어 0 으로 다시 못박는다)
     nodeSel.attr('opacity', 0);
     labelSel.attr('opacity', 0);
     wrap.classList.remove('bang-pending');
-    // 중심에서 터지는 섬광 + 뒤따르는 충격파 고리(살짝 시차를 둔 두 겹)
+
+    // 한 점에서 터지는 핵 — 아주 짧고 세게(번지는 게 아니라 "퍽" 하고 터지게)
+    svg.append('circle')
+      .attr('cx', cx0).attr('cy', cy0).attr('r', 1)
+      .attr('fill', '#ffffff').style('opacity', 1).style('pointer-events', 'none')
+      .transition().duration(170).ease(d3.easeCubicOut)
+      .attr('r', Math.max(W, H) * 0.11).style('opacity', 0).remove();
+    // 뒤따르는 넓은 섬광
     svg.append('circle')
       .attr('cx', cx0).attr('cy', cy0).attr('r', 2)
       .attr('fill', 'url(#bang-flash-grad)').style('pointer-events', 'none')
-      .transition().duration(700).ease(d3.easeCubicOut)
-      .attr('r', Math.max(W, H) * 0.6).style('opacity', 0).remove();
-    [0, 160].forEach(delay => {
+      .transition().duration(560).ease(d3.easeCubicOut)
+      .attr('r', Math.max(W, H) * 0.55).style('opacity', 0).remove();
+    // 충격파 고리(살짝 시차를 둔 두 겹)
+    [0, 150].forEach(delay => {
       svg.append('circle')
         .attr('cx', cx0).attr('cy', cy0).attr('r', 4)
-        .attr('fill', 'none').attr('stroke', 'var(--accent)').attr('stroke-width', 2)
-        .style('opacity', 0.8).style('pointer-events', 'none')
-        .transition().delay(delay).duration(900).ease(d3.easeCubicOut)
+        .attr('fill', 'none').attr('stroke', 'var(--accent)').attr('stroke-width', 2.4)
+        .style('opacity', 0.85).style('pointer-events', 'none')
+        .transition().delay(delay).duration(820).ease(d3.easeCubicOut)
         .attr('r', Math.max(W, H) * 0.55).attr('stroke-width', 0.3).style('opacity', 0).remove();
     });
+    spawnShards();
 
     // 게이트는 이미 사라졌으니, 무슨 일이 있어도 그래프는 나와야 한다 —
     // 브라우저가 rAF 를 멈춰 두면(숨은 탭·가려진 창) d3.timer 가 한 프레임도
@@ -2898,17 +2960,35 @@ function playBangIntro(){
     // 뿐) 불리므로, 늦어도 이때는 애니메이션을 접고 완성된 배치를 펼친다.
     setTimeout(finishBang, 10000);
 
-    const DUR = 1600, ease = d3.easeCubicOut;
+    // 조각마다 출발 시점과 속도가 다르다 — 전부 같은 속도로 움직이면 폭발이
+    // 아니라 화면이 통째로 확대되는 것처럼 보인다. 도착해서는 살짝 지나쳤다
+    // 돌아오게(overshoot) 해서 날아와 박히는 느낌을 준다.
+    const ease = d3.easeBackOut.overshoot(0.9);
+    const DUR = 1700;
     const timer = d3.timer(elapsed => {
       if(bangDone){ timer.stop(); return; }
-      const t = Math.min(1, elapsed / DUR), e = ease(t);
-      nodes.forEach(n => { n.x = cx0 + (n._bangX - cx0) * e; n.y = cy0 + (n._bangY - cy0) * e; });
-      nodeSel.attr('opacity', d => (nodeOpacity.get(d.id) ?? 1) * Math.min(1, t / 0.45))
-        .attr('r', d => d.r * (0.3 + 0.7 * Math.min(1, t / 0.5)));
-      labelSel.attr('opacity', d => (labelOpacity.get(d.id) ?? 1) * Math.max(0, (t - 0.35) / 0.65));
+      const t = Math.min(1, elapsed / DUR);
+      nodes.forEach(n => {
+        const lt = Math.min(1, Math.max(0, (t - n._bangDelay) * n._bangSpeed));
+        const e = ease(lt);
+        n.x = cx0 + (n._bangX - cx0) * e;
+        n.y = cy0 + (n._bangY - cy0) * e;
+        n._bangT = lt;
+      });
+      nodeSel.attr('opacity', d => (nodeOpacity.get(d.id) ?? 1) * Math.min(1, d._bangT / 0.18))
+        .attr('r', d => d.r * (0.18 + 0.82 * Math.min(1, d._bangT / 0.35)));
+      labelSel.attr('opacity', d => (labelOpacity.get(d.id) ?? 1) * Math.max(0, (t - 0.45) / 0.55));
       ticked();
       if(t >= 1){ timer.stop(); finishBang(); }
     });
+  }
+
+  gate.addEventListener('click', () => {
+    if(bangDone) return;
+    // 터지기 직전 한 번 응축했다가(140ms) 터진다 — 짧은 뜸이 있어야 폭발이
+    // 더 세게 읽힌다.
+    gate.classList.add('firing');
+    setTimeout(() => { gate.hidden = true; burst(); }, 140);
   });
 }
 playBangIntro();
