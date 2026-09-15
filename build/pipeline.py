@@ -1104,7 +1104,9 @@ def fetch_yahoo(tk, frm, to):
     p2 = int(datetime.datetime.combine(to, datetime.time()).timestamp())
     url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{tk}"
            f"?period1={p1}&period2={p2}&interval=1d")
-    d = get_json(url, retries=2)
+    # 야후는 공용 HEADERS 의 크롬 UA(버전이 짧은 가짜 크롬)를 봇으로 보고 429 를
+    # 돌려준다 — 이 탓에 보충이 매번 조용히 실패해 왔다. 단순 UA 는 통과한다.
+    d = get_json(url, retries=2, headers={"User-Agent": "Mozilla/5.0"})
     res = (d.get("chart") or {}).get("result") or []
     if not res: return {}
     r0 = res[0]
@@ -1136,11 +1138,27 @@ def fetch_one_series(tk, member, frm, to):
 # 시세를 쓰는 쪽이라 그 사이를 먼저 채워 줄 때가 많다. 최근 창에만 적용한다
 # (야후는 종가 전용이라 과거 전체를 이걸로 받으면 시가·고가·저가를 잃는다).
 TOPOFF_SOURCES = ("nasdaq_stock", "nasdaq_etf")
-# 나스닥에서 받은 가장 최근 날짜가 오늘보다 이만큼 넘게 오래되었을 때만
-# 야후를 추가로 부른다. 주말 이틀 정도는 정상이니 여유를 둔다 — 매번
-# 부르면(캐시 재사용의 요청 수가 얼마 안 되는데 여기서 절반 가까이를
-# 다시 늘려 버려) 캐싱으로 아낀 시간을 도로 까먹는다.
-TOPOFF_STALE_DAYS = 3
+# 장 마감(16:00 ET) 뒤 이만큼 지나야 그날 봉이 "있어야 하는" 것으로 본다.
+US_CLOSE_GRACE_MIN = 30
+
+
+def expected_us_session(now=None):
+    """지금 이미 마감됐어야 하는 가장 최근 미국 거래일(뉴욕 기준 평일).
+
+    예전엔 "최신 날짜가 오늘보다 3일 넘게 오래됐을 때만" 야후를 불렀다.
+    그런데 평일엔 하루만 뒤처지므로 그 조건이 거의 걸리지 않아, 나스닥이
+    종가를 늦게 올리는 날마다 해외 일봉이 하루씩 밀린 채 배포됐다.
+    이제는 받아야 할 거래일 자체와 비교한다. 공휴일은 모르므로 휴장일엔
+    야후 요청이 한 번 헛돌 뿐 값은 바뀌지 않는다."""
+    from zoneinfo import ZoneInfo
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    et = now.astimezone(ZoneInfo("America/New_York"))
+    d = et.date()
+    if et.time() < datetime.time(16, US_CLOSE_GRACE_MIN):
+        d -= datetime.timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= datetime.timedelta(days=1)
+    return d
 
 # 캐시에 있는 종목은 이 기간만 새로 받는다 — 주말·연휴가 이어져도
 # 겹치도록 넉넉히 잡는다. 새 종목(캐시에 없음)은 여전히 5년 전체를 받는다.
@@ -1193,23 +1211,31 @@ def fetch_all_prices(members, workers, cache_path=None):
     if cache:
         log(f"가격 캐시: {len(cache)}개 종목 — 캐시에 있는 종목은 최근 {INCR_DAYS}일만 새로 받습니다")
     series, problems = {}, []
+    expected = expected_us_session()
+    topoffs = []                                       # (tk, 결과) — list.append 는 스레드 간에 안전하다
 
     def fetch_fresh(tk, m, frm):
-        """기본 소스로 받고, 그 결과가 눈에 띄게 오래됐을 때만(TOPOFF_STALE_DAYS)
-        미국 주식·ETF 에 한해 야후로 최근 며칠을 추가로 받아 빈 날짜를 채운다.
+        """기본 소스로 받고, 미국 주식·ETF 가 받아야 할 최신 거래일(expected)을
+        아직 못 받았을 때만 야후로 같은 기간을 추가로 받아 빈 날짜를 채운다.
         나스닥 값이 있으면 그대로 둔다 — 야후는 종가만 있어 시가·고가·저가가
-        부정확할 수 있기 때문이다. 매번 야후까지 부르면 캐시로 아낀 요청 수를
-        도로 절반 가까이 늘리게 되므로, 정말 뒤처졌을 때만 부른다."""
+        부정확할 수 있기 때문이다. 나스닥이 이미 최신이면 야후는 부르지 않는다.
+        야후는 장중이면 오늘의 미완성 봉도 주므로 expected 이후 날짜는 버린다."""
         rows = dict(fetch_one_series(tk, m, frm, to))
         if m.get("source") in TOPOFF_SOURCES:
             newest = max(rows) if rows else None
-            if newest is None or (to - newest).days > TOPOFF_STALE_DAYS:
+            if newest is None or newest < expected:
                 try:
-                    extra = fetch_yahoo(tk, frm, to)
-                except Exception:                      # noqa: BLE001
+                    extra = fetch_yahoo(tk, frm, to + datetime.timedelta(days=1))
+                except Exception as e:                 # noqa: BLE001
                     extra = {}
+                    topoffs.append((tk, f"실패: {e}"))
+                added = 0
                 for d, row in extra.items():
-                    rows.setdefault(d, row)
+                    if d <= expected and d not in rows:
+                        rows[d] = row
+                        added += 1
+                if extra:
+                    topoffs.append((tk, "채움" if added else "야후도 없음"))
         return rows
 
     def one(tk):
@@ -1271,6 +1297,24 @@ def fetch_all_prices(members, workers, cache_path=None):
                 continue
             series[tk] = rows
     log(f"prices: {len(series)}/{len(members)} tickers")
+
+    # 야후 보충 결과를 남긴다 — 예전엔 실패를 조용히 삼켜서, 해외 일봉이
+    # 왜 안 올라왔는지 실행 로그로는 알 수가 없었다.
+    if topoffs:
+        counts = {}
+        for _, s in topoffs:
+            k = "실패" if s.startswith("실패") else s
+            counts[k] = counts.get(k, 0) + 1
+        log(f"야후 보충 (기준 거래일 {expected}): " + ", ".join(f"{k} {v}" for k, v in counts.items()))
+        fail = next((f"{tk}: {s}" for tk, s in topoffs if s.startswith("실패")), None)
+        if fail:
+            log(f"  예: {fail}")
+    us = [tk for tk, m in members.items() if m.get("source") in TOPOFF_SOURCES and series.get(tk)]
+    behind = [tk for tk in us if max(series[tk]) < expected]
+    if us and len(behind) > len(us) // 2:
+        # GitHub Actions 요약 화면에 노란 경고로 뜬다 — 다음 보충 실행이 채운다.
+        print(f"::warning::미국 종목 {len(behind)}/{len(us)}개가 아직 {expected} 종가가 없습니다 "
+              f"(최신 {max(max(series[tk]) for tk in behind)}) — 나스닥·야후 모두 미반영", flush=True)
     _save_price_cache(cache_path, series, members)
 
     # Backfill size/quote for assets whose membership source had none:
