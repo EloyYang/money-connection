@@ -685,10 +685,25 @@ def fetch_usdkrw_rate():
         return 1350.0
 
 
-def fetch_kospi100(usdkrw):
-    """Scrape Naver's KOSPI100 constituent pages: name, code, price, market cap
-    (원 표기 억원 -> 원). No public JSON endpoint for this list; the HTML table
-    is stable and cheap (~10 short pages)."""
+def _kospi_cap_krw(text):
+    """'1,604조 8,035억' 같은 네이버 표기를 원 단위 숫자로."""
+    if not text:
+        return None
+    s = str(text).replace(",", "").strip()
+    total = 0.0
+    m = re.search(r"([\d.]+)\s*조", s)
+    if m: total += float(m.group(1)) * 1e12
+    m = re.search(r"([\d.]+)\s*억", s)
+    if m: total += float(m.group(1)) * 1e8
+    if not total and re.fullmatch(r"[\d.]+", s):
+        total = float(s)
+    return total or None
+
+
+def _kospi_from_legacy_table(usdkrw):
+    """원래 경로: 네이버 PC 구성종목 표 하나로 명단·시세·시총을 다 받던 방식.
+    2026-09 무렵 410 Gone 으로 사라졌지만, 네이버가 되살리면 자동으로 다시
+    쓰도록 재시도 1번만 두고 가볍게 두드려 본다(죽어 있으면 곧장 예외라 싸다)."""
     out = {}
     pat = re.compile(
         r'<td class="ctg"><a href="/item/main\.naver\?code=(\d{6})"[^>]*>([^<]+)</a></td>\s*'
@@ -697,7 +712,7 @@ def fetch_kospi100(usdkrw):
     for page in range(1, 15):
         html = get_text(
             f"https://finance.naver.com/sise/entryJongmok.naver?type=KPI100&page={page}",
-            encoding="euc-kr", retries=3, headers={"Referer": "https://finance.naver.com/"})
+            encoding="euc-kr", retries=1, headers={"Referer": "https://finance.naver.com/"})
         rows = pat.findall(html)
         if not rows:
             break
@@ -710,7 +725,74 @@ def fetch_kospi100(usdkrw):
                 "asset_class": "kr_stock", "currency": "KRW", "source": "naver_stock",
             }
         time.sleep(0.15)
-    log(f"KOSPI100 members: {len(out)}")
+    return out
+
+
+def _kospi_from_quote_api(codes, usdkrw, workers=6):
+    """명단을 이미 알고 있을 때 쓰는 길: 종목별 모바일 API 두 개로 이름·현재가·
+    시가총액을 채운다. 구성종목 "목록"을 주는 API 는 더 이상 없지만(지수
+    구성종목 페이지는 /total 로 리다이렉트된다) 종목 단위 조회는 살아 있다."""
+    def one(code):
+        try:
+            b = get_json(f"https://m.stock.naver.com/api/stock/{code}/basic", retries=2, timeout=15)
+            d = get_json(f"https://m.stock.naver.com/api/stock/{code}/integration", retries=2, timeout=15)
+            info = {t.get("code"): t.get("value") for t in d.get("totalInfos", [])}
+            cap_krw = _kospi_cap_krw(info.get("marketValue"))
+            name = (b.get("stockName") or d.get("stockName") or "").strip()
+            px = str(b.get("closePrice", "")).replace(",", "")
+            if not name or not cap_krw:
+                log(f"  ! KOSPI {code}: 이름/시총을 못 읽어 건너뜁니다")
+                return code, None
+            return code, {
+                "name": name, "quote_px": float(px) if px else None,
+                "market_cap": cap_krw / usdkrw,          # USD-equivalent, for node sizing
+                "market_cap_krw": cap_krw,
+                "asset_class": "kr_stock", "currency": "KRW", "source": "naver_stock",
+            }
+        except Exception as e:                        # noqa: BLE001
+            log(f"  ! KOSPI {code} 조회 실패: {e}")
+            return code, None
+
+    out = {}
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for code, rec in ex.map(one, codes):
+            if rec:
+                out[code] = rec
+    return out
+
+
+def fetch_kospi100(usdkrw, seed_path=None):
+    """KOSPI100 구성종목 — 한 곳이 막혀도 빌드는 끝나야 한다.
+
+    예전엔 네이버 PC 구성종목 표 하나로 명단·시세·시총을 모두 받았는데, 그
+    페이지가 410 Gone 으로 사라지면서(2026-09) 예외가 그대로 터져 빌드 전체가
+    몇 주째 실패했다 — 나스닥·S&P500·ETF·13F 는 멀쩡한데 배포가 통째로 멈췄다.
+    그래서 세 단계로 물러난다: (1) 옛 경로를 가볍게 시도하고, (2) 실패하면 지난
+    빌드가 남긴 종목 코드(kospi_industries.json)를 명단으로 삼아 살아 있는
+    종목별 API 로 시세·시총만 새로 채우고, (3) 그마저 안 되면 KOSPI 없이라도
+    끝낸다. (2)로 도는 동안은 신규 편입·제외가 반영되지 않는 게 대가다."""
+    try:
+        live = _kospi_from_legacy_table(usdkrw)
+    except Exception as e:                            # noqa: BLE001
+        live = {}
+        log(f"  ! 네이버 구성종목 표를 못 받았습니다 ({e})")
+    if live:
+        log(f"KOSPI100 members: {len(live)}")
+        return live
+
+    codes = []
+    if seed_path and os.path.exists(seed_path):
+        try:
+            codes = sorted(json.load(open(seed_path)))
+        except Exception as e:                        # noqa: BLE001
+            log(f"  ! 지난 KOSPI 명단 캐시를 읽지 못했습니다 ({e})")
+    if not codes:
+        log("  ! KOSPI 명단을 복원할 캐시가 없어 이번 빌드는 KOSPI 없이 진행합니다")
+        return {}
+
+    log(f"  → 지난 빌드의 KOSPI {len(codes)}종목 명단을 그대로 쓰고 시세·시총만 새로 받습니다")
+    out = _kospi_from_quote_api(codes, usdkrw)
+    log(f"KOSPI100 members: {len(out)} (명단은 캐시 기준 — 신규 편입·제외는 미반영)")
     return out
 
 
@@ -756,8 +838,12 @@ def resolve_kospi_themes(kospi_members, cfg, cache_path):
         kospi_members[code]["div_yield"] = rec.get("yield")
         if theme == 9:
             log(f"  ! {code} ({kospi_members[code]['name']}) industry '{ind}' has no theme mapping")
-    cache = {c: v for c, v in cache.items() if c in set(codes)}   # drop removed members
-    json.dump(cache, open(cache_path, "w"), indent=1, ensure_ascii=False, sort_keys=True)
+    # 명단이 비어 있다면(KOSPI 수집이 통째로 실패한 날) 캐시를 건드리면 안 된다 —
+    # 이 파일이 다음 빌드에서 명단을 되살릴 유일한 씨앗이라, 비우는 순간 KOSPI 가
+    # 영영 사라진다.
+    if codes:
+        cache = {c: v for c, v in cache.items() if c in set(codes)}   # drop removed members
+        json.dump(cache, open(cache_path, "w"), indent=1, ensure_ascii=False, sort_keys=True)
     return assign
 
 
@@ -1934,7 +2020,7 @@ def main():
         if cap: m["market_cap"] = cap
         if px: m["quote_px"] = px
     usdkrw = fetch_usdkrw_rate()
-    kospi_members = fetch_kospi100(usdkrw)
+    kospi_members = fetch_kospi100(usdkrw, os.path.join(a.cache, "kospi_industries.json"))
     extra_members = fetch_extra_assets()
 
     members = {}
