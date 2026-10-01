@@ -359,6 +359,12 @@
   "theme": 7,
   "why": "industry:Medical/Dental Instruments"
  },
+ "BE": {
+  "industry": "Industrial Machinery/Components",
+  "sector": "Energy",
+  "theme": 8,
+  "why": "industry:Industrial Machinery/Components"
+ },
  "BEN": {
   "industry": "Investment Managers",
   "sector": "Finance",
@@ -1499,6 +1505,12 @@
   "theme": 8,
   "why": "sector:Industrials"
  },
+ "ILMN": {
+  "industry": "Medical Specialities",
+  "sector": "Health Care",
+  "theme": 7,
+  "why": "industry:Medical Specialities"
+ },
  "INCY": {
   "industry": "Biotechnology: Commercial Physical & Biological Resarch",
   "sector": "Health Care",
@@ -2176,6 +2188,12 @@
   "sector": "Energy",
   "theme": 8,
   "why": "industry:Oil & Gas Production"
+ },
+ "P": {
+  "industry": "Electronic Components",
+  "sector": "Technology",
+  "theme": 1,
+  "why": "industry:Electronic Components"
  },
  "PANW": {
   "industry": "Computer peripheral equipment",
@@ -2950,6 +2968,12 @@
   "sector": "Health Care",
   "theme": 7,
   "why": "industry:Biotechnology: Pharmaceutical Preparations"
+ },
+ "VYLR": {
+  "industry": "N/A",
+  "sector": "N/A",
+  "theme": 9,
+  "why": "unclassified"
  },
  "VZ": {
   "industry": "Telecommunications Equipment",
