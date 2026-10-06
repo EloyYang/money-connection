@@ -2807,6 +2807,12 @@
   "theme": 5,
   "why": "override"
  },
+ "TWLO": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "industry:Computer Software: Prepackaged Software"
+ },
  "TXN": {
   "industry": "Semiconductors",
   "sector": "Technology",
