@@ -2519,6 +2519,12 @@
   "theme": 6,
   "why": "industry:Packaged Foods"
  },
+ "SKYD": {
+  "industry": "N/A",
+  "sector": "N/A",
+  "theme": 9,
+  "why": "unclassified"
+ },
  "SLB": {
   "industry": "Oilfield Services/Equipment",
   "sector": "Energy",
