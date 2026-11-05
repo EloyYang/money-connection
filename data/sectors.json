@@ -2153,6 +2153,12 @@
   "theme": 8,
   "why": "industry:Oil & Gas Production"
  },
+ "OKTA": {
+  "industry": "Computer Software: Prepackaged Software",
+  "sector": "Technology",
+  "theme": 3,
+  "why": "industry:Computer Software: Prepackaged Software"
+ },
  "OMC": {
   "industry": "Advertising",
   "sector": "Consumer Discretionary",
